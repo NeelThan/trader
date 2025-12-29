@@ -5,7 +5,9 @@ import pytest
 from trader.fibonacci import (
     ExtensionLevel,
     FibonacciLevel,
+    ProjectionLevel,
     calculate_extension_levels,
+    calculate_projection_levels,
     calculate_retracement_levels,
 )
 
@@ -124,3 +126,61 @@ class TestExtensionLevels:
         assert levels[ExtensionLevel.LEVEL_1272] == pytest.approx(113.6, rel=0.01)
         assert levels[ExtensionLevel.LEVEL_1618] == pytest.approx(130.9, rel=0.01)
         assert levels[ExtensionLevel.LEVEL_2618] == pytest.approx(180.9, rel=0.01)
+
+
+class TestProjectionLevels:
+    """Tests for Fibonacci projection level calculations (3-point A,B,C → D)."""
+
+    def test_buy_projection_returns_correct_levels(self) -> None:
+        """
+        BUY projection: D = C - (Swing × Ratio)
+
+        Given: A = 100, B = 50, C = 75, Swing = 50
+        Expected levels:
+        - 61.8%:  75 - (50 × 0.618) = 44.1
+        - 78.6%:  75 - (50 × 0.786) = 35.7
+        - 100.0%: 75 - (50 × 1.000) = 25.0
+        - 127.2%: 75 - (50 × 1.272) = 11.4
+        - 161.8%: 75 - (50 × 1.618) = -5.9
+        """
+        point_a = 100.0
+        point_b = 50.0
+        point_c = 75.0
+
+        levels = calculate_projection_levels(
+            point_a=point_a, point_b=point_b, point_c=point_c, direction="buy"
+        )
+
+        assert len(levels) == 5
+        assert levels[ProjectionLevel.LEVEL_618] == pytest.approx(44.1, rel=0.01)
+        assert levels[ProjectionLevel.LEVEL_786] == pytest.approx(35.7, rel=0.01)
+        assert levels[ProjectionLevel.LEVEL_1000] == pytest.approx(25.0, rel=0.01)
+        assert levels[ProjectionLevel.LEVEL_1272] == pytest.approx(11.4, rel=0.01)
+        assert levels[ProjectionLevel.LEVEL_1618] == pytest.approx(-5.9, rel=0.01)
+
+    def test_sell_projection_returns_correct_levels(self) -> None:
+        """
+        SELL projection: D = C + (Swing × Ratio)
+
+        Given: A = 50, B = 100, C = 75, Swing = 50
+        Expected levels:
+        - 61.8%:  75 + (50 × 0.618) = 105.9
+        - 78.6%:  75 + (50 × 0.786) = 114.3
+        - 100.0%: 75 + (50 × 1.000) = 125.0
+        - 127.2%: 75 + (50 × 1.272) = 138.6
+        - 161.8%: 75 + (50 × 1.618) = 155.9
+        """
+        point_a = 50.0
+        point_b = 100.0
+        point_c = 75.0
+
+        levels = calculate_projection_levels(
+            point_a=point_a, point_b=point_b, point_c=point_c, direction="sell"
+        )
+
+        assert len(levels) == 5
+        assert levels[ProjectionLevel.LEVEL_618] == pytest.approx(105.9, rel=0.01)
+        assert levels[ProjectionLevel.LEVEL_786] == pytest.approx(114.3, rel=0.01)
+        assert levels[ProjectionLevel.LEVEL_1000] == pytest.approx(125.0, rel=0.01)
+        assert levels[ProjectionLevel.LEVEL_1272] == pytest.approx(138.6, rel=0.01)
+        assert levels[ProjectionLevel.LEVEL_1618] == pytest.approx(155.9, rel=0.01)

@@ -21,6 +21,16 @@ class ExtensionLevel(Enum):
     LEVEL_2618 = 2.618
 
 
+class ProjectionLevel(Enum):
+    """Fibonacci projection levels for 3-point swing projections."""
+
+    LEVEL_618 = 0.618
+    LEVEL_786 = 0.786
+    LEVEL_1000 = 1.000
+    LEVEL_1272 = 1.272
+    LEVEL_1618 = 1.618
+
+
 def calculate_retracement_levels(
     high: float,
     low: float,
@@ -85,5 +95,43 @@ def calculate_extension_levels(
             levels[level] = high - (price_range * level.value)
         else:
             levels[level] = low + (price_range * level.value)
+
+    return levels
+
+
+def calculate_projection_levels(
+    point_a: float,
+    point_b: float,
+    point_c: float,
+    direction: Literal["buy", "sell"],
+) -> dict[ProjectionLevel, float]:
+    """
+    Calculate Fibonacci projection levels from 3 pivot points.
+
+    Projection measures a previous swing (A→B) and projects from C.
+
+    Args:
+        point_a: First pivot point price
+        point_b: Second pivot point price
+        point_c: Third pivot point (projection origin)
+        direction: 'buy' or 'sell' setup
+
+    Returns:
+        Dictionary mapping ProjectionLevel to calculated price level
+
+    Formula:
+        Swing = |A - B|
+        BUY (project down):  D = C - (Swing × Ratio)
+        SELL (project up):   D = C + (Swing × Ratio)
+    """
+    swing = abs(point_a - point_b)
+
+    levels: dict[ProjectionLevel, float] = {}
+
+    for level in ProjectionLevel:
+        if direction == "buy":
+            levels[level] = point_c - (swing * level.value)
+        else:
+            levels[level] = point_c + (swing * level.value)
 
     return levels
