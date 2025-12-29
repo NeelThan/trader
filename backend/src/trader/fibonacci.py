@@ -31,6 +31,16 @@ class ProjectionLevel(Enum):
     LEVEL_1618 = 1.618
 
 
+class ExpansionLevel(Enum):
+    """Fibonacci expansion levels (range expansion from pivot B)."""
+
+    LEVEL_382 = 0.382
+    LEVEL_500 = 0.500
+    LEVEL_618 = 0.618
+    LEVEL_1000 = 1.000
+    LEVEL_1618 = 1.618
+
+
 def calculate_retracement_levels(
     high: float,
     low: float,
@@ -133,5 +143,42 @@ def calculate_projection_levels(
             levels[level] = point_c - (swing * level.value)
         else:
             levels[level] = point_c + (swing * level.value)
+
+    return levels
+
+
+def calculate_expansion_levels(
+    point_a: float,
+    point_b: float,
+    direction: Literal["buy", "sell"],
+) -> dict[ExpansionLevel, float]:
+    """
+    Calculate Fibonacci expansion levels from 2 pivot points.
+
+    Expansion forecasts from pivot B (end of swing), unlike Extension
+    which forecasts from pivot A (origin).
+
+    Args:
+        point_a: Start of swing
+        point_b: End of swing (forecast origin)
+        direction: 'buy' or 'sell' setup
+
+    Returns:
+        Dictionary mapping ExpansionLevel to calculated price level
+
+    Formula:
+        Range = |A - B|
+        BUY (expand down):  D = B - (Range × Ratio)
+        SELL (expand up):   D = B + (Range × Ratio)
+    """
+    price_range = abs(point_a - point_b)
+
+    levels: dict[ExpansionLevel, float] = {}
+
+    for level in ExpansionLevel:
+        if direction == "buy":
+            levels[level] = point_b - (price_range * level.value)
+        else:
+            levels[level] = point_b + (price_range * level.value)
 
     return levels
