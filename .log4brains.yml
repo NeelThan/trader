@@ -1,0 +1,5 @@
+project:
+  name: Trader
+  tz: UTC
+  adrFolder: ./docs/adr
+

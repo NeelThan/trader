@@ -1,0 +1,31 @@
+{
+  "name": "trader",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "adr:new": "log4brains adr new",
+    "adr:preview": "log4brains preview",
+    "adr:build": "log4brains build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NeelThan/trader.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/NeelThan/trader/issues"
+  },
+  "homepage": "https://github.com/NeelThan/trader#readme",
+  "devDependencies": {
+    "log4brains": "^1.1.0"
+  }
+}
