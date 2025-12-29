@@ -2,7 +2,12 @@
 
 import pytest
 
-from trader.fibonacci import FibonacciLevel, calculate_retracement_levels
+from trader.fibonacci import (
+    ExtensionLevel,
+    FibonacciLevel,
+    calculate_extension_levels,
+    calculate_retracement_levels,
+)
 
 
 class TestRetracementLevels:
@@ -75,3 +80,47 @@ class TestRetracementLevels:
         assert levels[FibonacciLevel.LEVEL_382] == pytest.approx(
             expected_382, rel=0.001
         )
+
+
+class TestExtensionLevels:
+    """Tests for Fibonacci extension level calculations."""
+
+    def test_buy_extension_returns_correct_levels(self) -> None:
+        """
+        BUY extension (target below origin): Level = High - (Range × Ratio)
+
+        Given: High = 100, Low = 50, Range = 50
+        Expected levels:
+        - 127.2%: 100 - (50 × 1.272) = 36.4
+        - 161.8%: 100 - (50 × 1.618) = 19.1
+        - 261.8%: 100 - (50 × 2.618) = -30.9
+        """
+        high = 100.0
+        low = 50.0
+
+        levels = calculate_extension_levels(high=high, low=low, direction="buy")
+
+        assert len(levels) == 3
+        assert levels[ExtensionLevel.LEVEL_1272] == pytest.approx(36.4, rel=0.01)
+        assert levels[ExtensionLevel.LEVEL_1618] == pytest.approx(19.1, rel=0.01)
+        assert levels[ExtensionLevel.LEVEL_2618] == pytest.approx(-30.9, rel=0.01)
+
+    def test_sell_extension_returns_correct_levels(self) -> None:
+        """
+        SELL extension (target above origin): Level = Low + (Range × Ratio)
+
+        Given: High = 100, Low = 50, Range = 50
+        Expected levels:
+        - 127.2%: 50 + (50 × 1.272) = 113.6
+        - 161.8%: 50 + (50 × 1.618) = 130.9
+        - 261.8%: 50 + (50 × 2.618) = 180.9
+        """
+        high = 100.0
+        low = 50.0
+
+        levels = calculate_extension_levels(high=high, low=low, direction="sell")
+
+        assert len(levels) == 3
+        assert levels[ExtensionLevel.LEVEL_1272] == pytest.approx(113.6, rel=0.01)
+        assert levels[ExtensionLevel.LEVEL_1618] == pytest.approx(130.9, rel=0.01)
+        assert levels[ExtensionLevel.LEVEL_2618] == pytest.approx(180.9, rel=0.01)
