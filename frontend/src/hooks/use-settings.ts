@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 export type ChartSettings = {
   // Chart display
@@ -37,11 +37,29 @@ const DEFAULT_SETTINGS: ChartSettings = {
 
 const SETTINGS_KEY = "trader-chart-settings";
 
-// Load settings from localStorage (runs once during initialization)
-function loadStoredSettings(): ChartSettings {
-  if (typeof window === "undefined") {
-    return DEFAULT_SETTINGS;
-  }
+// Storage event listeners for cross-tab sync
+const listeners = new Set<() => void>();
+
+function subscribe(callback: () => void) {
+  listeners.add(callback);
+  // Also listen for storage events from other tabs
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === SETTINGS_KEY) {
+      callback();
+    }
+  };
+  window.addEventListener("storage", handleStorage);
+  return () => {
+    listeners.delete(callback);
+    window.removeEventListener("storage", handleStorage);
+  };
+}
+
+function notifyListeners() {
+  listeners.forEach((listener) => listener());
+}
+
+function getSnapshot(): ChartSettings {
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
     if (stored) {
@@ -54,30 +72,32 @@ function loadStoredSettings(): ChartSettings {
   return DEFAULT_SETTINGS;
 }
 
-export function useSettings() {
-  // Use lazy initialization to load from localStorage
-  const [settings, setSettingsState] = useState<ChartSettings>(loadStoredSettings);
-  // isLoaded is always true after hydration since we use lazy init
-  const [isLoaded] = useState(true);
+function getServerSnapshot(): ChartSettings {
+  return DEFAULT_SETTINGS;
+}
 
-  // Save settings to localStorage
+export function useSettings() {
+  // Use useSyncExternalStore for proper hydration handling
+  // Server returns defaults, client reads from localStorage
+  const settings = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+
+  // Save settings to localStorage and notify listeners
   const setSettings = useCallback((newSettings: Partial<ChartSettings>) => {
-    setSettingsState((prev) => {
-      const updated = { ...prev, ...newSettings };
-      try {
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
-      } catch (error) {
-        console.error("Failed to save settings:", error);
-      }
-      return updated;
-    });
+    try {
+      const current = getSnapshot();
+      const updated = { ...current, ...newSettings };
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+      notifyListeners();
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
   }, []);
 
   // Reset to defaults
   const resetSettings = useCallback(() => {
-    setSettingsState(DEFAULT_SETTINGS);
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
+      notifyListeners();
     } catch (error) {
       console.error("Failed to reset settings:", error);
     }
@@ -87,7 +107,6 @@ export function useSettings() {
     settings,
     setSettings,
     resetSettings,
-    isLoaded,
     defaults: DEFAULT_SETTINGS,
   };
 }

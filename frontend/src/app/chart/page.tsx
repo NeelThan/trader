@@ -232,24 +232,60 @@ function generateMarketData(
 export default function ChartDemoPage() {
   const { settings } = useSettings();
 
-  // Initialize state from settings (settings are loaded via lazy init)
-  const [symbol, setSymbol] = useState<MarketSymbol>(() => settings.defaultSymbol);
-  const [timeframe, setTimeframe] = useState<Timeframe>(() => settings.defaultTimeframe);
-  const [chartType, setChartType] = useState<ChartType>(() => settings.chartType);
+  // Initialize state with defaults (same as DEFAULT_SETTINGS to prevent hydration mismatch)
+  const [symbol, setSymbol] = useState<MarketSymbol>("DJI");
+  const [timeframe, setTimeframe] = useState<Timeframe>("1D");
+  const [chartType, setChartType] = useState<ChartType>("candlestick");
   const [dataSource, setDataSource] = useState<DataSource>("simulated");
-  const [theme, setTheme] = useState<"light" | "dark">(() => settings.theme);
-  const [fibVisibility, setFibVisibility] = useState<FibonacciVisibility>(() => ({
-    retracement: settings.fibRetracement,
-    extension: settings.fibExtension,
-    expansion: settings.fibExpansion,
-    projection: settings.fibProjection,
-  }));
-  const [showPivots, setShowPivots] = useState(() => settings.showPivots);
-  const [showPivotLines, setShowPivotLines] = useState(() => settings.showPivotLines);
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const [fibVisibility, setFibVisibility] = useState<FibonacciVisibility>({
+    retracement: true,
+    extension: true,
+    expansion: true,
+    projection: true,
+  });
+  const [showPivots, setShowPivots] = useState(true);
+  const [showPivotLines, setShowPivotLines] = useState(true);
   const [useManualPivots, setUseManualPivots] = useState(false);
   const [manualHigh, setManualHigh] = useState<string>("");
   const [manualLow, setManualLow] = useState<string>("");
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
+  const [settingsApplied, setSettingsApplied] = useState(false);
+
+  // Apply settings from localStorage after hydration (only once)
+  // This runs when useSyncExternalStore updates settings from localStorage
+  useEffect(() => {
+    if (!settingsApplied) {
+      // Check if settings differ from defaults (indicates localStorage was loaded)
+      const hasCustomSettings =
+        settings.defaultSymbol !== "DJI" ||
+        settings.defaultTimeframe !== "1D" ||
+        settings.chartType !== "candlestick" ||
+        settings.theme !== "dark" ||
+        !settings.showPivots ||
+        !settings.showPivotLines ||
+        !settings.fibRetracement ||
+        !settings.fibExtension ||
+        !settings.fibExpansion ||
+        !settings.fibProjection;
+
+      if (hasCustomSettings) {
+        setSymbol(settings.defaultSymbol);
+        setTimeframe(settings.defaultTimeframe);
+        setChartType(settings.chartType);
+        setTheme(settings.theme);
+        setFibVisibility({
+          retracement: settings.fibRetracement,
+          extension: settings.fibExtension,
+          expansion: settings.fibExpansion,
+          projection: settings.fibProjection,
+        });
+        setShowPivots(settings.showPivots);
+        setShowPivotLines(settings.showPivotLines);
+      }
+      setSettingsApplied(true);
+    }
+  }, [settings, settingsApplied]);
 
   // Yahoo Finance API state
   const [yahooData, setYahooData] = useState<OHLCData[]>([]);

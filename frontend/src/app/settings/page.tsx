@@ -126,16 +126,8 @@ function SelectSetting<T extends string>({
 }
 
 export default function SettingsPage() {
-  const { settings, setSettings, resetSettings, isLoaded } = useSettings();
+  const { settings, setSettings, resetSettings } = useSettings();
   const [pageTheme, setPageTheme] = useState<"dark" | "light">("dark");
-
-  if (!isLoaded) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <p className="text-muted-foreground">Loading settings...</p>
-      </div>
-    );
-  }
 
   return (
     <div className={pageTheme === "dark" ? "dark" : ""}>
