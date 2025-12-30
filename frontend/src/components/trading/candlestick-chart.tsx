@@ -170,6 +170,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Bar"> | null>(null);
     const lineSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
     const priceLinesRef = useRef<IPriceLine[]>([]);
+    const hasInitializedRef = useRef(false);
 
     // Expose chart control methods via ref
     useImperativeHandle(ref, () => ({
@@ -329,6 +330,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       seriesRef.current = null;
       priceLinesRef.current = [];
       lineSeriesRef.current = [];
+      hasInitializedRef.current = false; // Reset so new chart fits content
     };
   }, [theme, height, width, upColor, downColor, chartType, onCrosshairMove]);
 
@@ -338,7 +340,12 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     const chartData =
       chartType === "heikin-ashi" ? calculateHeikinAshi(data) : data;
     seriesRef.current.setData(chartData as (CandlestickData | BarData)[]);
-    chartRef.current?.timeScale().fitContent();
+
+    // Only fit content on first data load, preserve user's zoom/pan on refreshes
+    if (!hasInitializedRef.current) {
+      chartRef.current?.timeScale().fitContent();
+      hasInitializedRef.current = true;
+    }
   }, [data, chartType]);
 
   // Update price lines when they change
