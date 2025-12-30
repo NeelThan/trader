@@ -17,8 +17,6 @@ class ReversalZoneCase:
 
     x: float
     a: float
-    b: float
-    c: float
     expected_d_level: float
     expected_direction: str
 
@@ -173,11 +171,11 @@ class TestReversalZoneCalculation:
         "case",
         [
             pytest.param(
-                ReversalZoneCase(100.0, 50.0, 80.9, 61.8, 60.7, "buy"),
+                ReversalZoneCase(100.0, 50.0, 60.7, "buy"),
                 id="bullish_gartley",
             ),
             pytest.param(
-                ReversalZoneCase(50.0, 100.0, 69.1, 88.2, 89.3, "sell"),
+                ReversalZoneCase(50.0, 100.0, 89.3, "sell"),
                 id="bearish_gartley",
             ),
         ],
@@ -185,7 +183,7 @@ class TestReversalZoneCalculation:
     def test_calculate_reversal_zone(self, case: ReversalZoneCase) -> None:
         """Calculate potential D point for Gartley pattern."""
         reversal_zone = calculate_reversal_zone(
-            x=case.x, a=case.a, b=case.b, c=case.c, pattern_type=PatternType.GARTLEY
+            x=case.x, a=case.a, pattern_type=PatternType.GARTLEY
         )
 
         assert reversal_zone is not None

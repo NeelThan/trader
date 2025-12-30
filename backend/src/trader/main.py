@@ -269,8 +269,6 @@ async def harmonic_reversal_zone(request: ReversalZoneRequest) -> ReversalZoneRe
     reversal_zone = calculate_reversal_zone(
         x=request.x,
         a=request.a,
-        b=request.b,
-        c=request.c,
         pattern_type=pattern_type_map[request.pattern_type],
     )
 

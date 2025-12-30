@@ -194,18 +194,14 @@ def validate_pattern(
 def calculate_reversal_zone(
     x: float,
     a: float,
-    b: float,
-    c: float,
     pattern_type: PatternType,
 ) -> ReversalZone | None:
     """
     Calculate the reversal zone (D point) for pattern completion.
 
     Args:
-        x: First point
-        a: Second point
-        b: Third point (unused, kept for API consistency)
-        c: Fourth point (unused, kept for API consistency)
+        x: First point (start of XA leg)
+        a: Second point (end of XA leg)
         pattern_type: Type of pattern to calculate D for
 
     Returns:
