@@ -147,6 +147,16 @@ export default function SettingsPage() {
                   Back to Chart
                 </Button>
               </Link>
+              <Link href="/trend-analysis">
+                <Button variant="outline" size="sm">
+                  Trend Analysis
+                </Button>
+              </Link>
+              <Link href="/position-sizing">
+                <Button variant="outline" size="sm">
+                  Position Size
+                </Button>
+              </Link>
               {process.env.NODE_ENV === "development" && (
                 <Link href="/dev/components">
                   <Button variant="outline" size="sm">

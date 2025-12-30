@@ -27,6 +27,11 @@ export default function PositionSizingPage() {
                   Chart
                 </Button>
               </Link>
+              <Link href="/trend-analysis">
+                <Button variant="outline" size="sm">
+                  Trend Analysis
+                </Button>
+              </Link>
               <Link href="/settings">
                 <Button variant="outline" size="sm">
                   Settings
