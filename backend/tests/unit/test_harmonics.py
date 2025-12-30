@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import pytest
 
 from trader.harmonics import (
+    PatternPoints,
     PatternType,
     calculate_reversal_zone,
     validate_pattern,
@@ -66,9 +67,10 @@ class TestPatternValidation:
     )
     def test_valid_pattern_detected(self, case: PatternCase) -> None:
         """Validate that correct pattern type and direction are detected."""
-        pattern = validate_pattern(
+        points = PatternPoints(
             x=case.x, a=case.a, b=case.b, c=case.c, d=case.d
         )
+        pattern = validate_pattern(points)
 
         assert pattern is not None
         assert pattern.pattern_type == case.expected_type
@@ -80,13 +82,8 @@ class TestNoPattern:
 
     def test_no_pattern_random_points(self) -> None:
         """Random points should not form any pattern."""
-        pattern = validate_pattern(
-            x=100.0,
-            a=50.0,
-            b=60.0,
-            c=55.0,
-            d=45.0,
-        )
+        points = PatternPoints(x=100.0, a=50.0, b=60.0, c=55.0, d=45.0)
+        pattern = validate_pattern(points)
 
         assert pattern is None
 
@@ -123,12 +120,7 @@ class TestEdgeCases:
 
     def test_zero_xa_leg_returns_no_pattern(self) -> None:
         """Pattern with zero XA leg should not match any pattern."""
-        pattern = validate_pattern(
-            x=100.0,
-            a=100.0,  # Same as X, zero leg
-            b=100.0,
-            c=100.0,
-            d=100.0,
-        )
+        points = PatternPoints(x=100.0, a=100.0, b=100.0, c=100.0, d=100.0)
+        pattern = validate_pattern(points)
 
         assert pattern is None

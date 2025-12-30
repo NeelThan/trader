@@ -11,7 +11,12 @@ from trader.fibonacci import (
     calculate_projection_levels,
     calculate_retracement_levels,
 )
-from trader.harmonics import PatternType, calculate_reversal_zone, validate_pattern
+from trader.harmonics import (
+    PatternPoints,
+    PatternType,
+    calculate_reversal_zone,
+    validate_pattern,
+)
 from trader.signals import Bar, detect_signal
 
 app = FastAPI(
@@ -232,13 +237,10 @@ async def harmonic_validate(
     request: HarmonicValidateRequest,
 ) -> HarmonicValidateResponse:
     """Validate if points form a harmonic pattern."""
-    pattern = validate_pattern(
-        x=request.x,
-        a=request.a,
-        b=request.b,
-        c=request.c,
-        d=request.d,
+    points = PatternPoints(
+        x=request.x, a=request.a, b=request.b, c=request.c, d=request.d
     )
+    pattern = validate_pattern(points)
 
     if pattern is None:
         return HarmonicValidateResponse(pattern=None)
@@ -247,11 +249,11 @@ async def harmonic_validate(
         pattern=HarmonicPatternData(
             pattern_type=pattern.pattern_type.value,
             direction=pattern.direction,
-            x=pattern.x,
-            a=pattern.a,
-            b=pattern.b,
-            c=pattern.c,
-            d=pattern.d,
+            x=pattern.points.x,
+            a=pattern.points.a,
+            b=pattern.points.b,
+            c=pattern.points.c,
+            d=pattern.points.d,
         )
     )
 

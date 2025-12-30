@@ -15,16 +15,23 @@ class PatternType(Enum):
 
 
 @dataclass(frozen=True)
-class HarmonicPattern:
-    """Detected harmonic pattern."""
+class PatternPoints:
+    """XABCD points for harmonic pattern analysis."""
 
-    pattern_type: PatternType
-    direction: Literal["buy", "sell"]
     x: float
     a: float
     b: float
     c: float
     d: float
+
+
+@dataclass(frozen=True)
+class HarmonicPattern:
+    """Detected harmonic pattern."""
+
+    pattern_type: PatternType
+    direction: Literal["buy", "sell"]
+    points: PatternPoints
 
 
 @dataclass(frozen=True)
@@ -135,26 +142,23 @@ def _check_crab(ratios: PatternRatios) -> bool:
     )
 
 
-def validate_pattern(
-    x: float, a: float, b: float, c: float, d: float
-) -> HarmonicPattern | None:
+def validate_pattern(points: PatternPoints) -> HarmonicPattern | None:
     """
     Validate if points form a harmonic pattern.
 
     Args:
-        x: First point (start of XA leg)
-        a: Second point (end of XA leg)
-        b: Third point (end of AB leg)
-        c: Fourth point (end of BC leg)
-        d: Fifth point (potential reversal zone)
+        points: XABCD points to validate
 
     Returns:
         HarmonicPattern if valid pattern detected, None otherwise
     """
-    direction = _get_direction(x, a)
+    direction = _get_direction(points.x, points.a)
 
     # Calculate leg distances and ratios
-    xa_leg, ab_leg, bc_leg, xd_leg = a - x, b - a, c - b, d - x
+    xa_leg = points.a - points.x
+    ab_leg = points.b - points.a
+    bc_leg = points.c - points.b
+    xd_leg = points.d - points.x
     ratios = _calculate_ratios(xa_leg, ab_leg, bc_leg, xd_leg)
 
     # Check patterns in order of specificity
@@ -170,11 +174,7 @@ def validate_pattern(
             return HarmonicPattern(
                 pattern_type=pattern_type,
                 direction=direction,
-                x=x,
-                a=a,
-                b=b,
-                c=c,
-                d=d,
+                points=points,
             )
 
     return None
