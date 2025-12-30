@@ -239,7 +239,7 @@ export default function ChartDemoPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
   const [chartType, setChartType] = useState<ChartType>("candlestick");
   const [colorScheme, setColorScheme] = useState<ColorScheme>("blue-red");
-  const [dataSource, setDataSource] = useState<DataSource>("simulated");
+  const [dataSource, setDataSource] = useState<DataSource>("yahoo");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [fibVisibility, setFibVisibility] = useState<FibonacciVisibility>({
     retracement: true,
