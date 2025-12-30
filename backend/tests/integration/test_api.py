@@ -175,3 +175,104 @@ class TestSignalEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["signal"] is None
+
+
+class TestHarmonicValidateEndpoint:
+    """Tests for harmonic pattern validation endpoint."""
+
+    async def test_valid_gartley_pattern_detected(self, client: AsyncClient) -> None:
+        """POST /harmonic/validate returns Gartley pattern when valid."""
+        response = await client.post(
+            "/harmonic/validate",
+            json={
+                "x": 100.0,
+                "a": 50.0,
+                "b": 80.9,
+                "c": 61.8,
+                "d": 60.7,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["pattern"] is not None
+        assert data["pattern"]["pattern_type"] == "gartley"
+        assert data["pattern"]["direction"] == "buy"
+
+    async def test_valid_butterfly_pattern_detected(self, client: AsyncClient) -> None:
+        """POST /harmonic/validate returns Butterfly pattern when valid."""
+        response = await client.post(
+            "/harmonic/validate",
+            json={
+                "x": 100.0,
+                "a": 50.0,
+                "b": 89.3,
+                "c": 65.0,
+                "d": 36.4,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["pattern"] is not None
+        assert data["pattern"]["pattern_type"] == "butterfly"
+
+    async def test_no_pattern_returns_null(self, client: AsyncClient) -> None:
+        """POST /harmonic/validate returns null when no valid pattern."""
+        response = await client.post(
+            "/harmonic/validate",
+            json={
+                "x": 100.0,
+                "a": 50.0,
+                "b": 60.0,
+                "c": 55.0,
+                "d": 45.0,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["pattern"] is None
+
+
+class TestHarmonicReversalZoneEndpoint:
+    """Tests for harmonic reversal zone calculation endpoint."""
+
+    async def test_calculate_gartley_reversal_zone(self, client: AsyncClient) -> None:
+        """POST /harmonic/reversal-zone returns D level for Gartley pattern."""
+        response = await client.post(
+            "/harmonic/reversal-zone",
+            json={
+                "x": 100.0,
+                "a": 50.0,
+                "b": 80.9,
+                "c": 61.8,
+                "pattern_type": "gartley",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["reversal_zone"] is not None
+        assert data["reversal_zone"]["d_level"] == pytest.approx(60.7, rel=0.01)
+        assert data["reversal_zone"]["direction"] == "buy"
+        assert data["reversal_zone"]["pattern_type"] == "gartley"
+
+    async def test_calculate_crab_reversal_zone(self, client: AsyncClient) -> None:
+        """POST /harmonic/reversal-zone returns D level for Crab pattern."""
+        response = await client.post(
+            "/harmonic/reversal-zone",
+            json={
+                "x": 100.0,
+                "a": 50.0,
+                "b": 75.0,
+                "c": 59.55,
+                "pattern_type": "crab",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["reversal_zone"] is not None
+        assert data["reversal_zone"]["d_level"] == pytest.approx(19.1, rel=0.01)
+        assert data["reversal_zone"]["pattern_type"] == "crab"

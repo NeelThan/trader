@@ -54,6 +54,8 @@ Detect classic harmonic patterns using XABCD points:
 | POST | `/fibonacci/projection` | Calculate projection levels |
 | POST | `/fibonacci/expansion` | Calculate expansion levels |
 | POST | `/signal/detect` | Detect signal at Fibonacci level |
+| POST | `/harmonic/validate` | Validate harmonic pattern from XABCD points |
+| POST | `/harmonic/reversal-zone` | Calculate potential D point for pattern |
 
 ## Project Structure
 
@@ -133,7 +135,7 @@ Position Size = Risk Capital / (Entry Price - Stop Loss Price)
 1. ✅ Core Fibonacci calculations with API
 2. ✅ Signal bar detection with Type 1/2
 3. ✅ Harmonic pattern detection (Gartley, Butterfly, Bat, Crab)
-4. ⬜ Harmonic pattern API endpoints
+4. ✅ Harmonic pattern API endpoints
 5. ⬜ Frontend with TradingView charts
 6. ⬜ Real-time pattern scanner
 7. ⬜ Broker integration

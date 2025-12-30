@@ -46,7 +46,7 @@ Harmonic pattern detection using XABCD points.
 | Function | Description |
 |----------|-------------|
 | `validate_pattern()` | Check if XABCD points form valid harmonic pattern |
-| `calculate_prd()` | Calculate Potential Reversal Zone for D point |
+| `calculate_prd()` | Calculate potential reversal zone (D point) for pattern completion |
 
 ### main.py
 

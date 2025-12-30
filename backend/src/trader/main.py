@@ -11,6 +11,7 @@ from trader.fibonacci import (
     calculate_projection_levels,
     calculate_retracement_levels,
 )
+from trader.harmonics import PatternType, calculate_prd, validate_pattern
 from trader.signals import Bar, detect_signal
 
 app = FastAPI(
@@ -85,6 +86,58 @@ class SignalResponse(BaseModel):
     """Response model for signal detection."""
 
     signal: SignalData | None
+
+
+class HarmonicValidateRequest(BaseModel):
+    """Request model for harmonic pattern validation."""
+
+    x: float
+    a: float
+    b: float
+    c: float
+    d: float
+
+
+class HarmonicPatternData(BaseModel):
+    """Harmonic pattern data in response."""
+
+    pattern_type: str
+    direction: str
+    x: float
+    a: float
+    b: float
+    c: float
+    d: float
+
+
+class HarmonicValidateResponse(BaseModel):
+    """Response model for harmonic pattern validation."""
+
+    pattern: HarmonicPatternData | None
+
+
+class ReversalZoneRequest(BaseModel):
+    """Request model for reversal zone calculation."""
+
+    x: float
+    a: float
+    b: float
+    c: float
+    pattern_type: Literal["gartley", "butterfly", "bat", "crab"]
+
+
+class ReversalZoneData(BaseModel):
+    """Reversal zone data in response."""
+
+    d_level: float
+    direction: str
+    pattern_type: str
+
+
+class ReversalZoneResponse(BaseModel):
+    """Response model for reversal zone calculation."""
+
+    reversal_zone: ReversalZoneData | None
 
 
 # --- Endpoints ---
@@ -170,5 +223,64 @@ async def detect(request: SignalRequest) -> SignalResponse:
             signal_type=signal.signal_type.value,
             strength=signal.strength,
             level=signal.level,
+        )
+    )
+
+
+@app.post("/harmonic/validate", response_model=HarmonicValidateResponse)
+async def harmonic_validate(
+    request: HarmonicValidateRequest,
+) -> HarmonicValidateResponse:
+    """Validate if points form a harmonic pattern."""
+    pattern = validate_pattern(
+        x=request.x,
+        a=request.a,
+        b=request.b,
+        c=request.c,
+        d=request.d,
+    )
+
+    if pattern is None:
+        return HarmonicValidateResponse(pattern=None)
+
+    return HarmonicValidateResponse(
+        pattern=HarmonicPatternData(
+            pattern_type=pattern.pattern_type.value,
+            direction=pattern.direction,
+            x=pattern.x,
+            a=pattern.a,
+            b=pattern.b,
+            c=pattern.c,
+            d=pattern.d,
+        )
+    )
+
+
+@app.post("/harmonic/reversal-zone", response_model=ReversalZoneResponse)
+async def harmonic_reversal_zone(request: ReversalZoneRequest) -> ReversalZoneResponse:
+    """Calculate potential reversal zone (D point) for a harmonic pattern."""
+    pattern_type_map = {
+        "gartley": PatternType.GARTLEY,
+        "butterfly": PatternType.BUTTERFLY,
+        "bat": PatternType.BAT,
+        "crab": PatternType.CRAB,
+    }
+
+    reversal_zone = calculate_prd(
+        x=request.x,
+        a=request.a,
+        b=request.b,
+        c=request.c,
+        pattern_type=pattern_type_map[request.pattern_type],
+    )
+
+    if reversal_zone is None:
+        return ReversalZoneResponse(reversal_zone=None)
+
+    return ReversalZoneResponse(
+        reversal_zone=ReversalZoneData(
+            d_level=reversal_zone.d_level,
+            direction=reversal_zone.direction,
+            pattern_type=reversal_zone.pattern_type.value,
         )
     )
