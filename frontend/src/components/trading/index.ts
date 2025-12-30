@@ -35,5 +35,14 @@ export type {
   ChartType,
 } from "./candlestick-chart";
 
+export { PositionSizeResult } from "./position-size-result";
+export type { PositionSizeResultProps } from "./position-size-result";
+
+export { RiskRewardDisplay } from "./risk-reward-display";
+export type { RiskRewardDisplayProps } from "./risk-reward-display";
+
+export { PositionSizingCalculator } from "./position-sizing-calculator";
+export type { PositionSizingCalculatorProps } from "./position-sizing-calculator";
+
 // Re-export Time type from lightweight-charts for convenience
 export type { Time } from "lightweight-charts";

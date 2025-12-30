@@ -211,7 +211,7 @@ export function SignalDetectionPanel({
           {/* No signals */}
           {signals.length === 0 && !isLoading && !error && (
             <div className="text-center py-4 text-muted-foreground text-sm">
-              No signals detected. Click "Detect Now" to scan for signals.
+              No signals detected. Click &quot;Detect Now&quot; to scan for signals.
             </div>
           )}
 

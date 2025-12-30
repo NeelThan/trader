@@ -27,6 +27,11 @@ export function ChartHeader({
         </p>
       </div>
       <div className="flex gap-2">
+        <Link href="/position-sizing">
+          <Button variant="outline" size="sm">
+            Position Size
+          </Button>
+        </Link>
         <Link href="/settings">
           <Button variant="outline" size="sm">
             Settings
