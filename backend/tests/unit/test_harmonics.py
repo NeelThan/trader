@@ -1,5 +1,7 @@
 """Tests for harmonic pattern detection."""
 
+from dataclasses import dataclass
+
 import pytest
 
 from trader.harmonics import (
@@ -7,6 +9,18 @@ from trader.harmonics import (
     calculate_reversal_zone,
     validate_pattern,
 )
+
+
+@dataclass(frozen=True)
+class ReversalZoneCase:
+    """Test case for reversal zone calculation."""
+
+    x: float
+    a: float
+    b: float
+    c: float
+    expected_d: float
+    expected_direction: str
 
 
 class TestGartleyPattern:
@@ -156,29 +170,27 @@ class TestReversalZoneCalculation:
     """Tests for reversal zone calculation."""
 
     @pytest.mark.parametrize(
-        ("x", "a", "b", "c", "expected_d", "expected_direction"),
+        "case",
         [
-            pytest.param(100.0, 50.0, 80.9, 61.8, 60.7, "buy", id="bullish_gartley"),
-            pytest.param(50.0, 100.0, 69.1, 88.2, 89.3, "sell", id="bearish_gartley"),
+            pytest.param(
+                ReversalZoneCase(100.0, 50.0, 80.9, 61.8, 60.7, "buy"),
+                id="bullish_gartley",
+            ),
+            pytest.param(
+                ReversalZoneCase(50.0, 100.0, 69.1, 88.2, 89.3, "sell"),
+                id="bearish_gartley",
+            ),
         ],
     )
-    def test_calculate_reversal_zone(
-        self,
-        x: float,
-        a: float,
-        b: float,
-        c: float,
-        expected_d: float,
-        expected_direction: str,
-    ) -> None:
+    def test_calculate_reversal_zone(self, case: ReversalZoneCase) -> None:
         """Calculate potential D point for Gartley pattern."""
         reversal_zone = calculate_reversal_zone(
-            x=x, a=a, b=b, c=c, pattern_type=PatternType.GARTLEY
+            x=case.x, a=case.a, b=case.b, c=case.c, pattern_type=PatternType.GARTLEY
         )
 
         assert reversal_zone is not None
-        assert reversal_zone.d_level == pytest.approx(expected_d, rel=0.01)
-        assert reversal_zone.direction == expected_direction
+        assert reversal_zone.d_level == pytest.approx(case.expected_d, rel=0.01)
+        assert reversal_zone.direction == case.expected_direction
 
 
 class TestEdgeCases:
