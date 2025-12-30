@@ -11,6 +11,7 @@ from trader.fibonacci import (
     calculate_projection_levels,
     calculate_retracement_levels,
 )
+from trader.signals import Bar, detect_signal
 
 app = FastAPI(
     title="Trader API",
@@ -59,6 +60,31 @@ class FibonacciResponse(BaseModel):
     """Response model for Fibonacci calculations."""
 
     levels: dict[str, float]
+
+
+class SignalRequest(BaseModel):
+    """Request model for signal detection."""
+
+    open: float
+    high: float
+    low: float
+    close: float
+    fib_level: float
+
+
+class SignalData(BaseModel):
+    """Signal data in response."""
+
+    direction: str
+    signal_type: str
+    strength: float
+    level: float
+
+
+class SignalResponse(BaseModel):
+    """Response model for signal detection."""
+
+    signal: SignalData | None
 
 
 # --- Endpoints ---
@@ -121,4 +147,28 @@ async def expansion(request: ExpansionRequest) -> FibonacciResponse:
     )
     return FibonacciResponse(
         levels={str(int(k.value * 1000)): v for k, v in levels.items()}
+    )
+
+
+@app.post("/signal/detect", response_model=SignalResponse)
+async def detect(request: SignalRequest) -> SignalResponse:
+    """Detect trading signal at a Fibonacci level."""
+    bar = Bar(
+        open=request.open,
+        high=request.high,
+        low=request.low,
+        close=request.close,
+    )
+    signal = detect_signal(bar=bar, fib_level=request.fib_level)
+
+    if signal is None:
+        return SignalResponse(signal=None)
+
+    return SignalResponse(
+        signal=SignalData(
+            direction=signal.direction,
+            signal_type=signal.signal_type.value,
+            strength=signal.strength,
+            level=signal.level,
+        )
     )

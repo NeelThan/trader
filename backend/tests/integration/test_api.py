@@ -116,3 +116,62 @@ class TestExpansionEndpoint:
         data = response.json()
         assert "levels" in data
         assert data["levels"]["1000"] == pytest.approx(150.0, rel=0.01)
+
+
+class TestSignalEndpoint:
+    """Tests for signal detection endpoint."""
+
+    async def test_buy_signal_detected(self, client: AsyncClient) -> None:
+        """POST /signal/detect returns buy signal when conditions met."""
+        response = await client.post(
+            "/signal/detect",
+            json={
+                "open": 60.0,
+                "high": 72.0,
+                "low": 58.0,
+                "close": 70.0,
+                "fib_level": 65.0,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["signal"] is not None
+        assert data["signal"]["direction"] == "buy"
+        assert data["signal"]["signal_type"] == "type_1"
+        assert 0.0 <= data["signal"]["strength"] <= 1.0
+
+    async def test_sell_signal_detected(self, client: AsyncClient) -> None:
+        """POST /signal/detect returns sell signal when conditions met."""
+        response = await client.post(
+            "/signal/detect",
+            json={
+                "open": 70.0,
+                "high": 72.0,
+                "low": 58.0,
+                "close": 60.0,
+                "fib_level": 65.0,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["signal"] is not None
+        assert data["signal"]["direction"] == "sell"
+
+    async def test_no_signal_returns_null(self, client: AsyncClient) -> None:
+        """POST /signal/detect returns null when no signal conditions met."""
+        response = await client.post(
+            "/signal/detect",
+            json={
+                "open": 65.0,
+                "high": 70.0,
+                "low": 60.0,
+                "close": 65.0,  # Doji - no signal
+                "fib_level": 65.0,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["signal"] is None
