@@ -24,3 +24,10 @@ export type { PriceInputProps } from "./price-input";
 
 export { DirectionToggle } from "./direction-toggle";
 export type { DirectionToggleProps } from "./direction-toggle";
+
+export { CandlestickChart } from "./candlestick-chart";
+export type {
+  CandlestickChartProps,
+  OHLCData,
+  PriceLine,
+} from "./candlestick-chart";
