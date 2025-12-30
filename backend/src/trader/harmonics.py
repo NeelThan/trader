@@ -48,6 +48,18 @@ class PatternRatios:
 # Tolerance for Fibonacci ratio matching (5%)
 TOLERANCE = 0.05
 
+# BC ratio range is consistent across all harmonic patterns
+BC_RATIO_MIN = 0.382
+BC_RATIO_MAX = 0.886
+
+# D point ratios for each pattern type
+PATTERN_D_RATIOS = {
+    PatternType.GARTLEY: 0.786,
+    PatternType.BUTTERFLY: 1.272,
+    PatternType.BAT: 0.886,
+    PatternType.CRAB: 1.618,
+}
+
 
 def _ratio(value: float, base: float) -> float:
     """Calculate ratio of value to base."""
@@ -64,6 +76,11 @@ def _is_within_range(ratio: float, low: float, high: float) -> bool:
 def _is_near(ratio: float, target: float) -> bool:
     """Check if ratio is near target with tolerance."""
     return abs(ratio - target) <= TOLERANCE
+
+
+def _has_valid_bc_ratio(ratios: PatternRatios) -> bool:
+    """Check if BC ratio is within valid range (common to all patterns)."""
+    return _is_within_range(ratios.bc_ratio, BC_RATIO_MIN, BC_RATIO_MAX)
 
 
 def _get_direction(x: float, a: float) -> Literal["buy", "sell"]:
@@ -83,66 +100,38 @@ def _calculate_ratios(
 
 
 def _check_gartley(ratios: PatternRatios) -> bool:
-    """
-    Check Gartley pattern ratios.
-
-    Requirements:
-    - AB: 61.8% retracement of XA
-    - BC: 38.2% - 88.6% retracement of AB
-    - D: 78.6% retracement of XA
-    """
+    """Check Gartley pattern: AB=61.8%, BC=38.2-88.6%, D=78.6%."""
     return (
         _is_near(ratios.ab_ratio, 0.618)
-        and _is_within_range(ratios.bc_ratio, 0.382, 0.886)
-        and _is_near(ratios.xd_ratio, 0.786)
+        and _has_valid_bc_ratio(ratios)
+        and _is_near(ratios.xd_ratio, PATTERN_D_RATIOS[PatternType.GARTLEY])
     )
 
 
 def _check_butterfly(ratios: PatternRatios) -> bool:
-    """
-    Check Butterfly pattern ratios.
-
-    Requirements:
-    - AB: 78.6% retracement of XA
-    - BC: 38.2% - 88.6% retracement of AB
-    - D: 127.2% - 161.8% extension of XA
-    """
+    """Check Butterfly pattern: AB=78.6%, BC=38.2-88.6%, D=127.2-161.8%."""
     return (
         _is_near(ratios.ab_ratio, 0.786)
-        and _is_within_range(ratios.bc_ratio, 0.382, 0.886)
+        and _has_valid_bc_ratio(ratios)
         and _is_within_range(ratios.xd_ratio, 1.272, 1.618)
     )
 
 
 def _check_bat(ratios: PatternRatios) -> bool:
-    """
-    Check Bat pattern ratios.
-
-    Requirements:
-    - AB: 38.2% - 50% retracement of XA
-    - BC: 38.2% - 88.6% retracement of AB
-    - D: 88.6% retracement of XA
-    """
+    """Check Bat pattern: AB=38.2-50%, BC=38.2-88.6%, D=88.6%."""
     return (
         _is_within_range(ratios.ab_ratio, 0.382, 0.50)
-        and _is_within_range(ratios.bc_ratio, 0.382, 0.886)
-        and _is_near(ratios.xd_ratio, 0.886)
+        and _has_valid_bc_ratio(ratios)
+        and _is_near(ratios.xd_ratio, PATTERN_D_RATIOS[PatternType.BAT])
     )
 
 
 def _check_crab(ratios: PatternRatios) -> bool:
-    """
-    Check Crab pattern ratios.
-
-    Requirements:
-    - AB: 38.2% - 61.8% retracement of XA
-    - BC: 38.2% - 88.6% retracement of AB
-    - D: 161.8% extension of XA
-    """
+    """Check Crab pattern: AB=38.2-61.8%, BC=38.2-88.6%, D=161.8%."""
     return (
         _is_within_range(ratios.ab_ratio, 0.382, 0.618)
-        and _is_within_range(ratios.bc_ratio, 0.382, 0.886)
-        and _is_near(ratios.xd_ratio, 1.618)
+        and _has_valid_bc_ratio(ratios)
+        and _is_near(ratios.xd_ratio, PATTERN_D_RATIOS[PatternType.CRAB])
     )
 
 
@@ -210,15 +199,7 @@ def calculate_reversal_zone(
     direction = _get_direction(x, a)
     xa_leg = a - x
 
-    # D point ratios for each pattern type
-    d_ratios = {
-        PatternType.GARTLEY: 0.786,
-        PatternType.BUTTERFLY: 1.272,
-        PatternType.BAT: 0.886,
-        PatternType.CRAB: 1.618,
-    }
-
-    ratio = d_ratios.get(pattern_type)
+    ratio = PATTERN_D_RATIOS.get(pattern_type)
     if ratio is None:
         return None
 
