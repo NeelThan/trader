@@ -4,17 +4,19 @@ A Fibonacci Trading Analysis Platform implementing the SignalPro strategy for al
 
 ## Project Status
 
-**Backend**: Active development - Fibonacci calculators, signal detection, and harmonic patterns complete.
-**Frontend**: Planned - Next.js with TradingView Lightweight Charts.
+**Backend**: Complete - Fibonacci calculators, signal detection, and harmonic patterns.
+**Frontend**: Active development - Chart with Yahoo Finance integration, Fibonacci overlays, pivot detection.
 
 ## Technology Stack
 
 | Component | Technology | Status |
 |-----------|------------|--------|
-| Backend | Python 3.13, FastAPI | Active |
+| Backend | Python 3.13, FastAPI | Complete |
 | Testing | pytest, pytest-cov, ruff, mypy | Active |
-| Frontend | Next.js, TypeScript | Planned |
-| Charting | TradingView Lightweight Charts | Planned |
+| Frontend | Next.js 16, TypeScript, Tailwind CSS | Active |
+| Charting | TradingView Lightweight Charts | Active |
+| UI Components | shadcn/ui | Active |
+| Market Data | Yahoo Finance (yahoo-finance2) | Active |
 | Database | PostgreSQL + Redis | Planned |
 
 ## Features
@@ -64,7 +66,10 @@ trader/
 ├── backend/                # Python/FastAPI backend
 │   ├── src/trader/         # Source modules
 │   └── tests/              # Unit and integration tests
-├── frontend/               # Next.js frontend (planned)
+├── frontend/               # Next.js frontend
+│   ├── src/app/            # App router pages and API routes
+│   ├── src/components/     # React components (trading, ui)
+│   └── src/hooks/          # Custom React hooks
 └── docs/                   # All documentation
     ├── backend/            # Backend technical docs
     ├── frontend/           # Frontend technical docs
@@ -74,8 +79,9 @@ trader/
 
 ## Quick Start
 
+### Backend
+
 ```bash
-# Clone and setup backend
 cd backend
 python -m venv .venv
 .venv\Scripts\activate      # Windows
@@ -88,6 +94,16 @@ pytest --cov
 # Start server
 uvicorn trader.main:app --reload
 ```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Visit http://localhost:3000/chart for the interactive chart.
 
 ## Development Workflow
 
@@ -136,9 +152,12 @@ Position Size = Risk Capital / (Entry Price - Stop Loss Price)
 2. ✅ Signal bar detection with Type 1/2
 3. ✅ Harmonic pattern detection (Gartley, Butterfly, Bat, Crab)
 4. ✅ Harmonic pattern API endpoints
-5. ⬜ Frontend with TradingView charts
-6. ⬜ Real-time pattern scanner
-7. ⬜ Broker integration
+5. ✅ Frontend with TradingView Lightweight Charts
+6. ✅ Yahoo Finance market data integration
+7. ✅ Auto-refresh with market status display
+8. ⬜ Connect frontend to backend API for Fibonacci/signals
+9. ⬜ Real-time pattern scanner
+10. ⬜ Broker integration
 
 ## Documentation
 
