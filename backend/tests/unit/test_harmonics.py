@@ -155,33 +155,30 @@ class TestNoPattern:
 class TestReversalZoneCalculation:
     """Tests for reversal zone calculation."""
 
-    def test_calculate_gartley_reversal_zone(self) -> None:
+    @pytest.mark.parametrize(
+        ("x", "a", "b", "c", "expected_d", "expected_direction"),
+        [
+            pytest.param(100.0, 50.0, 80.9, 61.8, 60.7, "buy", id="bullish_gartley"),
+            pytest.param(50.0, 100.0, 69.1, 88.2, 89.3, "sell", id="bearish_gartley"),
+        ],
+    )
+    def test_calculate_reversal_zone(
+        self,
+        x: float,
+        a: float,
+        b: float,
+        c: float,
+        expected_d: float,
+        expected_direction: str,
+    ) -> None:
         """Calculate potential D point for Gartley pattern."""
         reversal_zone = calculate_reversal_zone(
-            x=100.0,
-            a=50.0,
-            b=80.9,
-            c=61.8,
-            pattern_type=PatternType.GARTLEY,
+            x=x, a=a, b=b, c=c, pattern_type=PatternType.GARTLEY
         )
 
         assert reversal_zone is not None
-        assert reversal_zone.d_level == pytest.approx(60.7, rel=0.01)
-        assert reversal_zone.direction == "buy"
-
-    def test_calculate_bearish_reversal_zone(self) -> None:
-        """Calculate potential D point for bearish pattern."""
-        reversal_zone = calculate_reversal_zone(
-            x=50.0,
-            a=100.0,
-            b=69.1,
-            c=88.2,
-            pattern_type=PatternType.GARTLEY,
-        )
-
-        assert reversal_zone is not None
-        assert reversal_zone.d_level == pytest.approx(89.3, rel=0.01)
-        assert reversal_zone.direction == "sell"
+        assert reversal_zone.d_level == pytest.approx(expected_d, rel=0.01)
+        assert reversal_zone.direction == expected_direction
 
 
 class TestEdgeCases:
