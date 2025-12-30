@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   CandlestickChart,
   OHLCData,
@@ -8,6 +8,8 @@ import {
   FibonacciLevels,
 } from "@/components/trading";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { LineStyle } from "lightweight-charts";
 
 type Timeframe = "1m" | "15m" | "1H" | "4H" | "1D" | "1W" | "1M";
@@ -36,6 +38,12 @@ type FibonacciVisibility = {
   projection: boolean;
 };
 
+type PivotPoint = {
+  index: number;
+  price: number;
+  type: "high" | "low";
+};
+
 // Fibonacci level ratios
 const RETRACEMENT_RATIOS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const EXTENSION_RATIOS = [1.272, 1.414, 1.618, 2.0, 2.618];
@@ -53,10 +61,49 @@ const FIB_COLORS = {
     0.786: "#ef4444",
     1: "#6b7280",
   } as Record<number, string>,
-  extension: "#3b82f6", // Blue
-  expansion: "#ec4899", // Pink
-  projection: "#14b8a6", // Teal
+  extension: "#3b82f6",
+  expansion: "#ec4899",
+  projection: "#14b8a6",
 };
+
+// Detect swing highs and lows (pivot points)
+function detectPivotPoints(
+  data: OHLCData[],
+  lookback: number = 5
+): PivotPoint[] {
+  const pivots: PivotPoint[] = [];
+
+  for (let i = lookback; i < data.length - lookback; i++) {
+    const currentHigh = data[i].high;
+    const currentLow = data[i].low;
+
+    // Check for swing high
+    let isSwingHigh = true;
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j !== i && data[j].high >= currentHigh) {
+        isSwingHigh = false;
+        break;
+      }
+    }
+    if (isSwingHigh) {
+      pivots.push({ index: i, price: currentHigh, type: "high" });
+    }
+
+    // Check for swing low
+    let isSwingLow = true;
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j !== i && data[j].low <= currentLow) {
+        isSwingLow = false;
+        break;
+      }
+    }
+    if (isSwingLow) {
+      pivots.push({ index: i, price: currentLow, type: "low" });
+    }
+  }
+
+  return pivots.sort((a, b) => a.index - b.index);
+}
 
 // Generate Dow Jones-like OHLC data for different timeframes
 function generateDowJonesData(
@@ -138,6 +185,10 @@ export default function ChartDemoPage() {
     expansion: true,
     projection: true,
   });
+  const [showPivots, setShowPivots] = useState(true);
+  const [useManualPivots, setUseManualPivots] = useState(false);
+  const [manualHigh, setManualHigh] = useState<string>("");
+  const [manualLow, setManualLow] = useState<string>("");
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
 
   const data = useMemo(() => {
@@ -145,19 +196,63 @@ export default function ChartDemoPage() {
     return generateDowJonesData(timeframe, config.periods);
   }, [timeframe]);
 
-  // Calculate swing high/low for Fibonacci calculations
-  const high = Math.max(...data.map((d) => d.high));
-  const low = Math.min(...data.map((d) => d.low));
-  const range = high - low;
+  // Detect pivot points
+  const pivotPoints = useMemo(() => detectPivotPoints(data, 5), [data]);
 
-  // For projection, we need a third point (using current price as C)
+  // Get the most significant swing high and low for Fibonacci
+  const { high, low, pivotHigh, pivotLow } = useMemo(() => {
+    if (useManualPivots) {
+      const manualHighVal = parseFloat(manualHigh) || 0;
+      const manualLowVal = parseFloat(manualLow) || 0;
+      return {
+        high: manualHighVal || Math.max(...data.map((d) => d.high)),
+        low: manualLowVal || Math.min(...data.map((d) => d.low)),
+        pivotHigh: null as PivotPoint | null,
+        pivotLow: null as PivotPoint | null,
+      };
+    }
+
+    // Find the highest swing high and lowest swing low
+    const swingHighs = pivotPoints.filter((p) => p.type === "high");
+    const swingLows = pivotPoints.filter((p) => p.type === "low");
+
+    const pivotHigh =
+      swingHighs.length > 0
+        ? swingHighs.reduce((max, p) => (p.price > max.price ? p : max))
+        : null;
+    const pivotLow =
+      swingLows.length > 0
+        ? swingLows.reduce((min, p) => (p.price < min.price ? p : min))
+        : null;
+
+    return {
+      high: pivotHigh?.price ?? Math.max(...data.map((d) => d.high)),
+      low: pivotLow?.price ?? Math.min(...data.map((d) => d.low)),
+      pivotHigh,
+      pivotLow,
+    };
+  }, [data, pivotPoints, useManualPivots, manualHigh, manualLow]);
+
+  const range = high - low;
   const currentPrice = data[data.length - 1]?.close ?? high;
 
   // Build price lines based on visibility
   const priceLines: PriceLine[] = useMemo(() => {
     const lines: PriceLine[] = [];
 
-    // Retracement: Levels between high and low
+    // Add pivot point lines
+    if (showPivots && !useManualPivots) {
+      pivotPoints.forEach((pivot) => {
+        lines.push({
+          price: pivot.price,
+          color: pivot.type === "high" ? "#22c55e" : "#ef4444",
+          title: pivot.type === "high" ? "▼ SH" : "▲ SL",
+          lineStyle: LineStyle.Dotted,
+        });
+      });
+    }
+
+    // Retracement levels
     if (fibVisibility.retracement) {
       RETRACEMENT_RATIOS.forEach((ratio) => {
         const price = high - range * ratio;
@@ -173,7 +268,7 @@ export default function ChartDemoPage() {
       });
     }
 
-    // Extension: Levels beyond the swing (below low for downtrend)
+    // Extension levels
     if (fibVisibility.extension) {
       EXTENSION_RATIOS.forEach((ratio) => {
         const price = high - range * ratio;
@@ -186,7 +281,7 @@ export default function ChartDemoPage() {
       });
     }
 
-    // Expansion: AB=CD pattern projections from low
+    // Expansion levels
     if (fibVisibility.expansion) {
       EXPANSION_RATIOS.forEach((ratio) => {
         const price = low + range * ratio;
@@ -199,12 +294,10 @@ export default function ChartDemoPage() {
       });
     }
 
-    // Projection: Based on A-B-C pattern (high to low to current)
+    // Projection levels
     if (fibVisibility.projection) {
-      const projectionBase = currentPrice;
-      const projectionRange = high - low;
       PROJECTION_RATIOS.forEach((ratio) => {
-        const price = projectionBase + projectionRange * ratio;
+        const price = currentPrice + range * ratio;
         lines.push({
           price,
           color: FIB_COLORS.projection,
@@ -215,7 +308,16 @@ export default function ChartDemoPage() {
     }
 
     return lines;
-  }, [fibVisibility, high, low, range, currentPrice]);
+  }, [
+    fibVisibility,
+    high,
+    low,
+    range,
+    currentPrice,
+    showPivots,
+    pivotPoints,
+    useManualPivots,
+  ]);
 
   const startPrice = data[0]?.open ?? 0;
   const priceChange = currentPrice - startPrice;
@@ -243,6 +345,12 @@ export default function ChartDemoPage() {
   };
 
   const anyFibVisible = Object.values(fibVisibility).some(Boolean);
+
+  const applyDetectedPivots = useCallback(() => {
+    if (pivotHigh) setManualHigh(pivotHigh.price.toFixed(2));
+    if (pivotLow) setManualLow(pivotLow.price.toFixed(2));
+    setUseManualPivots(true);
+  }, [pivotHigh, pivotLow]);
 
   return (
     <div className={theme === "dark" ? "dark" : ""}>
@@ -291,6 +399,84 @@ export default function ChartDemoPage() {
                 {TIMEFRAME_CONFIG[tf].label}
               </Button>
             ))}
+          </div>
+
+          {/* Pivot Points Controls */}
+          <div className="p-4 rounded-lg bg-card border space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Pivot Points</h3>
+              <div className="flex gap-2">
+                <Button
+                  variant={showPivots ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowPivots(!showPivots)}
+                >
+                  {showPivots ? "Hide Pivots" : "Show Pivots"}
+                </Button>
+                <Button
+                  variant={useManualPivots ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setUseManualPivots(!useManualPivots)}
+                >
+                  {useManualPivots ? "Auto Detect" : "Manual Override"}
+                </Button>
+              </div>
+            </div>
+
+            {useManualPivots ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="manualHigh">Swing High Price</Label>
+                  <Input
+                    id="manualHigh"
+                    type="number"
+                    value={manualHigh}
+                    onChange={(e) => setManualHigh(e.target.value)}
+                    placeholder={high.toFixed(2)}
+                    className="font-mono"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="manualLow">Swing Low Price</Label>
+                  <Input
+                    id="manualLow"
+                    type="number"
+                    value={manualLow}
+                    onChange={(e) => setManualLow(e.target.value)}
+                    placeholder={low.toFixed(2)}
+                    className="font-mono"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={applyDetectedPivots}
+                  >
+                    Use Detected Values
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">
+                <p>
+                  Detected {pivotPoints.filter((p) => p.type === "high").length}{" "}
+                  swing highs and{" "}
+                  {pivotPoints.filter((p) => p.type === "low").length} swing
+                  lows
+                </p>
+                <p className="mt-1">
+                  Using: High{" "}
+                  <span className="font-mono text-foreground">
+                    {formatDisplayPrice(high)}
+                  </span>{" "}
+                  | Low{" "}
+                  <span className="font-mono text-foreground">
+                    {formatDisplayPrice(low)}
+                  </span>
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Fibonacci Controls */}
@@ -387,7 +573,6 @@ export default function ChartDemoPage() {
           {/* Fibonacci Levels Panel */}
           {anyFibVisible && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Retracement */}
               {fibVisibility.retracement && (
                 <div className="p-4 rounded-lg bg-card border">
                   <h3 className="font-semibold mb-3 text-gray-400">
@@ -406,7 +591,6 @@ export default function ChartDemoPage() {
                 </div>
               )}
 
-              {/* Extension */}
               {fibVisibility.extension && (
                 <div className="p-4 rounded-lg bg-card border">
                   <h3 className="font-semibold mb-3 text-blue-400">
@@ -425,7 +609,6 @@ export default function ChartDemoPage() {
                 </div>
               )}
 
-              {/* Expansion */}
               {fibVisibility.expansion && (
                 <div className="p-4 rounded-lg bg-card border">
                   <h3 className="font-semibold mb-3 text-pink-400">
@@ -444,7 +627,6 @@ export default function ChartDemoPage() {
                 </div>
               )}
 
-              {/* Projection */}
               {fibVisibility.projection && (
                 <div className="p-4 rounded-lg bg-card border">
                   <h3 className="font-semibold mb-3 text-teal-400">
