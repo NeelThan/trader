@@ -2,43 +2,9 @@
 
 Fibonacci Trading Analysis API built with FastAPI.
 
-## Features
+See [Backend Documentation](../docs/backend/README.md) for detailed technical docs.
 
-### Fibonacci Calculators
-
-- **Retracement**: Calculate key retracement levels (38.2%, 50%, 61.8%, 78.6%)
-- **Extension**: Calculate extension levels beyond the range (127.2%, 161.8%, 261.8%)
-- **Projection**: Three-point projection using AB=CD pattern
-- **Expansion**: Calculate expansion levels from a starting move
-
-### Signal Bar Detection
-
-Detect trading signals at Fibonacci levels:
-- **Type 1**: Level tested and rejected (stronger signal)
-- **Type 2**: Close beyond level without deep test
-
-Signal strength scoring (0.0 - 1.0) based on type and price distance.
-
-### Harmonic Patterns
-
-Detect classic harmonic patterns:
-- **Gartley**: AB=61.8%, D=78.6% retracement
-- **Butterfly**: AB=78.6%, D=127.2-161.8% extension
-- **Bat**: AB=38.2-50%, D=88.6% retracement
-- **Crab**: AB=38.2-61.8%, D=161.8% extension
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check |
-| POST | `/fibonacci/retracement` | Calculate retracement levels |
-| POST | `/fibonacci/extension` | Calculate extension levels |
-| POST | `/fibonacci/projection` | Calculate projection levels |
-| POST | `/fibonacci/expansion` | Calculate expansion levels |
-| POST | `/signal/detect` | Detect signal at Fibonacci level |
-
-## Setup
+## Quick Start
 
 ```bash
 # Create virtual environment
@@ -75,6 +41,15 @@ mypy src
 ```bash
 uvicorn trader.main:app --reload
 ```
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Technical Docs](../docs/backend/README.md) | Module documentation, API details |
+| [Strategy Knowledge](../docs/references/fibonacci_strategy_knowledge.md) | Trading theory |
+| [App Spec](../docs/references/fibonacci_trading_app_specification.md) | Feature requirements |
+| [ADRs](../docs/adr/README.md) | Architecture decisions |
 
 ## Architecture
 

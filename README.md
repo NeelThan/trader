@@ -59,19 +59,15 @@ Detect classic harmonic patterns using XABCD points:
 
 ```
 trader/
-├── backend/
-│   ├── src/trader/
-│   │   ├── fibonacci.py    # Fibonacci calculations
-│   │   ├── signals.py      # Signal bar detection
-│   │   ├── harmonics.py    # Harmonic pattern detection
-│   │   └── main.py         # FastAPI application
-│   └── tests/
-│       ├── unit/           # Unit tests
-│       └── integration/    # API integration tests
-├── docs/
-│   ├── adr/                # Architecture Decision Records
-│   └── references/         # Strategy specifications
-└── frontend/               # Next.js app (planned)
+├── backend/                # Python/FastAPI backend
+│   ├── src/trader/         # Source modules
+│   └── tests/              # Unit and integration tests
+├── frontend/               # Next.js frontend (planned)
+└── docs/                   # All documentation
+    ├── backend/            # Backend technical docs
+    ├── frontend/           # Frontend technical docs
+    ├── adr/                # Architecture Decision Records
+    └── references/         # Strategy specifications
 ```
 
 ## Quick Start
@@ -144,9 +140,16 @@ Position Size = Risk Capital / (Entry Price - Stop Loss Price)
 
 ## Documentation
 
-- **ADRs**: `docs/adr/` - Architecture Decision Records
-- **Strategy**: `docs/references/` - Trading strategy knowledge base
-- **API Docs**: Run server and visit `/docs` for OpenAPI docs
+All documentation is centralized in the `docs/` folder:
+
+| Folder | Description |
+|--------|-------------|
+| [docs/backend/](docs/backend/README.md) | Backend technical documentation |
+| [docs/frontend/](docs/frontend/README.md) | Frontend technical documentation |
+| [docs/adr/](docs/adr/README.md) | Architecture Decision Records |
+| [docs/references/](docs/references/) | Strategy knowledge and specifications |
+
+**API Docs**: Run server and visit `/docs` for interactive OpenAPI documentation.
 
 ## Contributing
 

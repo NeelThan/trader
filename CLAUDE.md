@@ -35,7 +35,7 @@ This file provides context for AI assistants (Claude, GPT, Gemini, etc.) working
 ### When Adding Features
 
 1. Update `README.md` with new functionality
-2. Update `backend/README.md` if backend-specific
+2. Update `docs/backend/` or `docs/frontend/` with technical details
 3. Create ADR for significant architectural decisions
 4. Maintain 100% test coverage
 
@@ -77,6 +77,8 @@ Read the module docstrings before modifying.
 | Document | Location | Purpose |
 |----------|----------|---------|
 | Main README | `README.md` | Project overview, features, concepts |
-| Backend README | `backend/README.md` | Backend setup, architecture |
+| Docs Index | `docs/README.md` | Documentation hub |
+| Backend Docs | `docs/backend/` | Backend technical details |
+| Frontend Docs | `docs/frontend/` | Frontend technical details |
 | ADRs | `docs/adr/` | Architectural decisions |
 | Strategy Spec | `docs/references/` | Trading strategy knowledge |
