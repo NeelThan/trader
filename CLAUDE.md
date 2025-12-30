@@ -1,90 +1,82 @@
-# CLAUDE.md - Project Guide for AI Assistants
+# AI Assistant Guide
 
-## Project Overview
+This file provides context for AI assistants (Claude, GPT, Gemini, etc.) working on this project.
 
-**Trader** - A Fibonacci Trading Application implementing the SignalPro strategy for algorithmic trading analysis. Enables traders to identify high-probability setups using Fibonacci price tools and harmonic patterns (Gartley 222, Butterfly).
+## Quick Reference
 
-**Status:** Planning phase - specifications complete, implementation not started.
+**See [README.md](README.md) for:**
+- Project overview and status
+- Technology stack
+- Features and API endpoints
+- Project structure
+- Quick start and development commands
+- Domain concepts (Fibonacci, signals, patterns)
+- Roadmap
 
-## Directory Structure
+## AI-Specific Guidelines
 
-```
-trader/
-├── src/                    # Source code (empty - to be implemented)
-├── tests/                  # Test directory (empty - to be implemented)
-├── docs/
-│   └── references/
-│       ├── fibonacci_trading_app_specification.md  # Feature specification
-│       └── fibonacci_strategy_knowledge.md         # Strategy knowledge base
-└── README.md
-```
+### Before Writing Code
 
-## Key Documentation
+1. **Read first**: Always read existing files before modifying
+2. **Document first**: If documentation is missing, add it before implementing
+3. **Ask questions**: Clarify requirements if unclear
+4. **Check ADRs**: Review `docs/adr/` for architectural decisions
 
-- `docs/references/fibonacci_trading_app_specification.md` - Complete feature specification with 16 categories and release roadmap
-- `docs/references/fibonacci_strategy_knowledge.md` - Trading strategy knowledge base from SignalPro methodology
+### TDD Workflow (Mandatory)
 
-## Core Domain Concepts
+1. **RED**: Write failing test first
+2. **GREEN**: Write minimal code to pass
+3. **REFACTOR**: Apply quality checks:
+   - `ruff check src tests` - linting
+   - `mypy src` - type checking
+   - `pytest --cov` - 100% coverage required
+4. **COMMIT**: Use conventional commits
 
-### Multi-Timeframe Trend Alignment
-| Higher TF | Lower TF | Action |
-|-----------|----------|--------|
-| UP | DOWN | GO LONG (buy the dip) |
-| DOWN | UP | GO SHORT (sell the rally) |
-| Same direction | Same direction | STAND ASIDE |
+### When Adding Features
 
-### Four Fibonacci Tools
-1. **Retracement** - Pullback levels (38%, 50%, 62%, 79%)
-2. **Extension** - Targets beyond origin (127%, 162%, 262%)
-3. **Projection** - 3-point forecasts
-4. **Expansion** - Range expansion levels
+1. Update `README.md` with new functionality
+2. Update `backend/README.md` if backend-specific
+3. Create ADR for significant architectural decisions
+4. Maintain 100% test coverage
 
-### Signal Bar Rules
-- **BUY:** Close > Open AND Close > Fibonacci Level
-- **SELL:** Close < Open AND Close < Fibonacci Level
-
-### Position Sizing
-```
-Position Size = Risk Capital / (Entry Price - Stop Loss Price)
-```
-
-## Planned Architecture
+### Commit Format
 
 ```
-Frontend (React)
-├── Chart Component
-├── Dashboard
-└── Trade Management UI
+type(scope): description
 
-Backend
-├── Fibonacci Calculation Engine
-├── Pattern Recognition (Gartley 222, Butterfly)
-├── Signal Detection
-├── Risk Management
-└── Data Store
+Body explaining what and why
 
-External Integrations
-├── Price Data API
-└── Broker API (R3)
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 ```
 
-## Development Roadmap
+Types: `feat`, `fix`, `docs`, `test`, `refactor`, `build`, `chore`
 
-1. **Walking Skeleton** - Basic instrument entry, pivot marking, retracement calculator
-2. **MVP** - Auto pivot detection, all 4 Fibonacci tools, real-time signals
-3. **R1** - Pattern recognition, Gartley scanner, analytics
-4. **R2** - Butterfly patterns, equity tracking
-5. **R3** - Automated trading, broker integration
-6. **R4** - Mobile app, public API
+### Key Commands
 
-## Build & Test Commands
+```bash
+cd backend
+.venv/Scripts/pytest --cov=trader --cov-report=term-missing  # Tests
+.venv/Scripts/ruff check src tests                            # Lint
+.venv/Scripts/mypy src                                         # Types
+.venv/Scripts/uvicorn trader.main:app --reload                # Server
+```
 
-*To be configured - project in planning phase*
+### Module Documentation
 
-## Development Guidelines
+Each module in `backend/src/trader/` has docstrings explaining:
+- Purpose and responsibility
+- Key functions and their parameters
+- Return types and error cases
 
-- Reference the specification document for feature requirements
-- Fibonacci calculations must be precise - verify against known values
-- Pattern recognition requires proper pivot point detection first
-- Always validate signal bars before trade entry logic
-- Position sizing is critical for risk management - test thoroughly
+Read the module docstrings before modifying.
+
+## Key References
+
+| Document | Location | Purpose |
+|----------|----------|---------|
+| Main README | `README.md` | Project overview, features, concepts |
+| Backend README | `backend/README.md` | Backend setup, architecture |
+| ADRs | `docs/adr/` | Architectural decisions |
+| Strategy Spec | `docs/references/` | Trading strategy knowledge |
