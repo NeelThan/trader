@@ -47,6 +47,18 @@ export type UsePivotAnalysisReturn = {
   applyDetectedPivots: () => void;
 };
 
+export type PivotConfig = {
+  lookback: number; // Bars on each side to confirm a pivot
+  count: number; // Number of pivots to display
+  offset: number; // Skip last N bars before detection
+};
+
+export const DEFAULT_PIVOT_CONFIG: PivotConfig = {
+  lookback: 5,
+  count: 5,
+  offset: 0,
+};
+
 export type UsePivotAnalysisOptions = {
   data: OHLCData[];
   fibVisibility: FibonacciVisibility;
@@ -55,6 +67,7 @@ export type UsePivotAnalysisOptions = {
   upColor: string;
   downColor: string;
   backendLevels?: BackendLevels | null;
+  pivotConfig?: PivotConfig;
 };
 
 export function usePivotAnalysis(
@@ -64,21 +77,33 @@ export function usePivotAnalysis(
   showPivotLines: boolean,
   upColor: string,
   downColor: string,
-  backendLevels?: BackendLevels | null
+  backendLevels?: BackendLevels | null,
+  pivotConfig: PivotConfig = DEFAULT_PIVOT_CONFIG
 ): UsePivotAnalysisReturn {
   // Manual pivot state
   const [useManualPivots, setUseManualPivots] = useState(false);
   const [manualHigh, setManualHigh] = useState<string>("");
   const [manualLow, setManualLow] = useState<string>("");
 
-  // Detect pivot points
-  const pivotPoints = useMemo(() => detectPivotPoints(data, 5), [data]);
+  // Apply offset to data if configured (skip last N bars)
+  const offsetData = useMemo(() => {
+    if (pivotConfig.offset > 0 && data.length > pivotConfig.offset) {
+      return data.slice(0, data.length - pivotConfig.offset);
+    }
+    return data;
+  }, [data, pivotConfig.offset]);
 
-  // Get the recent pivot points (last 5) for Fibonacci calculations
+  // Detect pivot points with configurable lookback
+  const pivotPoints = useMemo(
+    () => detectPivotPoints(offsetData, pivotConfig.lookback),
+    [offsetData, pivotConfig.lookback]
+  );
+
+  // Get the recent pivot points (configurable count) for Fibonacci calculations
   const recentPivots = useMemo(() => {
-    if (pivotPoints.length <= 5) return pivotPoints;
-    return pivotPoints.slice(-5);
-  }, [pivotPoints]);
+    if (pivotPoints.length <= pivotConfig.count) return pivotPoints;
+    return pivotPoints.slice(-pivotConfig.count);
+  }, [pivotPoints, pivotConfig.count]);
 
   // Get A-B-C pivot points for projection (last 3 alternating pivots)
   const { pivotA, pivotB, pivotC } = useMemo(() => {

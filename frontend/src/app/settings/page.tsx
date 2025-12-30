@@ -244,6 +244,68 @@ export default function SettingsPage() {
               checked={settings.showPivotLines}
               onChange={(checked) => setSettings({ showPivotLines: checked })}
             />
+
+            <div className="pt-2 border-t space-y-4">
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-sm font-medium">Lookback Period</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Bars on each side to confirm a pivot (higher = fewer, more significant pivots)
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={settings.pivotLookback}
+                    onChange={(e) => setSettings({ pivotLookback: parseInt(e.target.value) || 5 })}
+                    className="w-20 h-9 rounded-md border bg-background px-3 font-mono text-sm"
+                    min={1}
+                    max={20}
+                  />
+                  <span className="text-sm text-muted-foreground">bars</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-sm font-medium">Pivot Count</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Number of recent pivots to display on chart
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={settings.pivotCount}
+                    onChange={(e) => setSettings({ pivotCount: parseInt(e.target.value) || 5 })}
+                    className="w-20 h-9 rounded-md border bg-background px-3 font-mono text-sm"
+                    min={1}
+                    max={20}
+                  />
+                  <span className="text-sm text-muted-foreground">pivots</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-sm font-medium">Start Offset</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Skip last N bars before detecting pivots (0 = include all)
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={settings.pivotOffset}
+                    onChange={(e) => setSettings({ pivotOffset: parseInt(e.target.value) || 0 })}
+                    className="w-20 h-9 rounded-md border bg-background px-3 font-mono text-sm"
+                    min={0}
+                    max={50}
+                  />
+                  <span className="text-sm text-muted-foreground">bars</span>
+                </div>
+              </div>
+            </div>
           </SettingSection>
 
           {/* Fibonacci */}

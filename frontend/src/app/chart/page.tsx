@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { CandlestickChart, CandlestickChartHandle, ChartType } from "@/components/trading";
 import { useSettings, COLOR_SCHEMES, ColorScheme, DEFAULT_SETTINGS } from "@/hooks/use-settings";
 import { useMarketData } from "@/hooks/use-market-data";
-import { usePivotAnalysis, BackendLevels } from "@/hooks/use-pivot-analysis";
+import { usePivotAnalysis, BackendLevels, PivotConfig, DEFAULT_PIVOT_CONFIG } from "@/hooks/use-pivot-analysis";
 import { useFibonacciAPI } from "@/hooks/use-fibonacci-api";
 import {
   Timeframe,
@@ -60,6 +60,7 @@ export default function ChartDemoPage() {
   const [showPivots, setShowPivots] = useState(false);
   const [showPivotLines, setShowPivotLines] = useState(false);
   const [showPivotPanel, setShowPivotPanel] = useState(false);
+  const [pivotConfig, setPivotConfig] = useState<PivotConfig>(DEFAULT_PIVOT_CONFIG);
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
   const [settingsApplied, setSettingsApplied] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
@@ -108,6 +109,11 @@ export default function ChartDemoPage() {
         });
         setShowPivots(settings.showPivots);
         setShowPivotLines(settings.showPivotLines);
+        setPivotConfig({
+          lookback: settings.pivotLookback,
+          count: settings.pivotCount,
+          offset: settings.pivotOffset,
+        });
         /* eslint-enable react-hooks/set-state-in-effect */
       }
       setSettingsApplied(true);
@@ -136,7 +142,9 @@ export default function ChartDemoPage() {
     showPivots,
     showPivotLines,
     upColor,
-    downColor
+    downColor,
+    null,
+    pivotConfig
   );
 
   const {
@@ -178,7 +186,8 @@ export default function ChartDemoPage() {
     showPivotLines,
     upColor,
     downColor,
-    backendLevels
+    backendLevels,
+    pivotConfig
   );
 
   // Calculate price changes
@@ -300,12 +309,14 @@ export default function ChartDemoPage() {
               useManualPivots={useManualPivots}
               manualHigh={manualHigh}
               manualLow={manualLow}
+              pivotConfig={pivotConfig}
               onTogglePivots={() => setShowPivots(!showPivots)}
               onTogglePivotLines={() => setShowPivotLines(!showPivotLines)}
               onToggleManualPivots={() => setUseManualPivots(!useManualPivots)}
               onManualHighChange={setManualHigh}
               onManualLowChange={setManualLow}
               onApplyDetectedPivots={applyDetectedPivots}
+              onPivotConfigChange={(config) => setPivotConfig((prev) => ({ ...prev, ...config }))}
             />
           )}
 

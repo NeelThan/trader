@@ -17,6 +17,9 @@ export type ChartSettings = {
   // Pivot points
   showPivots: boolean;
   showPivotLines: boolean;
+  pivotLookback: number; // Bars on each side to confirm a pivot (default: 5)
+  pivotCount: number; // Number of pivots to display (default: 5)
+  pivotOffset: number; // Skip last N bars before detection (default: 0)
 
   // Fibonacci visibility
   fibRetracement: boolean;
@@ -41,6 +44,9 @@ const DEFAULT_SETTINGS: ChartSettings = {
   defaultTimeframe: "1D",
   showPivots: true,
   showPivotLines: true,
+  pivotLookback: 5,
+  pivotCount: 5,
+  pivotOffset: 0,
   fibRetracement: true,
   fibExtension: true,
   fibExpansion: true,
