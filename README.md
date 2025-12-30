@@ -156,8 +156,11 @@ Position Size = Risk Capital / (Entry Price - Stop Loss Price)
 6. ✅ Yahoo Finance market data integration
 7. ✅ Auto-refresh with market status display
 8. ✅ Connect frontend to backend API for Fibonacci/signals
-9. ⬜ Real-time pattern scanner
-10. ⬜ Broker integration
+9. ✅ Position sizing calculator with risk management
+10. ✅ Configurable pivot point detection
+11. ✅ Multi-timeframe trend alignment analysis
+12. ⬜ Real-time pattern scanner
+13. ⬜ Broker integration
 
 ## Documentation
 
