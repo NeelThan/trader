@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useSettings, ChartSettings } from "@/hooks/use-settings";
+import { useSettings, ChartSettings, COLOR_SCHEMES, ColorScheme } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
@@ -171,6 +171,36 @@ export default function SettingsPage() {
               options={THEMES}
               onChange={(value) => setSettings({ theme: value })}
             />
+
+            <div className="space-y-2">
+              <div>
+                <Label className="text-sm font-medium">Bar Colors</Label>
+                <p className="text-xs text-muted-foreground">
+                  Color scheme for candlesticks and bars (up / down)
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(Object.keys(COLOR_SCHEMES) as ColorScheme[]).map((scheme) => (
+                  <Button
+                    key={scheme}
+                    variant={settings.colorScheme === scheme ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSettings({ colorScheme: scheme })}
+                    className="gap-2"
+                  >
+                    <span
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: COLOR_SCHEMES[scheme].up }}
+                    />
+                    <span
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: COLOR_SCHEMES[scheme].down }}
+                    />
+                    <span>{COLOR_SCHEMES[scheme].label}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
           </SettingSection>
 
           {/* Default Market */}

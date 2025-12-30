@@ -2,10 +2,13 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
+export type ColorScheme = "green-red" | "blue-red" | "blue-orange" | "teal-pink";
+
 export type ChartSettings = {
   // Chart display
   chartType: "candlestick" | "bar" | "heikin-ashi";
   theme: "light" | "dark";
+  colorScheme: ColorScheme;
 
   // Default market and timeframe
   defaultSymbol: "DJI" | "SPX" | "NDX" | "BTCUSD" | "EURUSD" | "GOLD";
@@ -22,9 +25,18 @@ export type ChartSettings = {
   fibProjection: boolean;
 };
 
+// Color scheme definitions
+export const COLOR_SCHEMES: Record<ColorScheme, { up: string; down: string; label: string }> = {
+  "green-red": { up: "#22c55e", down: "#ef4444", label: "Green / Red" },
+  "blue-red": { up: "#3b82f6", down: "#ef4444", label: "Blue / Red" },
+  "blue-orange": { up: "#3b82f6", down: "#f97316", label: "Blue / Orange" },
+  "teal-pink": { up: "#14b8a6", down: "#ec4899", label: "Teal / Pink" },
+};
+
 const DEFAULT_SETTINGS: ChartSettings = {
   chartType: "candlestick",
   theme: "dark",
+  colorScheme: "blue-red",
   defaultSymbol: "DJI",
   defaultTimeframe: "1D",
   showPivots: true,

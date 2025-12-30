@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { LineStyle } from "lightweight-charts";
-import { useSettings } from "@/hooks/use-settings";
+import { useSettings, COLOR_SCHEMES, ColorScheme } from "@/hooks/use-settings";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 type Timeframe = "1m" | "15m" | "1H" | "4H" | "1D" | "1W" | "1M";
@@ -36,19 +36,20 @@ const MARKET_CONFIG: Record<
 
 const TIMEFRAME_CONFIG: Record<
   Timeframe,
-  { label: string; periods: number; description: string }
+  { label: string; periods: number; description: string; refreshInterval: number }
 > = {
-  "1m": { label: "1m", periods: 240, description: "4 hours of 1-minute data" },
+  "1m": { label: "1m", periods: 240, description: "4 hours of 1-minute data", refreshInterval: 60 },
   "15m": {
     label: "15m",
     periods: 192,
     description: "2 days of 15-minute data",
+    refreshInterval: 60,
   },
-  "1H": { label: "1H", periods: 168, description: "1 week of hourly data" },
-  "4H": { label: "4H", periods: 126, description: "3 weeks of 4-hour data" },
-  "1D": { label: "1D", periods: 90, description: "90 days of daily data" },
-  "1W": { label: "1W", periods: 52, description: "1 year of weekly data" },
-  "1M": { label: "1M", periods: 60, description: "5 years of monthly data" },
+  "1H": { label: "1H", periods: 168, description: "1 week of hourly data", refreshInterval: 300 },
+  "4H": { label: "4H", periods: 126, description: "3 weeks of 4-hour data", refreshInterval: 300 },
+  "1D": { label: "1D", periods: 90, description: "90 days of daily data", refreshInterval: 900 },
+  "1W": { label: "1W", periods: 52, description: "1 year of weekly data", refreshInterval: 3600 },
+  "1M": { label: "1M", periods: 60, description: "5 years of monthly data", refreshInterval: 3600 },
 };
 
 type FibonacciVisibility = {
@@ -237,6 +238,7 @@ export default function ChartDemoPage() {
   const [symbol, setSymbol] = useState<MarketSymbol>("DJI");
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
   const [chartType, setChartType] = useState<ChartType>("candlestick");
+  const [colorScheme, setColorScheme] = useState<ColorScheme>("blue-red");
   const [dataSource, setDataSource] = useState<DataSource>("simulated");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [fibVisibility, setFibVisibility] = useState<FibonacciVisibility>({
@@ -253,6 +255,9 @@ export default function ChartDemoPage() {
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
   const [settingsApplied, setSettingsApplied] = useState(false);
 
+  // Get colors from selected scheme
+  const { up: upColor, down: downColor } = COLOR_SCHEMES[colorScheme];
+
   // Apply settings from localStorage after hydration (only once)
   // This runs when useSyncExternalStore updates settings from localStorage
   useEffect(() => {
@@ -262,6 +267,7 @@ export default function ChartDemoPage() {
         settings.defaultSymbol !== "DJI" ||
         settings.defaultTimeframe !== "1D" ||
         settings.chartType !== "candlestick" ||
+        settings.colorScheme !== "blue-red" ||
         settings.theme !== "dark" ||
         !settings.showPivots ||
         !settings.showPivotLines ||
@@ -274,6 +280,7 @@ export default function ChartDemoPage() {
         setSymbol(settings.defaultSymbol);
         setTimeframe(settings.defaultTimeframe);
         setChartType(settings.chartType);
+        setColorScheme(settings.colorScheme);
         setTheme(settings.theme);
         setFibVisibility({
           retracement: settings.fibRetracement,
@@ -292,6 +299,17 @@ export default function ChartDemoPage() {
   const [yahooData, setYahooData] = useState<OHLCData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [countdown, setCountdown] = useState<number>(0);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const [marketStatus, setMarketStatus] = useState<{
+    state: string;
+    stateDisplay: string;
+    isOpen: boolean;
+    isPreMarket: boolean;
+    isAfterHours: boolean;
+    isClosed: boolean;
+  } | null>(null);
 
   // Generate simulated data
   const simulatedData = useMemo(() => {
@@ -299,41 +317,75 @@ export default function ChartDemoPage() {
     return generateMarketData(symbol, timeframe, config.periods);
   }, [symbol, timeframe]);
 
+  // Fetch Yahoo Finance data function
+  const fetchYahooData = useCallback(async () => {
+    setIsLoading(true);
+    setFetchError(null);
+
+    try {
+      const response = await fetch(
+        `/api/market-data?symbol=${symbol}&timeframe=${timeframe}`
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        // Capture market status even on error
+        if (result.market) {
+          setMarketStatus(result.market);
+        }
+        throw new Error(result.error || "Failed to fetch data");
+      }
+
+      setYahooData(result.data as OHLCData[]);
+      setLastUpdated(new Date());
+      setCountdown(TIMEFRAME_CONFIG[timeframe].refreshInterval);
+
+      // Capture market status
+      if (result.market) {
+        setMarketStatus(result.market);
+      }
+    } catch (error) {
+      console.error("Failed to fetch market data:", error);
+      setFetchError(
+        error instanceof Error ? error.message : "Failed to fetch market data"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [symbol, timeframe]);
+
   // Fetch Yahoo Finance data when dataSource is "yahoo"
   useEffect(() => {
     if (dataSource !== "yahoo") {
       setFetchError(null);
+      setLastUpdated(null);
+      setCountdown(0);
+      setMarketStatus(null);
       return;
     }
 
-    const fetchData = async () => {
-      setIsLoading(true);
-      setFetchError(null);
+    fetchYahooData();
+  }, [dataSource, symbol, timeframe, fetchYahooData]);
 
-      try {
-        const response = await fetch(
-          `/api/market-data?symbol=${symbol}&timeframe=${timeframe}`
-        );
+  // Auto-refresh countdown timer
+  useEffect(() => {
+    if (dataSource !== "yahoo" || !autoRefreshEnabled) {
+      return;
+    }
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Failed to fetch data");
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          fetchYahooData();
+          return TIMEFRAME_CONFIG[timeframe].refreshInterval;
         }
+        return prev - 1;
+      });
+    }, 1000);
 
-        const result = await response.json();
-        setYahooData(result.data as OHLCData[]);
-      } catch (error) {
-        console.error("Failed to fetch market data:", error);
-        setFetchError(
-          error instanceof Error ? error.message : "Failed to fetch market data"
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [dataSource, symbol, timeframe]);
+    return () => clearInterval(timer);
+  }, [dataSource, autoRefreshEnabled, timeframe, fetchYahooData]);
 
   // Use appropriate data based on source
   const data = useMemo(() => {
@@ -413,7 +465,7 @@ export default function ChartDemoPage() {
       pivotPoints.forEach((pivot) => {
         lines.push({
           price: pivot.price,
-          color: pivot.type === "high" ? "#22c55e" : "#ef4444",
+          color: pivot.type === "high" ? upColor : downColor,
           title: pivot.type === "high" ? "▼ SH" : "▲ SL",
           lineStyle: LineStyle.Dotted,
         });
@@ -424,8 +476,7 @@ export default function ChartDemoPage() {
     if (fibVisibility.retracement) {
       RETRACEMENT_RATIOS.forEach((ratio) => {
         const price = high - range * ratio;
-        const label =
-          ratio === 0 ? "0%" : ratio === 1 ? "100%" : `${ratio * 100}%`;
+        const label = `${(ratio * 100).toFixed(2)}%`;
         lines.push({
           price,
           color: FIB_COLORS.retracement[ratio] ?? "#6b7280",
@@ -443,7 +494,7 @@ export default function ChartDemoPage() {
         lines.push({
           price,
           color: FIB_COLORS.extension,
-          title: `Ext ${ratio * 100}%`,
+          title: `Ext ${(ratio * 100).toFixed(2)}%`,
           lineStyle: LineStyle.Dashed,
         });
       });
@@ -456,7 +507,7 @@ export default function ChartDemoPage() {
         lines.push({
           price,
           color: FIB_COLORS.expansion,
-          title: `Exp ${ratio * 100}%`,
+          title: `Exp ${(ratio * 100).toFixed(2)}%`,
           lineStyle: LineStyle.Dashed,
         });
       });
@@ -474,7 +525,7 @@ export default function ChartDemoPage() {
         lines.push({
           price,
           color: FIB_COLORS.projection,
-          title: `Proj ${ratio * 100}%`,
+          title: `Proj ${(ratio * 100).toFixed(2)}%`,
           lineStyle: LineStyle.Dashed,
         });
       });
@@ -492,6 +543,8 @@ export default function ChartDemoPage() {
     pivotA,
     pivotB,
     pivotC,
+    upColor,
+    downColor,
   ]);
 
   // Build line overlays to connect recent pivot points
@@ -611,6 +664,85 @@ export default function ChartDemoPage() {
             )}
           </div>
 
+          {/* Yahoo Finance Refresh Status */}
+          {dataSource === "yahoo" && (
+            <div className="flex items-center gap-4 p-3 rounded-lg bg-card border flex-wrap">
+              {/* Market Status Badge */}
+              {marketStatus && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium ${
+                        marketStatus.isOpen
+                          ? "bg-green-500/20 text-green-400"
+                          : marketStatus.isPreMarket || marketStatus.isAfterHours
+                          ? "bg-amber-500/20 text-amber-400"
+                          : "bg-gray-500/20 text-gray-400"
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          marketStatus.isOpen
+                            ? "bg-green-400 animate-pulse"
+                            : marketStatus.isPreMarket || marketStatus.isAfterHours
+                            ? "bg-amber-400"
+                            : "bg-gray-400"
+                        }`}
+                      />
+                      {marketStatus.stateDisplay}
+                    </span>
+                  </div>
+                  <div className="w-px h-6 bg-border" />
+                </>
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={autoRefreshEnabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+                  className={autoRefreshEnabled ? "bg-green-600 hover:bg-green-700" : ""}
+                >
+                  {autoRefreshEnabled ? "Auto-Refresh On" : "Auto-Refresh Off"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchYahooData}
+                  disabled={isLoading}
+                >
+                  Refresh Now
+                </Button>
+              </div>
+              <div className="w-px h-6 bg-border" />
+              <div className="flex items-center gap-4 text-sm flex-wrap">
+                {autoRefreshEnabled && countdown > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Next refresh:</span>
+                    <span className="font-mono text-foreground">
+                      {Math.floor(countdown / 60)}:{String(countdown % 60).padStart(2, "0")}
+                    </span>
+                  </div>
+                )}
+                {lastUpdated && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Last updated:</span>
+                    <span className="font-mono text-foreground">
+                      {lastUpdated.toLocaleTimeString()}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Interval:</span>
+                  <span className="font-mono text-foreground">
+                    {TIMEFRAME_CONFIG[timeframe].refreshInterval >= 60
+                      ? `${Math.floor(TIMEFRAME_CONFIG[timeframe].refreshInterval / 60)}m`
+                      : `${TIMEFRAME_CONFIG[timeframe].refreshInterval}s`}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Market Selection */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm text-muted-foreground mr-2">Market:</span>
@@ -669,6 +801,30 @@ export default function ChartDemoPage() {
               >
                 Bar
               </Button>
+            </div>
+            <div className="w-px h-6 bg-border" />
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground mr-2">
+                Colors:
+              </span>
+              {(Object.keys(COLOR_SCHEMES) as ColorScheme[]).map((scheme) => (
+                <Button
+                  key={scheme}
+                  variant={colorScheme === scheme ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setColorScheme(scheme)}
+                  className="gap-1"
+                >
+                  <span
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: COLOR_SCHEMES[scheme].up }}
+                  />
+                  <span
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: COLOR_SCHEMES[scheme].down }}
+                  />
+                </Button>
+              ))}
             </div>
           </div>
 
@@ -853,6 +1009,8 @@ export default function ChartDemoPage() {
               chartType={chartType}
               height={500}
               theme={theme}
+              upColor={upColor}
+              downColor={downColor}
               onCrosshairMove={(price) => setCrosshairPrice(price)}
             />
           </div>
@@ -871,7 +1029,7 @@ export default function ChartDemoPage() {
                     lowPrice={low}
                     levels={RETRACEMENT_RATIOS.map((ratio) => ({
                       ratio,
-                      label: `${ratio * 100}%`,
+                      label: `${(ratio * 100).toFixed(2)}%`,
                       price: high - range * ratio,
                     }))}
                   />
@@ -889,7 +1047,7 @@ export default function ChartDemoPage() {
                     lowPrice={low}
                     levels={EXTENSION_RATIOS.map((ratio) => ({
                       ratio,
-                      label: `${ratio * 100}%`,
+                      label: `${(ratio * 100).toFixed(2)}%`,
                       price: high - range * ratio,
                     }))}
                   />
@@ -907,7 +1065,7 @@ export default function ChartDemoPage() {
                     lowPrice={low}
                     levels={EXPANSION_RATIOS.map((ratio) => ({
                       ratio,
-                      label: `${ratio * 100}%`,
+                      label: `${(ratio * 100).toFixed(2)}%`,
                       price: low + range * ratio,
                     }))}
                   />
@@ -939,7 +1097,7 @@ export default function ChartDemoPage() {
                       const direction = pivotC.type === "low" ? 1 : -1;
                       return {
                         ratio,
-                        label: `${ratio * 100}%`,
+                        label: `${(ratio * 100).toFixed(2)}%`,
                         price: pivotC.price + direction * abRange * ratio,
                       };
                     })}

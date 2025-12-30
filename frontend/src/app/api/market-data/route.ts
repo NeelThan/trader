@@ -8,12 +8,24 @@ const yahooFinance = new YahooFinance();
 type YahooInterval = "1m" | "2m" | "5m" | "15m" | "30m" | "60m" | "90m" | "1h" | "1d" | "5d" | "1wk" | "1mo" | "3mo";
 
 // Result type from yahoo-finance2 chart method
+type TradingPeriod = { start: Date; end: Date };
 type ChartResultArray = {
   meta: {
     currency?: string;
     symbol?: string;
     exchangeName?: string;
+    fullExchangeName?: string;
     regularMarketPrice?: number;
+    regularMarketTime?: Date;
+    regularMarketDayHigh?: number;
+    regularMarketDayLow?: number;
+    regularMarketVolume?: number;
+    previousClose?: number;
+    // Market state info
+    marketState?: string; // "REGULAR", "PRE", "POST", "CLOSED", "PREPRE", "POSTPOST"
+    tradingPeriods?:
+      | { pre?: TradingPeriod[][]; regular?: TradingPeriod[][]; post?: TradingPeriod[][] }
+      | TradingPeriod[][];
   };
   quotes: Array<{
     date: Date;
@@ -140,8 +152,25 @@ export async function GET(request: NextRequest) {
     });
 
     if (!result.quotes || result.quotes.length === 0) {
+      // Provide context about why data might be unavailable
+      const marketState = result.meta?.marketState || "UNKNOWN";
+      const isIntraday = ["1m", "15m", "1H", "4H"].includes(timeframe);
+
+      let message = "No data available";
+      if (isIntraday && marketState === "CLOSED") {
+        message = "No intraday data available - market is closed. Try a daily or weekly timeframe.";
+      } else if (isIntraday) {
+        message = "No intraday data available for this period. Intraday data is limited to recent trading sessions.";
+      }
+
       return NextResponse.json(
-        { error: "No data available" },
+        {
+          error: message,
+          market: {
+            state: marketState,
+            stateDisplay: marketState === "CLOSED" ? "Market Closed" : marketState,
+          }
+        },
         { status: 404 }
       );
     }
@@ -189,6 +218,36 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // Parse market state for user-friendly display
+    const marketState = result.meta?.marketState || "UNKNOWN";
+    const marketStateDisplay = {
+      REGULAR: "Market Open",
+      PRE: "Pre-Market",
+      POST: "After Hours",
+      CLOSED: "Market Closed",
+      PREPRE: "Pre-Market (Early)",
+      POSTPOST: "After Hours (Late)",
+      UNKNOWN: "Unknown",
+    }[marketState] || marketState;
+
+    // Get trading periods if available
+    const tradingPeriods = result.meta?.tradingPeriods;
+    let nextOpen: string | null = null;
+    let nextClose: string | null = null;
+
+    // tradingPeriods can be either an object with pre/regular/post or a flat array
+    if (tradingPeriods) {
+      if ("regular" in tradingPeriods && tradingPeriods.regular?.[0]?.[0]) {
+        const regularPeriod = tradingPeriods.regular[0][0];
+        nextOpen = regularPeriod.start?.toISOString() || null;
+        nextClose = regularPeriod.end?.toISOString() || null;
+      } else if (Array.isArray(tradingPeriods) && tradingPeriods[0]?.[0]) {
+        const period = tradingPeriods[0][0];
+        nextOpen = period.start?.toISOString() || null;
+        nextClose = period.end?.toISOString() || null;
+      }
+    }
+
     return NextResponse.json({
       symbol,
       timeframe,
@@ -196,11 +255,39 @@ export async function GET(request: NextRequest) {
       meta: {
         currency: result.meta?.currency,
         exchangeName: result.meta?.exchangeName,
+        fullExchangeName: result.meta?.fullExchangeName,
         regularMarketPrice: result.meta?.regularMarketPrice,
+        regularMarketTime: result.meta?.regularMarketTime?.toISOString(),
+        previousClose: result.meta?.previousClose,
+        regularMarketDayHigh: result.meta?.regularMarketDayHigh,
+        regularMarketDayLow: result.meta?.regularMarketDayLow,
+        regularMarketVolume: result.meta?.regularMarketVolume,
+      },
+      market: {
+        state: marketState,
+        stateDisplay: marketStateDisplay,
+        isOpen: marketState === "REGULAR",
+        isPreMarket: marketState === "PRE" || marketState === "PREPRE",
+        isAfterHours: marketState === "POST" || marketState === "POSTPOST",
+        isClosed: marketState === "CLOSED",
+        nextOpen,
+        nextClose,
       },
     });
   } catch (error) {
     console.error("Yahoo Finance API error:", error);
+
+    // Check for rate limiting
+    if (error instanceof Error && error.message.includes("Too Many Requests")) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded. Please wait before refreshing.",
+          code: "RATE_LIMIT"
+        },
+        { status: 429 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Failed to fetch market data" },
       { status: 500 }
