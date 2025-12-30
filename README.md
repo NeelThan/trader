@@ -159,7 +159,7 @@ Position Size = Risk Capital / (Entry Price - Stop Loss Price)
 9. ✅ Position sizing calculator with risk management
 10. ✅ Configurable pivot point detection
 11. ✅ Multi-timeframe trend alignment analysis
-12. ⬜ Real-time pattern scanner
+12. ✅ Real-time pattern scanner (Signal + Harmonic)
 13. ⬜ Broker integration
 
 ## Documentation

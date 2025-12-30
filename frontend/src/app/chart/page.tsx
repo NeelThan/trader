@@ -307,6 +307,7 @@ export default function ChartPage() {
             {/* Analysis Panel (below chart) */}
             <div className="p-4 rounded-lg bg-card border">
               <AnalysisTabs
+                  symbol={symbol}
                   data={data}
                   fibonacciLevels={priceLines.map((line) => line.price)}
                   fibVisibility={fibVisibility}

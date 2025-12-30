@@ -9,15 +9,18 @@ import {
   SignalDetectionPanel,
   HarmonicPatternPanel,
   TrendAlignmentPanel,
+  SignalScanner,
+  HarmonicScanner,
   type AllFibonacciConfigs,
   type FibonacciPivots,
 } from "@/components/chart";
 import { OHLCData } from "@/components/trading";
-import { FibonacciVisibility, TimeframePair, TrendAlignment, PivotPoint } from "@/lib/chart-constants";
+import { FibonacciVisibility, TimeframePair, TrendAlignment, PivotPoint, MarketSymbol } from "@/lib/chart-constants";
 import { PivotConfig } from "@/hooks/use-pivot-analysis";
 
 type AnalysisTabsProps = {
   // Data
+  symbol: MarketSymbol;
   data: OHLCData[];
   fibonacciLevels: number[];
 
@@ -65,6 +68,7 @@ type AnalysisTabsProps = {
 };
 
 export function AnalysisTabs({
+  symbol,
   data,
   fibonacciLevels,
   fibVisibility,
@@ -106,17 +110,20 @@ export function AnalysisTabs({
 
   return (
     <Tabs defaultValue="fibonacci" className="w-full">
-      <TabsList className="grid w-full grid-cols-3">
+      <TabsList className="grid w-full grid-cols-4">
         <TabsTrigger value="fibonacci" className="text-xs sm:text-sm">
           Fibonacci
         </TabsTrigger>
         <TabsTrigger value="strategy" className="text-xs sm:text-sm">
-          Strategy
+          Trends
           {(longSignals > 0 || shortSignals > 0) && (
             <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary/20 text-[10px]">
               {longSignals + shortSignals}
             </span>
           )}
+        </TabsTrigger>
+        <TabsTrigger value="scanners" className="text-xs sm:text-sm">
+          Scanners
         </TabsTrigger>
         <TabsTrigger value="pivots" className="text-xs sm:text-sm">
           Pivots
@@ -137,7 +144,7 @@ export function AnalysisTabs({
         />
       </TabsContent>
 
-      {/* Strategy Tab */}
+      {/* Trends Tab */}
       <TabsContent value="strategy" className="space-y-4 mt-4">
         <TrendAlignmentPanel
           alignments={trendAlignments}
@@ -147,17 +154,29 @@ export function AnalysisTabs({
           onSelectPair={onSelectPair}
           onRefresh={onTrendRefresh}
         />
-        <SignalDetectionPanel
-          data={data}
-          fibonacciLevels={fibonacciLevels}
-          enabled={useBackendAPI}
-        />
-        <HarmonicPatternPanel
-          enabled={useBackendAPI}
-          defaultX={defaultX}
-          defaultA={defaultA}
-          defaultB={defaultB}
-        />
+      </TabsContent>
+
+      {/* Scanners Tab */}
+      <TabsContent value="scanners" className="space-y-4 mt-4">
+        <SignalScanner symbol={symbol} enabled={useBackendAPI} />
+        <HarmonicScanner symbol={symbol} enabled={useBackendAPI} />
+        <div className="p-3 rounded-lg bg-muted/30 border text-xs text-muted-foreground">
+          <p className="font-medium mb-1">Manual Analysis</p>
+          <p>Use these panels for manual signal detection and harmonic pattern validation:</p>
+          <div className="mt-2 space-y-1">
+            <SignalDetectionPanel
+              data={data}
+              fibonacciLevels={fibonacciLevels}
+              enabled={useBackendAPI}
+            />
+            <HarmonicPatternPanel
+              enabled={useBackendAPI}
+              defaultX={defaultX}
+              defaultA={defaultA}
+              defaultB={defaultB}
+            />
+          </div>
+        </div>
       </TabsContent>
 
       {/* Pivots Tab */}

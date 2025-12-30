@@ -1,5 +1,7 @@
 export { AnalysisTabs } from "./AnalysisTabs";
 export { BackendStatus } from "./BackendStatus";
+export { HarmonicScanner } from "./HarmonicScanner";
+export { SignalScanner } from "./SignalScanner";
 export { ChartControls } from "./ChartControls";
 export { ChartHeader } from "./ChartHeader";
 export { ChartToolbar } from "./ChartToolbar";
