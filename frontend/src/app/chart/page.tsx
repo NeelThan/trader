@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { LineStyle } from "lightweight-charts";
-import { useSettings, COLOR_SCHEMES, ColorScheme } from "@/hooks/use-settings";
+import { useSettings, COLOR_SCHEMES, ColorScheme, DEFAULT_SETTINGS } from "@/hooks/use-settings";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 type Timeframe = "1m" | "15m" | "1H" | "4H" | "1D" | "1W" | "1M";
@@ -270,17 +270,17 @@ export default function ChartDemoPage() {
     if (!settingsApplied) {
       // Check if settings differ from defaults (indicates localStorage was loaded)
       const hasCustomSettings =
-        settings.defaultSymbol !== "DJI" ||
-        settings.defaultTimeframe !== "1D" ||
-        settings.chartType !== "candlestick" ||
-        settings.colorScheme !== "blue-red" ||
-        settings.theme !== "dark" ||
-        !settings.showPivots ||
-        !settings.showPivotLines ||
-        !settings.fibRetracement ||
-        !settings.fibExtension ||
-        !settings.fibExpansion ||
-        !settings.fibProjection;
+        settings.defaultSymbol !== DEFAULT_SETTINGS.defaultSymbol ||
+        settings.defaultTimeframe !== DEFAULT_SETTINGS.defaultTimeframe ||
+        settings.chartType !== DEFAULT_SETTINGS.chartType ||
+        settings.colorScheme !== DEFAULT_SETTINGS.colorScheme ||
+        settings.theme !== DEFAULT_SETTINGS.theme ||
+        settings.showPivots !== DEFAULT_SETTINGS.showPivots ||
+        settings.showPivotLines !== DEFAULT_SETTINGS.showPivotLines ||
+        settings.fibRetracement !== DEFAULT_SETTINGS.fibRetracement ||
+        settings.fibExtension !== DEFAULT_SETTINGS.fibExtension ||
+        settings.fibExpansion !== DEFAULT_SETTINGS.fibExpansion ||
+        settings.fibProjection !== DEFAULT_SETTINGS.fibProjection;
 
       if (hasCustomSettings) {
         setSymbol(settings.defaultSymbol);

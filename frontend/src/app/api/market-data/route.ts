@@ -270,8 +270,8 @@ export async function GET(request: NextRequest) {
         isPreMarket: marketState === "PRE" || marketState === "PREPRE",
         isAfterHours: marketState === "POST" || marketState === "POSTPOST",
         isClosed: marketState === "CLOSED",
-        nextOpen,
-        nextClose,
+        ...(nextOpen && { nextOpen }),
+        ...(nextClose && { nextClose }),
       },
     });
   } catch (error) {

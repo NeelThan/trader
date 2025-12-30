@@ -139,3 +139,6 @@ export function useSettings() {
     defaults: DEFAULT_SETTINGS,
   };
 }
+
+// Export DEFAULT_SETTINGS for use in other components
+export { DEFAULT_SETTINGS };
