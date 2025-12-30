@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { CandlestickChart, CandlestickChartHandle, ChartType } from "@/components/trading";
 import { useSettings, COLOR_SCHEMES, ColorScheme, DEFAULT_SETTINGS } from "@/hooks/use-settings";
 import { useMarketData } from "@/hooks/use-market-data";
@@ -19,11 +19,13 @@ import {
   ChartToolbar,
   DataSourceSelector,
   FibonacciControls,
-  FibonacciLevelsPanel,
+  FibonacciCalculationsPanel,
   MarketSelector,
   PivotPointsPanel,
   PriceSummary,
   RefreshStatus,
+  type AllFibonacciConfigs,
+  type FibonacciPivots,
 } from "@/components/chart";
 
 export default function ChartDemoPage() {
@@ -43,6 +45,15 @@ export default function ChartDemoPage() {
     expansion: true,
     projection: true,
   });
+
+  // Independent Fibonacci configs with separate pivot points for each type
+  const [fibConfigs, setFibConfigs] = useState<AllFibonacciConfigs>({
+    retracement: { enabled: true, pivots: { high: 0, low: 0 }, useAutoDetect: true },
+    extension: { enabled: true, pivots: { high: 0, low: 0 }, useAutoDetect: true },
+    expansion: { enabled: true, pivots: { high: 0, low: 0 }, useAutoDetect: true },
+    projection: { enabled: true, pivots: { high: 0, low: 0, pointA: 0, pointB: 0, pointC: 0 }, useAutoDetect: true },
+  });
+
   const [showPivots, setShowPivots] = useState(true);
   const [showPivotLines, setShowPivotLines] = useState(true);
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
@@ -172,20 +183,40 @@ export default function ChartDemoPage() {
   const priceChange = currentPrice - startPrice;
   const percentChange = startPrice > 0 ? ((priceChange / startPrice) * 100).toFixed(2) : "0.00";
 
-  // Toggle handlers
+  // Toggle handlers - sync both fibVisibility and fibConfigs
   const toggleFibType = (type: keyof FibonacciVisibility) => {
     setFibVisibility((prev) => ({ ...prev, [type]: !prev[type] }));
+    setFibConfigs((prev) => ({
+      ...prev,
+      [type]: { ...prev[type], enabled: !prev[type].enabled },
+    }));
   };
 
   const toggleAllFib = () => {
     const allVisible = Object.values(fibVisibility).every(Boolean);
+    const newValue = !allVisible;
     setFibVisibility({
-      retracement: !allVisible,
-      extension: !allVisible,
-      expansion: !allVisible,
-      projection: !allVisible,
+      retracement: newValue,
+      extension: newValue,
+      expansion: newValue,
+      projection: newValue,
     });
+    setFibConfigs((prev) => ({
+      retracement: { ...prev.retracement, enabled: newValue },
+      extension: { ...prev.extension, enabled: newValue },
+      expansion: { ...prev.expansion, enabled: newValue },
+      projection: { ...prev.projection, enabled: newValue },
+    }));
   };
+
+  // Build auto-detected pivots from pivot analysis
+  const autoDetectedPivots: FibonacciPivots = useMemo(() => ({
+    high,
+    low,
+    pointA: pivotA?.price ?? high,
+    pointB: pivotB?.price ?? low,
+    pointC: pivotC?.price ?? low,
+  }), [high, low, pivotA, pivotB, pivotC]);
 
   return (
     <div className={theme === "dark" ? "dark" : ""}>
@@ -304,15 +335,11 @@ export default function ChartDemoPage() {
             </div>
           </div>
 
-          {/* Fibonacci Levels Panel */}
-          <FibonacciLevelsPanel
-            visibility={fibVisibility}
-            high={high}
-            low={low}
-            range={range}
-            pivotA={pivotA}
-            pivotB={pivotB}
-            pivotC={pivotC}
+          {/* Fibonacci Calculations Panel - with independent pivot points */}
+          <FibonacciCalculationsPanel
+            configs={fibConfigs}
+            autoDetectedPivots={autoDetectedPivots}
+            onConfigsChange={setFibConfigs}
           />
         </div>
       </div>
