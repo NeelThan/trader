@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   CandlestickChart,
   OHLCData,
@@ -10,34 +10,81 @@ import {
 import { Button } from "@/components/ui/button";
 import { LineStyle } from "lightweight-charts";
 
-// Generate Dow Jones-like OHLC data
-function generateDowJonesData(days: number = 90): OHLCData[] {
+type Timeframe = "1H" | "4H" | "1D" | "1W";
+
+const TIMEFRAME_CONFIG: Record<
+  Timeframe,
+  { label: string; periods: number; description: string }
+> = {
+  "1H": { label: "1H", periods: 168, description: "1 week of hourly data" },
+  "4H": { label: "4H", periods: 126, description: "3 weeks of 4-hour data" },
+  "1D": { label: "1D", periods: 90, description: "90 days of daily data" },
+  "1W": { label: "1W", periods: 52, description: "1 year of weekly data" },
+};
+
+// Generate Dow Jones-like OHLC data for different timeframes
+function generateDowJonesData(
+  timeframe: Timeframe,
+  periods: number
+): OHLCData[] {
   const data: OHLCData[] = [];
-  let basePrice = 42500; // Starting price around current DJI levels
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  let basePrice = 42500;
 
-  for (let i = 0; i < days; i++) {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + i);
+  // Volatility scales with timeframe
+  const volatilityMap: Record<Timeframe, number> = {
+    "1H": 50,
+    "4H": 100,
+    "1D": 200,
+    "1W": 500,
+  };
+  const baseVolatility = volatilityMap[timeframe];
 
-    // Skip weekends
-    if (date.getDay() === 0 || date.getDay() === 6) continue;
+  const now = new Date();
 
-    // DJI typically moves 100-400 points per day
-    const volatility = 150 + Math.random() * 250;
-    const trend = Math.random() > 0.48 ? 1 : -1; // Slight bullish bias
+  for (let i = periods - 1; i >= 0; i--) {
+    let timestamp: number;
+
+    switch (timeframe) {
+      case "1H":
+        timestamp = now.getTime() - i * 60 * 60 * 1000;
+        break;
+      case "4H":
+        timestamp = now.getTime() - i * 4 * 60 * 60 * 1000;
+        break;
+      case "1D":
+        timestamp = now.getTime() - i * 24 * 60 * 60 * 1000;
+        break;
+      case "1W":
+        timestamp = now.getTime() - i * 7 * 24 * 60 * 60 * 1000;
+        break;
+    }
+
+    const date = new Date(timestamp);
+
+    // Skip weekends for daily timeframe
+    if (timeframe === "1D" && (date.getDay() === 0 || date.getDay() === 6)) {
+      continue;
+    }
+
+    const volatility = baseVolatility * (0.5 + Math.random());
+    const trend = Math.random() > 0.48 ? 1 : -1;
 
     const open = basePrice;
-    const change = (Math.random() - 0.5) * volatility + trend * 30;
+    const change = (Math.random() - 0.5) * volatility + trend * (volatility * 0.1);
     const close = open + change;
     const high = Math.max(open, close) + Math.random() * volatility * 0.3;
     const low = Math.min(open, close) - Math.random() * volatility * 0.3;
 
-    const dateStr = date.toISOString().split("T")[0];
+    // Format time based on timeframe
+    let time: OHLCData["time"];
+    if (timeframe === "1D" || timeframe === "1W") {
+      time = date.toISOString().split("T")[0] as OHLCData["time"];
+    } else {
+      time = (Math.floor(timestamp / 1000)) as OHLCData["time"];
+    }
 
     data.push({
-      time: dateStr as OHLCData["time"],
+      time,
       open: Number(open.toFixed(2)),
       high: Number(high.toFixed(2)),
       low: Number(low.toFixed(2)),
@@ -51,10 +98,16 @@ function generateDowJonesData(days: number = 90): OHLCData[] {
 }
 
 export default function ChartDemoPage() {
-  const [data] = useState(() => generateDowJonesData(90));
+  const [timeframe, setTimeframe] = useState<Timeframe>("1D");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [showFibonacci, setShowFibonacci] = useState(true);
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
+
+  // Generate data based on timeframe
+  const data = useMemo(() => {
+    const config = TIMEFRAME_CONFIG[timeframe];
+    return generateDowJonesData(timeframe, config.periods);
+  }, [timeframe]);
 
   // Calculate high/low for Fibonacci levels
   const high = Math.max(...data.map((d) => d.high));
@@ -62,34 +115,34 @@ export default function ChartDemoPage() {
   const range = high - low;
 
   // Fibonacci retracement levels
-  const fibonacciLevels: PriceLine[] = showFibonacci
-    ? [
-        {
-          price: high,
-          color: "#6b7280",
-          title: "0%",
-          lineStyle: LineStyle.Dotted,
-        },
-        { price: high - range * 0.236, color: "#9ca3af", title: "23.6%" },
-        { price: high - range * 0.382, color: "#f59e0b", title: "38.2%" },
-        { price: high - range * 0.5, color: "#8b5cf6", title: "50%" },
-        { price: high - range * 0.618, color: "#22c55e", title: "61.8%" },
-        { price: high - range * 0.786, color: "#ef4444", title: "78.6%" },
-        {
-          price: low,
-          color: "#6b7280",
-          title: "100%",
-          lineStyle: LineStyle.Dotted,
-        },
-      ]
-    : [];
+  const fibonacciLevels: PriceLine[] = useMemo(() => {
+    if (!showFibonacci) return [];
+    return [
+      {
+        price: high,
+        color: "#6b7280",
+        title: "0%",
+        lineStyle: LineStyle.Dotted,
+      },
+      { price: high - range * 0.236, color: "#9ca3af", title: "23.6%" },
+      { price: high - range * 0.382, color: "#f59e0b", title: "38.2%" },
+      { price: high - range * 0.5, color: "#8b5cf6", title: "50%" },
+      { price: high - range * 0.618, color: "#22c55e", title: "61.8%" },
+      { price: high - range * 0.786, color: "#ef4444", title: "78.6%" },
+      {
+        price: low,
+        color: "#6b7280",
+        title: "100%",
+        lineStyle: LineStyle.Dotted,
+      },
+    ];
+  }, [showFibonacci, high, low, range]);
 
   const currentPrice = data[data.length - 1]?.close ?? 0;
   const startPrice = data[0]?.open ?? 0;
   const priceChange = currentPrice - startPrice;
   const percentChange = ((priceChange / startPrice) * 100).toFixed(2);
 
-  // Format price for display (no decimals for large numbers like DJI)
   const formatDisplayPrice = (price: number) => {
     return price.toLocaleString("en-US", {
       minimumFractionDigits: 2,
@@ -104,9 +157,11 @@ export default function ChartDemoPage() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold">Dow Jones Industrial Average</h1>
+              <h1 className="text-2xl font-bold">
+                Dow Jones Industrial Average
+              </h1>
               <p className="text-muted-foreground">
-                DJI - Simulated 90-day price history
+                DJI - {TIMEFRAME_CONFIG[timeframe].description}
               </p>
             </div>
             <div className="flex gap-2">
@@ -125,6 +180,23 @@ export default function ChartDemoPage() {
                 Light
               </Button>
             </div>
+          </div>
+
+          {/* Timeframe Selection */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground mr-2">
+              Timeframe:
+            </span>
+            {(Object.keys(TIMEFRAME_CONFIG) as Timeframe[]).map((tf) => (
+              <Button
+                key={tf}
+                variant={timeframe === tf ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTimeframe(tf)}
+              >
+                {TIMEFRAME_CONFIG[tf].label}
+              </Button>
+            ))}
           </div>
 
           {/* Price Summary */}
