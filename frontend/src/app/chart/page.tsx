@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { LineStyle } from "lightweight-charts";
 import { useSettings } from "@/hooks/use-settings";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -598,9 +599,10 @@ export default function ChartDemoPage() {
               Yahoo Finance
             </Button>
             {isLoading && (
-              <span className="text-sm text-muted-foreground ml-2">
-                Loading...
-              </span>
+              <div className="flex items-center gap-2 ml-2 text-muted-foreground">
+                <Spinner size="sm" />
+                <span className="text-sm">Loading...</span>
+              </div>
             )}
             {fetchError && (
               <span className="text-sm text-red-500 ml-2">
