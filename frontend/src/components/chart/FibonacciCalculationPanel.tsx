@@ -6,10 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
-  RETRACEMENT_RATIOS,
-  EXTENSION_RATIOS,
-  EXPANSION_RATIOS,
-  PROJECTION_RATIOS,
+  RETRACEMENT_RATIOS_BACKEND,
+  EXTENSION_RATIOS_BACKEND,
+  EXPANSION_RATIOS_BACKEND,
+  PROJECTION_RATIOS_BACKEND,
 } from "@/lib/chart-constants";
 
 export type FibonacciPivots = {
@@ -34,12 +34,15 @@ export type AllFibonacciConfigs = {
   projection: FibonacciTypeConfig;
 };
 
+export type Direction = "buy" | "sell";
+
 type FibonacciCalculationPanelProps = {
   type: "retracement" | "extension" | "expansion" | "projection";
   config: FibonacciTypeConfig;
   autoDetectedPivots: FibonacciPivots;
   onConfigChange: (config: FibonacciTypeConfig) => void;
   expanded?: boolean;
+  primaryDirection?: Direction;
 };
 
 const TYPE_CONFIG = {
@@ -48,8 +51,9 @@ const TYPE_CONFIG = {
     color: "text-gray-400",
     bgColor: "bg-gray-500/10",
     borderColor: "border-gray-500/30",
-    ratios: RETRACEMENT_RATIOS,
-    formula: "High - (Range × Ratio)",
+    ratios: RETRACEMENT_RATIOS_BACKEND,
+    buyFormula: "High - (Range × Ratio)",
+    sellFormula: "Low + (Range × Ratio)",
     description: "Pullback levels within the trend",
   },
   extension: {
@@ -57,8 +61,9 @@ const TYPE_CONFIG = {
     color: "text-blue-400",
     bgColor: "bg-blue-500/10",
     borderColor: "border-blue-500/30",
-    ratios: EXTENSION_RATIOS,
-    formula: "High - (Range × Ratio)",
+    ratios: EXTENSION_RATIOS_BACKEND,
+    buyFormula: "Low - (Range × (Ratio - 1))",
+    sellFormula: "High + (Range × (Ratio - 1))",
     description: "Levels beyond 100% of the range",
   },
   expansion: {
@@ -66,17 +71,19 @@ const TYPE_CONFIG = {
     color: "text-pink-400",
     bgColor: "bg-pink-500/10",
     borderColor: "border-pink-500/30",
-    ratios: EXPANSION_RATIOS,
-    formula: "Low + (Range × Ratio)",
-    description: "Upward expansion from low",
+    ratios: EXPANSION_RATIOS_BACKEND,
+    buyFormula: "Low + (Range × Ratio)",
+    sellFormula: "High - (Range × Ratio)",
+    description: "Expansion from pivot point",
   },
   projection: {
     title: "Projection",
     color: "text-teal-400",
     bgColor: "bg-teal-500/10",
     borderColor: "border-teal-500/30",
-    ratios: PROJECTION_RATIOS,
-    formula: "C + (|B-A| × Ratio × Direction)",
+    ratios: PROJECTION_RATIOS_BACKEND,
+    buyFormula: "C + (|B-A| × Ratio)",
+    sellFormula: "C - (|B-A| × Ratio)",
     description: "AB=CD pattern projection from point C",
   },
 };
@@ -88,56 +95,197 @@ function formatPrice(price: number): string {
   return price.toFixed(6);
 }
 
+type CalculatedLevel = {
+  ratio: number;
+  price: number;
+  calculation: string;
+};
+
+function calculateLevelsForDirection(
+  type: keyof typeof TYPE_CONFIG,
+  high: number,
+  low: number,
+  direction: Direction,
+  pointA?: number,
+  pointB?: number,
+  pointC?: number
+): CalculatedLevel[] {
+  const typeConfig = TYPE_CONFIG[type];
+  const range = high - low;
+
+  if (type === "projection") {
+    const a = pointA ?? high;
+    const b = pointB ?? low;
+    const c = pointC ?? low;
+    const abRange = Math.abs(b - a);
+    const dirMultiplier = direction === "buy" ? 1 : -1;
+
+    return typeConfig.ratios.map((ratio) => ({
+      ratio,
+      price: c + dirMultiplier * abRange * ratio,
+      calculation: `${formatPrice(c)} ${dirMultiplier > 0 ? "+" : "-"} (${formatPrice(abRange)} × ${ratio})`,
+    }));
+  }
+
+  return typeConfig.ratios.map((ratio) => {
+    let price: number;
+    let calculation: string;
+
+    if (type === "retracement") {
+      if (direction === "buy") {
+        // Uptrend retracement: looking for pullback levels to buy
+        price = high - range * ratio;
+        calculation = `${formatPrice(high)} - (${formatPrice(range)} × ${ratio})`;
+      } else {
+        // Downtrend retracement: looking for pullback levels to sell
+        price = low + range * ratio;
+        calculation = `${formatPrice(low)} + (${formatPrice(range)} × ${ratio})`;
+      }
+    } else if (type === "extension") {
+      if (direction === "buy") {
+        // Extension below low (target for shorts closing / reversal)
+        price = low - range * (ratio - 1);
+        calculation = `${formatPrice(low)} - (${formatPrice(range)} × ${(ratio - 1).toFixed(3)})`;
+      } else {
+        // Extension above high (target for longs closing / reversal)
+        price = high + range * (ratio - 1);
+        calculation = `${formatPrice(high)} + (${formatPrice(range)} × ${(ratio - 1).toFixed(3)})`;
+      }
+    } else {
+      // expansion
+      if (direction === "buy") {
+        // Upward expansion from low
+        price = low + range * ratio;
+        calculation = `${formatPrice(low)} + (${formatPrice(range)} × ${ratio})`;
+      } else {
+        // Downward expansion from high
+        price = high - range * ratio;
+        calculation = `${formatPrice(high)} - (${formatPrice(range)} × ${ratio})`;
+      }
+    }
+
+    return { ratio, price, calculation };
+  });
+}
+
+type DirectionSectionProps = {
+  direction: Direction;
+  levels: CalculatedLevel[];
+  formula: string;
+  typeColor: string;
+  isExpanded: boolean;
+  isMinimized: boolean;
+  onToggleMinimized: () => void;
+};
+
+function DirectionSection({
+  direction,
+  levels,
+  formula,
+  typeColor,
+  isExpanded,
+  isMinimized,
+  onToggleMinimized,
+}: DirectionSectionProps) {
+  const directionColor = direction === "buy" ? "text-green-400" : "text-red-400";
+  const directionBg = direction === "buy" ? "bg-green-500/10" : "bg-red-500/10";
+  const directionLabel = direction === "buy" ? "BUY (Uptrend)" : "SELL (Downtrend)";
+
+  return (
+    <div className={`rounded-lg border ${isMinimized ? "border-dashed opacity-60" : ""}`}>
+      <button
+        onClick={onToggleMinimized}
+        className={`w-full flex items-center justify-between p-2 ${directionBg} rounded-t-lg hover:opacity-80 transition-opacity`}
+      >
+        <span className={`text-sm font-medium ${directionColor}`}>
+          {directionLabel}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {isMinimized ? "Click to expand" : "Click to minimize"}
+        </span>
+      </button>
+
+      {!isMinimized && (
+        <div className="p-2 space-y-2">
+          {isExpanded && (
+            <div className="text-xs text-muted-foreground">
+              <code className="bg-muted px-1 rounded">{formula}</code>
+            </div>
+          )}
+
+          {isExpanded ? (
+            // Expanded view: Ratio → Calculation → Price
+            <>
+              <div className="flex text-xs text-muted-foreground font-medium pb-1 border-b">
+                <span className="w-14">Ratio</span>
+                <span className="flex-1 pl-2">Calculation</span>
+                <span className="w-24 text-right">= Price</span>
+              </div>
+              {levels.map(({ ratio, price, calculation }) => (
+                <div
+                  key={`${direction}-${ratio}`}
+                  className="flex text-sm py-1 hover:bg-muted/50 rounded items-baseline"
+                >
+                  <span className={`w-14 font-medium ${typeColor}`}>
+                    {(ratio * 100).toFixed(1)}%
+                  </span>
+                  <span className="flex-1 pl-2 text-xs text-muted-foreground font-mono">
+                    {calculation}
+                  </span>
+                  <span className="w-24 text-right font-mono font-medium">
+                    = {formatPrice(price)}
+                  </span>
+                </div>
+              ))}
+            </>
+          ) : (
+            // Collapsed view: just ratio and price
+            <>
+              <div className="flex text-xs text-muted-foreground font-medium pb-1 border-b">
+                <span className="w-14">Ratio</span>
+                <span className="flex-1 text-right">Price</span>
+              </div>
+              {levels.map(({ ratio, price }) => (
+                <div
+                  key={`${direction}-${ratio}`}
+                  className="flex text-sm py-0.5 hover:bg-muted/50 rounded"
+                >
+                  <span className={`w-14 font-medium ${typeColor}`}>
+                    {(ratio * 100).toFixed(1)}%
+                  </span>
+                  <span className="flex-1 text-right font-mono">
+                    {formatPrice(price)}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FibonacciCalculationPanel({
   type,
   config,
   autoDetectedPivots,
   onConfigChange,
   expanded = false,
+  primaryDirection = "buy",
 }: FibonacciCalculationPanelProps) {
   const [isExpanded, setIsExpanded] = useState(expanded);
+  const [buyMinimized, setBuyMinimized] = useState(primaryDirection === "sell");
+  const [sellMinimized, setSellMinimized] = useState(primaryDirection === "buy");
   const typeConfig = TYPE_CONFIG[type];
 
   const activePivots = config.useAutoDetect ? autoDetectedPivots : config.pivots;
   const { high, low, pointA, pointB, pointC } = activePivots;
   const range = high - low;
 
-  // Calculate levels based on type
-  const calculateLevels = () => {
-    if (type === "projection") {
-      const a = pointA ?? high;
-      const b = pointB ?? low;
-      const c = pointC ?? low;
-      const abRange = Math.abs(b - a);
-      // Direction: if C is a low, project upward; if C is a high, project downward
-      const direction = c <= Math.min(a, b) ? 1 : -1;
-
-      return typeConfig.ratios.map((ratio) => ({
-        ratio,
-        price: c + direction * abRange * ratio,
-        calculation: `${formatPrice(c)} + (${direction > 0 ? "+" : "-"}${formatPrice(abRange)} × ${ratio})`,
-        inputs: { a, b, c, abRange, direction },
-      }));
-    }
-
-    return typeConfig.ratios.map((ratio) => {
-      let price: number;
-      let calculation: string;
-
-      if (type === "expansion") {
-        price = low + range * ratio;
-        calculation = `${formatPrice(low)} + (${formatPrice(range)} × ${ratio})`;
-      } else {
-        // retracement and extension
-        price = high - range * ratio;
-        calculation = `${formatPrice(high)} - (${formatPrice(range)} × ${ratio})`;
-      }
-
-      return { ratio, price, calculation, inputs: { high, low, range } };
-    });
-  };
-
-  const levels = calculateLevels();
+  // Calculate levels for both directions
+  const buyLevels = calculateLevelsForDirection(type, high, low, "buy", pointA, pointB, pointC);
+  const sellLevels = calculateLevelsForDirection(type, high, low, "sell", pointA, pointB, pointC);
 
   const handlePivotChange = (field: keyof FibonacciPivots, value: string) => {
     const numValue = parseFloat(value) || 0;
@@ -178,7 +326,7 @@ export function FibonacciCalculationPanel({
         <p className="text-xs text-muted-foreground">{typeConfig.description}</p>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         {/* Pivot Points Section */}
         <div className={`p-3 rounded-lg ${typeConfig.bgColor}`}>
           <div className="flex items-center justify-between mb-2">
@@ -267,64 +415,27 @@ export function FibonacciCalculationPanel({
           )}
         </div>
 
-        {/* Formula */}
-        {isExpanded && (
-          <div className="text-xs text-muted-foreground">
-            <span className="font-medium">Formula:</span>{" "}
-            <code className="bg-muted px-1 rounded">{typeConfig.formula}</code>
-          </div>
-        )}
+        {/* BUY Direction Section */}
+        <DirectionSection
+          direction="buy"
+          levels={buyLevels}
+          formula={typeConfig.buyFormula}
+          typeColor={typeConfig.color}
+          isExpanded={isExpanded}
+          isMinimized={buyMinimized}
+          onToggleMinimized={() => setBuyMinimized(!buyMinimized)}
+        />
 
-        {/* Levels Table */}
-        <div className="space-y-1">
-          {isExpanded ? (
-            // Expanded view: Ratio → Calculation → Price (reads left to right)
-            <>
-              <div className="flex text-xs text-muted-foreground font-medium pb-1 border-b">
-                <span className="w-16">Ratio</span>
-                <span className="flex-1 pl-2">Calculation</span>
-                <span className="w-28 text-right">= Price</span>
-              </div>
-              {levels.map(({ ratio, price, calculation }) => (
-                <div
-                  key={ratio}
-                  className="flex text-sm py-1.5 hover:bg-muted/50 rounded items-baseline"
-                >
-                  <span className={`w-16 font-medium ${typeConfig.color}`}>
-                    {(ratio * 100).toFixed(1)}%
-                  </span>
-                  <span className="flex-1 pl-2 text-xs text-muted-foreground font-mono">
-                    {calculation}
-                  </span>
-                  <span className="w-28 text-right font-mono font-medium">
-                    = {formatPrice(price)}
-                  </span>
-                </div>
-              ))}
-            </>
-          ) : (
-            // Collapsed view: just ratio and price
-            <>
-              <div className="flex text-xs text-muted-foreground font-medium pb-1 border-b">
-                <span className="w-16">Ratio</span>
-                <span className="flex-1 text-right">Price</span>
-              </div>
-              {levels.map(({ ratio, price }) => (
-                <div
-                  key={ratio}
-                  className="flex text-sm py-1 hover:bg-muted/50 rounded"
-                >
-                  <span className={`w-16 font-medium ${typeConfig.color}`}>
-                    {(ratio * 100).toFixed(1)}%
-                  </span>
-                  <span className="flex-1 text-right font-mono">
-                    {formatPrice(price)}
-                  </span>
-                </div>
-              ))}
-            </>
-          )}
-        </div>
+        {/* SELL Direction Section */}
+        <DirectionSection
+          direction="sell"
+          levels={sellLevels}
+          formula={typeConfig.sellFormula}
+          typeColor={typeConfig.color}
+          isExpanded={isExpanded}
+          isMinimized={sellMinimized}
+          onToggleMinimized={() => setSellMinimized(!sellMinimized)}
+        />
       </CardContent>
     </Card>
   );
@@ -337,12 +448,14 @@ type FibonacciCalculationsPanelProps = {
   configs: AllFibonacciConfigs;
   autoDetectedPivots: FibonacciPivots;
   onConfigsChange: (configs: AllFibonacciConfigs) => void;
+  primaryDirection?: Direction;
 };
 
 export function FibonacciCalculationsPanel({
   configs,
   autoDetectedPivots,
   onConfigsChange,
+  primaryDirection = "buy",
 }: FibonacciCalculationsPanelProps) {
   const anyEnabled = Object.values(configs).some((c) => c.enabled);
 
@@ -370,7 +483,7 @@ export function FibonacciCalculationsPanel({
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Fibonacci Calculations</h2>
         <span className="text-xs text-muted-foreground">
-          Each type uses independent pivot points
+          Each type uses independent pivot points • Both directions shown
         </span>
       </div>
 
@@ -381,6 +494,7 @@ export function FibonacciCalculationsPanel({
             config={configs.retracement}
             autoDetectedPivots={autoDetectedPivots}
             onConfigChange={(c) => handleConfigChange("retracement", c)}
+            primaryDirection={primaryDirection}
           />
         )}
 
@@ -390,6 +504,7 @@ export function FibonacciCalculationsPanel({
             config={configs.extension}
             autoDetectedPivots={autoDetectedPivots}
             onConfigChange={(c) => handleConfigChange("extension", c)}
+            primaryDirection={primaryDirection}
           />
         )}
 
@@ -399,6 +514,7 @@ export function FibonacciCalculationsPanel({
             config={configs.expansion}
             autoDetectedPivots={autoDetectedPivots}
             onConfigChange={(c) => handleConfigChange("expansion", c)}
+            primaryDirection={primaryDirection}
           />
         )}
 
@@ -408,6 +524,7 @@ export function FibonacciCalculationsPanel({
             config={configs.projection}
             autoDetectedPivots={projectionPivots}
             onConfigChange={(c) => handleConfigChange("projection", c)}
+            primaryDirection={primaryDirection}
           />
         )}
       </div>

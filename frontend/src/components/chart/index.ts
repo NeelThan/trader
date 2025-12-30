@@ -10,6 +10,7 @@ export {
   type FibonacciPivots,
   type FibonacciTypeConfig,
   type AllFibonacciConfigs,
+  type Direction,
 } from "./FibonacciCalculationPanel";
 export { FibonacciLevelsPanel } from "./FibonacciLevelsPanel";
 export { MarketSelector } from "./MarketSelector";

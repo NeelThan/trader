@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { Button } from "@/components/ui/button";
 import { CandlestickChart, CandlestickChartHandle, ChartType } from "@/components/trading";
 import { useSettings, COLOR_SCHEMES, ColorScheme, DEFAULT_SETTINGS } from "@/hooks/use-settings";
 import { useMarketData } from "@/hooks/use-market-data";
@@ -54,8 +55,9 @@ export default function ChartDemoPage() {
     projection: { enabled: true, pivots: { high: 0, low: 0, pointA: 0, pointB: 0, pointC: 0 }, useAutoDetect: true },
   });
 
-  const [showPivots, setShowPivots] = useState(true);
-  const [showPivotLines, setShowPivotLines] = useState(true);
+  const [showPivots, setShowPivots] = useState(false);
+  const [showPivotLines, setShowPivotLines] = useState(false);
+  const [showPivotPanel, setShowPivotPanel] = useState(false);
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
   const [settingsApplied, setSettingsApplied] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
@@ -271,23 +273,39 @@ export default function ChartDemoPage() {
             onColorSchemeChange={setColorScheme}
           />
 
-          {/* Pivot Points Controls */}
-          <PivotPointsPanel
-            pivotPoints={pivotPoints}
-            high={high}
-            low={low}
-            showPivots={showPivots}
-            showPivotLines={showPivotLines}
-            useManualPivots={useManualPivots}
-            manualHigh={manualHigh}
-            manualLow={manualLow}
-            onTogglePivots={() => setShowPivots(!showPivots)}
-            onTogglePivotLines={() => setShowPivotLines(!showPivotLines)}
-            onToggleManualPivots={() => setUseManualPivots(!useManualPivots)}
-            onManualHighChange={setManualHigh}
-            onManualLowChange={setManualLow}
-            onApplyDetectedPivots={applyDetectedPivots}
-          />
+          {/* Pivot Points Controls - Hidden by default, toggle with button */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showPivotPanel ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowPivotPanel(!showPivotPanel)}
+            >
+              {showPivotPanel ? "Hide" : "Show"} Pivot Controls
+            </Button>
+            {!showPivotPanel && (
+              <span className="text-xs text-muted-foreground">
+                Individual Fibonacci panels have their own pivot point settings
+              </span>
+            )}
+          </div>
+          {showPivotPanel && (
+            <PivotPointsPanel
+              pivotPoints={pivotPoints}
+              high={high}
+              low={low}
+              showPivots={showPivots}
+              showPivotLines={showPivotLines}
+              useManualPivots={useManualPivots}
+              manualHigh={manualHigh}
+              manualLow={manualLow}
+              onTogglePivots={() => setShowPivots(!showPivots)}
+              onTogglePivotLines={() => setShowPivotLines(!showPivotLines)}
+              onToggleManualPivots={() => setUseManualPivots(!useManualPivots)}
+              onManualHighChange={setManualHigh}
+              onManualLowChange={setManualLow}
+              onApplyDetectedPivots={applyDetectedPivots}
+            />
+          )}
 
           {/* Fibonacci Controls */}
           <FibonacciControls

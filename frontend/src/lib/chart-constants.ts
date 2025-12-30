@@ -59,11 +59,38 @@ export const TIMEFRAME_CONFIG: Record<
   "1M": { label: "1M", periods: 60, description: "5 years of monthly data", refreshInterval: 3600 },
 };
 
-// Fibonacci level ratios
-export const RETRACEMENT_RATIOS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
-export const EXTENSION_RATIOS = [1.272, 1.414, 1.618, 2.0, 2.618];
-export const EXPANSION_RATIOS = [0.618, 1.0, 1.618, 2.618];
-export const PROJECTION_RATIOS = [0.618, 1.0, 1.272, 1.618];
+// Fibonacci level ratios - aligned with backend defaults
+// Backend-defined ratios (from backend/src/trader/fibonacci.py)
+export const RETRACEMENT_RATIOS_BACKEND = [0.382, 0.5, 0.618, 0.786];
+export const EXTENSION_RATIOS_BACKEND = [1.272, 1.618, 2.618];
+export const EXPANSION_RATIOS_BACKEND = [0.382, 0.5, 0.618, 1.0, 1.618];
+export const PROJECTION_RATIOS_BACKEND = [0.618, 0.786, 1.0, 1.272, 1.618];
+
+// Extended ratios (additional levels that can be enabled in settings)
+export const RETRACEMENT_RATIOS_EXTENDED = [0, 0.236, 1.0];
+export const EXTENSION_RATIOS_EXTENDED = [1.414, 2.0];
+export const EXPANSION_RATIOS_EXTENDED = [2.618];
+export const PROJECTION_RATIOS_EXTENDED = [2.0, 2.618];
+
+// Combined ratios for backward compatibility (sorted)
+export const RETRACEMENT_RATIOS = [...RETRACEMENT_RATIOS_BACKEND, ...RETRACEMENT_RATIOS_EXTENDED].sort((a, b) => a - b);
+export const EXTENSION_RATIOS = [...EXTENSION_RATIOS_BACKEND, ...EXTENSION_RATIOS_EXTENDED].sort((a, b) => a - b);
+export const EXPANSION_RATIOS = [...EXPANSION_RATIOS_BACKEND, ...EXPANSION_RATIOS_EXTENDED].sort((a, b) => a - b);
+export const PROJECTION_RATIOS = [...PROJECTION_RATIOS_BACKEND, ...PROJECTION_RATIOS_EXTENDED].sort((a, b) => a - b);
+
+// Configuration for which ratios to display by default
+export type FibonacciRatioConfig = {
+  backend: number[];
+  extended: number[];
+  useExtended: boolean;
+};
+
+export const DEFAULT_RATIO_CONFIG: Record<keyof FibonacciVisibility, FibonacciRatioConfig> = {
+  retracement: { backend: RETRACEMENT_RATIOS_BACKEND, extended: RETRACEMENT_RATIOS_EXTENDED, useExtended: false },
+  extension: { backend: EXTENSION_RATIOS_BACKEND, extended: EXTENSION_RATIOS_EXTENDED, useExtended: false },
+  expansion: { backend: EXPANSION_RATIOS_BACKEND, extended: EXPANSION_RATIOS_EXTENDED, useExtended: false },
+  projection: { backend: PROJECTION_RATIOS_BACKEND, extended: PROJECTION_RATIOS_EXTENDED, useExtended: false },
+};
 
 // Colors for each Fibonacci type
 export const FIB_COLORS = {
