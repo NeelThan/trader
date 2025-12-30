@@ -139,6 +139,15 @@ export function HarmonicPatternPanel({
     setLastValidation(null);
   };
 
+  const resetToChart = () => {
+    setX(defaultX ? defaultX.toString() : "");
+    setA(defaultA ? defaultA.toString() : "");
+    setB(defaultB ? defaultB.toString() : "");
+    setC(defaultC ? defaultC.toString() : "");
+    setD("");
+    setLastValidation(null);
+  };
+
   const handleCalculateReversal = async () => {
     const xVal = parseFloat(x) || 0;
     const aVal = parseFloat(a) || 0;
@@ -235,8 +244,8 @@ export function HarmonicPatternPanel({
             </div>
           </div>
 
-          {/* Example Buttons */}
-          <div className="flex flex-wrap gap-1">
+          {/* Example Buttons and Reset */}
+          <div className="flex flex-wrap items-center gap-1">
             <span className="text-xs text-muted-foreground mr-1">Load example:</span>
             {(Object.keys(EXAMPLE_PATTERNS) as Array<keyof typeof EXAMPLE_PATTERNS>).map((key) => (
               <Button
@@ -249,6 +258,15 @@ export function HarmonicPatternPanel({
                 {key}
               </Button>
             ))}
+            <span className="text-muted-foreground mx-1">|</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={resetToChart}
+              className="text-xs h-6"
+            >
+              Reset to Chart
+            </Button>
           </div>
 
           {/* Actions */}
