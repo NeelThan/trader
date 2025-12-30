@@ -10,6 +10,10 @@ import {
   EXTENSION_RATIOS_BACKEND,
   EXPANSION_RATIOS_BACKEND,
   PROJECTION_RATIOS_BACKEND,
+  RETRACEMENT_RATIOS_EXTENDED,
+  EXTENSION_RATIOS_EXTENDED,
+  EXPANSION_RATIOS_EXTENDED,
+  PROJECTION_RATIOS_EXTENDED,
 } from "@/lib/chart-constants";
 
 export type FibonacciPivots = {
@@ -51,7 +55,8 @@ const TYPE_CONFIG = {
     color: "text-gray-400",
     bgColor: "bg-gray-500/10",
     borderColor: "border-gray-500/30",
-    ratios: RETRACEMENT_RATIOS_BACKEND,
+    backendRatios: RETRACEMENT_RATIOS_BACKEND,
+    extendedRatios: RETRACEMENT_RATIOS_EXTENDED,
     buyFormula: "High - (Range × Ratio)",
     sellFormula: "Low + (Range × Ratio)",
     description: "Pullback levels within the trend",
@@ -61,7 +66,8 @@ const TYPE_CONFIG = {
     color: "text-blue-400",
     bgColor: "bg-blue-500/10",
     borderColor: "border-blue-500/30",
-    ratios: EXTENSION_RATIOS_BACKEND,
+    backendRatios: EXTENSION_RATIOS_BACKEND,
+    extendedRatios: EXTENSION_RATIOS_EXTENDED,
     buyFormula: "Low - (Range × (Ratio - 1))",
     sellFormula: "High + (Range × (Ratio - 1))",
     description: "Levels beyond 100% of the range",
@@ -71,7 +77,8 @@ const TYPE_CONFIG = {
     color: "text-pink-400",
     bgColor: "bg-pink-500/10",
     borderColor: "border-pink-500/30",
-    ratios: EXPANSION_RATIOS_BACKEND,
+    backendRatios: EXPANSION_RATIOS_BACKEND,
+    extendedRatios: EXPANSION_RATIOS_EXTENDED,
     buyFormula: "Low + (Range × Ratio)",
     sellFormula: "High - (Range × Ratio)",
     description: "Expansion from pivot point",
@@ -81,7 +88,8 @@ const TYPE_CONFIG = {
     color: "text-teal-400",
     bgColor: "bg-teal-500/10",
     borderColor: "border-teal-500/30",
-    ratios: PROJECTION_RATIOS_BACKEND,
+    backendRatios: PROJECTION_RATIOS_BACKEND,
+    extendedRatios: PROJECTION_RATIOS_EXTENDED,
     buyFormula: "C + (|B-A| × Ratio)",
     sellFormula: "C - (|B-A| × Ratio)",
     description: "AB=CD pattern projection from point C",
@@ -106,11 +114,11 @@ function calculateLevelsForDirection(
   high: number,
   low: number,
   direction: Direction,
+  ratios: number[],
   pointA?: number,
   pointB?: number,
   pointC?: number
 ): CalculatedLevel[] {
-  const typeConfig = TYPE_CONFIG[type];
   const range = high - low;
 
   if (type === "projection") {
@@ -120,14 +128,14 @@ function calculateLevelsForDirection(
     const abRange = Math.abs(b - a);
     const dirMultiplier = direction === "buy" ? 1 : -1;
 
-    return typeConfig.ratios.map((ratio) => ({
+    return ratios.map((ratio) => ({
       ratio,
       price: c + dirMultiplier * abRange * ratio,
       calculation: `${formatPrice(c)} ${dirMultiplier > 0 ? "+" : "-"} (${formatPrice(abRange)} × ${ratio})`,
     }));
   }
 
-  return typeConfig.ratios.map((ratio) => {
+  return ratios.map((ratio) => {
     let price: number;
     let calculation: string;
 
@@ -219,7 +227,7 @@ function DirectionSection({
               <div className="flex text-xs text-muted-foreground font-medium pb-1 border-b">
                 <span className="w-14">Ratio</span>
                 <span className="flex-1 pl-2">Calculation</span>
-                <span className="w-24 text-right">= Price</span>
+                <span className="w-24 text-right text-blue-400">= Price</span>
               </div>
               {levels.map(({ ratio, price, calculation }) => (
                 <div
@@ -232,7 +240,7 @@ function DirectionSection({
                   <span className="flex-1 pl-2 text-xs text-muted-foreground font-mono">
                     {calculation}
                   </span>
-                  <span className="w-24 text-right font-mono font-medium">
+                  <span className="w-24 text-right font-mono font-medium text-blue-400">
                     = {formatPrice(price)}
                   </span>
                 </div>
@@ -243,7 +251,7 @@ function DirectionSection({
             <>
               <div className="flex text-xs text-muted-foreground font-medium pb-1 border-b">
                 <span className="w-14">Ratio</span>
-                <span className="flex-1 text-right">Price</span>
+                <span className="flex-1 text-right text-blue-400">Price</span>
               </div>
               {levels.map(({ ratio, price }) => (
                 <div
@@ -253,7 +261,7 @@ function DirectionSection({
                   <span className={`w-14 font-medium ${typeColor}`}>
                     {(ratio * 100).toFixed(1)}%
                   </span>
-                  <span className="flex-1 text-right font-mono">
+                  <span className="flex-1 text-right font-mono text-blue-400">
                     {formatPrice(price)}
                   </span>
                 </div>
@@ -275,6 +283,7 @@ export function FibonacciCalculationPanel({
   primaryDirection = "buy",
 }: FibonacciCalculationPanelProps) {
   const [isExpanded, setIsExpanded] = useState(expanded);
+  const [showExtended, setShowExtended] = useState(false);
   const [buyMinimized, setBuyMinimized] = useState(primaryDirection === "sell");
   const [sellMinimized, setSellMinimized] = useState(primaryDirection === "buy");
   const typeConfig = TYPE_CONFIG[type];
@@ -283,9 +292,14 @@ export function FibonacciCalculationPanel({
   const { high, low, pointA, pointB, pointC } = activePivots;
   const range = high - low;
 
+  // Get ratios based on whether extended is enabled
+  const ratios = showExtended
+    ? [...typeConfig.backendRatios, ...typeConfig.extendedRatios].sort((a, b) => a - b)
+    : typeConfig.backendRatios;
+
   // Calculate levels for both directions
-  const buyLevels = calculateLevelsForDirection(type, high, low, "buy", pointA, pointB, pointC);
-  const sellLevels = calculateLevelsForDirection(type, high, low, "sell", pointA, pointB, pointC);
+  const buyLevels = calculateLevelsForDirection(type, high, low, "buy", ratios, pointA, pointB, pointC);
+  const sellLevels = calculateLevelsForDirection(type, high, low, "sell", ratios, pointA, pointB, pointC);
 
   const handlePivotChange = (field: keyof FibonacciPivots, value: string) => {
     const numValue = parseFloat(value) || 0;
@@ -315,13 +329,23 @@ export function FibonacciCalculationPanel({
           <CardTitle className={`text-base ${typeConfig.color}`}>
             {typeConfig.title}
           </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            {isExpanded ? "Collapse" : "Expand"}
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant={showExtended ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowExtended(!showExtended)}
+              className="text-xs h-7"
+            >
+              {showExtended ? "All Ratios" : "+ More"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              {isExpanded ? "Collapse" : "Expand"}
+            </Button>
+          </div>
         </div>
         <p className="text-xs text-muted-foreground">{typeConfig.description}</p>
       </CardHeader>
