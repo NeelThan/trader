@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import {
   createChart,
   IChartApi,
@@ -83,6 +83,10 @@ const DARK_THEME: DeepPartial<ChartOptions> = {
   },
 };
 
+// Use layout effect on client, regular effect during SSR
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
 export function CandlestickChart({
   data,
   priceLines = [],
@@ -99,6 +103,16 @@ export function CandlestickChart({
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+
+  // Store latest data/priceLines in refs for access in chart creation effect
+  const dataRef = useRef(data);
+  const priceLinesPropsRef = useRef(priceLines);
+
+  // Update refs in layout effect (runs synchronously before paint)
+  useIsomorphicLayoutEffect(() => {
+    dataRef.current = data;
+    priceLinesPropsRef.current = priceLines;
+  });
 
   // Create chart on mount
   useEffect(() => {
@@ -132,6 +146,25 @@ export function CandlestickChart({
 
     const series = chart.addSeries(CandlestickSeries, seriesOptions);
 
+    // Set initial data from ref
+    if (dataRef.current.length > 0) {
+      series.setData(dataRef.current as CandlestickData[]);
+      chart.timeScale().fitContent();
+    }
+
+    // Set initial price lines from ref
+    priceLinesPropsRef.current.forEach((lineConfig) => {
+      const line = series.createPriceLine({
+        price: lineConfig.price,
+        color: lineConfig.color ?? "#3179F5",
+        lineWidth: lineConfig.lineWidth ?? (1 as LineWidth),
+        lineStyle: lineConfig.lineStyle ?? LineStyle.Dashed,
+        axisLabelVisible: lineConfig.axisLabelVisible ?? true,
+        title: lineConfig.title ?? "",
+      });
+      priceLinesRef.current.push(line);
+    });
+
     chartRef.current = chart;
     seriesRef.current = series;
 
@@ -142,8 +175,10 @@ export function CandlestickChart({
           onCrosshairMove(null, null);
           return;
         }
-        const data = param.seriesData.get(series) as CandlestickData | undefined;
-        onCrosshairMove(data?.close ?? null, param.time);
+        const seriesData = param.seriesData.get(series) as
+          | CandlestickData
+          | undefined;
+        onCrosshairMove(seriesData?.close ?? null, param.time);
       });
     }
 
@@ -192,10 +227,7 @@ export function CandlestickChart({
   // Handle resize with ResizeObserver
   const handleResize = useCallback(() => {
     if (!containerRef.current || !chartRef.current || !autoSize) return;
-    chartRef.current.resize(
-      containerRef.current.clientWidth,
-      height
-    );
+    chartRef.current.resize(containerRef.current.clientWidth, height);
   }, [autoSize, height]);
 
   useEffect(() => {

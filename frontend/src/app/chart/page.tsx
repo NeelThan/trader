@@ -10,10 +10,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { LineStyle } from "lightweight-charts";
 
-// Generate realistic sample OHLC data
-function generateSampleData(days: number = 90): OHLCData[] {
+// Generate Dow Jones-like OHLC data
+function generateDowJonesData(days: number = 90): OHLCData[] {
   const data: OHLCData[] = [];
-  let basePrice = 100;
+  let basePrice = 42500; // Starting price around current DJI levels
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
@@ -24,14 +24,15 @@ function generateSampleData(days: number = 90): OHLCData[] {
     // Skip weekends
     if (date.getDay() === 0 || date.getDay() === 6) continue;
 
-    const volatility = 2 + Math.random() * 3;
+    // DJI typically moves 100-400 points per day
+    const volatility = 150 + Math.random() * 250;
     const trend = Math.random() > 0.48 ? 1 : -1; // Slight bullish bias
 
     const open = basePrice;
-    const change = (Math.random() - 0.5) * volatility + trend * 0.3;
+    const change = (Math.random() - 0.5) * volatility + trend * 30;
     const close = open + change;
-    const high = Math.max(open, close) + Math.random() * volatility * 0.5;
-    const low = Math.min(open, close) - Math.random() * volatility * 0.5;
+    const high = Math.max(open, close) + Math.random() * volatility * 0.3;
+    const low = Math.min(open, close) - Math.random() * volatility * 0.3;
 
     const dateStr = date.toISOString().split("T")[0];
 
@@ -50,7 +51,7 @@ function generateSampleData(days: number = 90): OHLCData[] {
 }
 
 export default function ChartDemoPage() {
-  const [data] = useState(() => generateSampleData(90));
+  const [data] = useState(() => generateDowJonesData(90));
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [showFibonacci, setShowFibonacci] = useState(true);
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
@@ -63,13 +64,23 @@ export default function ChartDemoPage() {
   // Fibonacci retracement levels
   const fibonacciLevels: PriceLine[] = showFibonacci
     ? [
-        { price: high, color: "#6b7280", title: "0%", lineStyle: LineStyle.Dotted },
+        {
+          price: high,
+          color: "#6b7280",
+          title: "0%",
+          lineStyle: LineStyle.Dotted,
+        },
         { price: high - range * 0.236, color: "#9ca3af", title: "23.6%" },
         { price: high - range * 0.382, color: "#f59e0b", title: "38.2%" },
         { price: high - range * 0.5, color: "#8b5cf6", title: "50%" },
         { price: high - range * 0.618, color: "#22c55e", title: "61.8%" },
         { price: high - range * 0.786, color: "#ef4444", title: "78.6%" },
-        { price: low, color: "#6b7280", title: "100%", lineStyle: LineStyle.Dotted },
+        {
+          price: low,
+          color: "#6b7280",
+          title: "100%",
+          lineStyle: LineStyle.Dotted,
+        },
       ]
     : [];
 
@@ -78,6 +89,14 @@ export default function ChartDemoPage() {
   const priceChange = currentPrice - startPrice;
   const percentChange = ((priceChange / startPrice) * 100).toFixed(2);
 
+  // Format price for display (no decimals for large numbers like DJI)
+  const formatDisplayPrice = (price: number) => {
+    return price.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
   return (
     <div className={theme === "dark" ? "dark" : ""}>
       <div className="min-h-screen bg-background text-foreground p-6">
@@ -85,9 +104,9 @@ export default function ChartDemoPage() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold">Chart Demo</h1>
+              <h1 className="text-2xl font-bold">Dow Jones Industrial Average</h1>
               <p className="text-muted-foreground">
-                TradingView Lightweight Charts integration
+                DJI - Simulated 90-day price history
               </p>
             </div>
             <div className="flex gap-2">
@@ -112,12 +131,12 @@ export default function ChartDemoPage() {
           <div className="flex items-center gap-6 p-4 rounded-lg bg-card border">
             <div>
               <span className="text-muted-foreground text-sm">Symbol</span>
-              <p className="text-xl font-bold font-mono">DEMO/USD</p>
+              <p className="text-xl font-bold font-mono">DJI</p>
             </div>
             <div>
               <span className="text-muted-foreground text-sm">Price</span>
               <p className="text-xl font-bold font-mono">
-                {crosshairPrice?.toFixed(2) ?? currentPrice.toFixed(2)}
+                {formatDisplayPrice(crosshairPrice ?? currentPrice)}
               </p>
             </div>
             <div>
@@ -128,7 +147,7 @@ export default function ChartDemoPage() {
                 }`}
               >
                 {priceChange >= 0 ? "+" : ""}
-                {priceChange.toFixed(2)} ({percentChange}%)
+                {formatDisplayPrice(priceChange)} ({percentChange}%)
               </p>
             </div>
             <div className="ml-auto">
@@ -156,7 +175,9 @@ export default function ChartDemoPage() {
           {/* Fibonacci Levels Panel */}
           {showFibonacci && (
             <div className="p-4 rounded-lg bg-card border">
-              <h2 className="font-semibold mb-3">Fibonacci Retracement Levels</h2>
+              <h2 className="font-semibold mb-3">
+                Fibonacci Retracement Levels
+              </h2>
               <FibonacciLevels
                 direction="sell"
                 highPrice={high}
