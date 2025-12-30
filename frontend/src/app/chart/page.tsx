@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { CandlestickChart, ChartType } from "@/components/trading";
+import { useState, useEffect, useRef } from "react";
+import { CandlestickChart, CandlestickChartHandle, ChartType } from "@/components/trading";
 import { useSettings, COLOR_SCHEMES, ColorScheme, DEFAULT_SETTINGS } from "@/hooks/use-settings";
 import { useMarketData } from "@/hooks/use-market-data";
 import { usePivotAnalysis } from "@/hooks/use-pivot-analysis";
@@ -14,6 +14,7 @@ import {
 import {
   ChartControls,
   ChartHeader,
+  ChartToolbar,
   DataSourceSelector,
   FibonacciControls,
   FibonacciLevelsPanel,
@@ -25,6 +26,7 @@ import {
 
 export default function ChartDemoPage() {
   const { settings } = useSettings();
+  const chartRef = useRef<CandlestickChartHandle>(null);
 
   // Initialize state with defaults (same as DEFAULT_SETTINGS to prevent hydration mismatch)
   const [symbol, setSymbol] = useState<MarketSymbol>("DJI");
@@ -230,19 +232,27 @@ export default function ChartDemoPage() {
             timeframe={timeframe}
           />
 
-          {/* Chart */}
-          <div className="rounded-lg border overflow-hidden">
-            <CandlestickChart
-              data={data}
-              priceLines={priceLines}
-              lineOverlays={lineOverlays}
-              chartType={chartType}
-              height={500}
-              theme={theme}
-              upColor={upColor}
-              downColor={downColor}
-              onCrosshairMove={(price) => setCrosshairPrice(price)}
+          {/* Chart with Toolbar */}
+          <div className="space-y-2">
+            <ChartToolbar
+              onZoomIn={() => chartRef.current?.zoomIn()}
+              onZoomOut={() => chartRef.current?.zoomOut()}
+              onResetView={() => chartRef.current?.resetView()}
             />
+            <div className="rounded-lg border overflow-hidden">
+              <CandlestickChart
+                ref={chartRef}
+                data={data}
+                priceLines={priceLines}
+                lineOverlays={lineOverlays}
+                chartType={chartType}
+                height={500}
+                theme={theme}
+                upColor={upColor}
+                downColor={downColor}
+                onCrosshairMove={(price) => setCrosshairPrice(price)}
+              />
+            </div>
           </div>
 
           {/* Fibonacci Levels Panel */}

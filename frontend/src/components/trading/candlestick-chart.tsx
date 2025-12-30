@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import { useRef, useEffect, useCallback, useLayoutEffect, useImperativeHandle, forwardRef } from "react";
 import {
   createChart,
   IChartApi,
@@ -64,6 +64,12 @@ export type CandlestickChartProps = {
   downColor?: string;
   className?: string;
   onCrosshairMove?: (price: number | null, time: Time | null) => void;
+};
+
+export type CandlestickChartHandle = {
+  resetView: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
 };
 
 const LIGHT_THEME: DeepPartial<ChartOptions> = {
@@ -141,25 +147,66 @@ function calculateHeikinAshi(data: OHLCData[]): OHLCData[] {
   return result;
 }
 
-export function CandlestickChart({
-  data,
-  priceLines = [],
-  lineOverlays = [],
-  chartType = "candlestick",
-  width,
-  height = 400,
-  autoSize = true,
-  theme = "dark",
-  upColor = "#22c55e",
-  downColor = "#ef4444",
-  className,
-  onCrosshairMove,
-}: CandlestickChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Bar"> | null>(null);
-  const lineSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
-  const priceLinesRef = useRef<IPriceLine[]>([]);
+export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickChartProps>(
+  function CandlestickChart(
+    {
+      data,
+      priceLines = [],
+      lineOverlays = [],
+      chartType = "candlestick",
+      width,
+      height = 400,
+      autoSize = true,
+      theme = "dark",
+      upColor = "#22c55e",
+      downColor = "#ef4444",
+      className,
+      onCrosshairMove,
+    },
+    ref
+  ) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const chartRef = useRef<IChartApi | null>(null);
+    const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Bar"> | null>(null);
+    const lineSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
+    const priceLinesRef = useRef<IPriceLine[]>([]);
+
+    // Expose chart control methods via ref
+    useImperativeHandle(ref, () => ({
+      resetView: () => {
+        chartRef.current?.timeScale().fitContent();
+      },
+      zoomIn: () => {
+        const timeScale = chartRef.current?.timeScale();
+        if (timeScale) {
+          const visibleRange = timeScale.getVisibleLogicalRange();
+          if (visibleRange) {
+            const rangeSize = visibleRange.to - visibleRange.from;
+            const center = (visibleRange.from + visibleRange.to) / 2;
+            const newRangeSize = rangeSize * 0.7; // Zoom in by 30%
+            timeScale.setVisibleLogicalRange({
+              from: center - newRangeSize / 2,
+              to: center + newRangeSize / 2,
+            });
+          }
+        }
+      },
+      zoomOut: () => {
+        const timeScale = chartRef.current?.timeScale();
+        if (timeScale) {
+          const visibleRange = timeScale.getVisibleLogicalRange();
+          if (visibleRange) {
+            const rangeSize = visibleRange.to - visibleRange.from;
+            const center = (visibleRange.from + visibleRange.to) / 2;
+            const newRangeSize = rangeSize * 1.4; // Zoom out by 40%
+            timeScale.setVisibleLogicalRange({
+              from: center - newRangeSize / 2,
+              to: center + newRangeSize / 2,
+            });
+          }
+        }
+      },
+    }));
 
   // Store latest data/priceLines/lineOverlays in refs for access in chart creation effect
   const dataRef = useRef(data);
@@ -364,11 +411,12 @@ export function CandlestickChart({
     };
   }, [autoSize, handleResize]);
 
-  return (
-    <div
-      ref={containerRef}
-      className={cn("w-full", className)}
-      style={{ height }}
-    />
-  );
-}
+    return (
+      <div
+        ref={containerRef}
+        className={cn("w-full", className)}
+        style={{ height }}
+      />
+    );
+  }
+);

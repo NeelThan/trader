@@ -28,6 +28,7 @@ export type { DirectionToggleProps } from "./direction-toggle";
 export { CandlestickChart } from "./candlestick-chart";
 export type {
   CandlestickChartProps,
+  CandlestickChartHandle,
   OHLCData,
   PriceLine,
   LineOverlay,

@@ -1,5 +1,6 @@
 export { ChartControls } from "./ChartControls";
 export { ChartHeader } from "./ChartHeader";
+export { ChartToolbar } from "./ChartToolbar";
 export { DataSourceSelector } from "./DataSourceSelector";
 export { FibonacciControls } from "./FibonacciControls";
 export { FibonacciLevelsPanel } from "./FibonacciLevelsPanel";
