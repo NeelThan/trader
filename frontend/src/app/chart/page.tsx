@@ -21,10 +21,12 @@ import {
   DataSourceSelector,
   FibonacciControls,
   FibonacciCalculationsPanel,
+  HarmonicPatternPanel,
   MarketSelector,
   PivotPointsPanel,
   PriceSummary,
   RefreshStatus,
+  SignalDetectionPanel,
   type AllFibonacciConfigs,
   type FibonacciPivots,
 } from "@/components/chart";
@@ -358,6 +360,21 @@ export default function ChartDemoPage() {
             configs={fibConfigs}
             autoDetectedPivots={autoDetectedPivots}
             onConfigsChange={setFibConfigs}
+          />
+
+          {/* Signal Detection Panel */}
+          <SignalDetectionPanel
+            data={data}
+            fibonacciLevels={priceLines.map((line) => line.price)}
+            enabled={useBackendAPI}
+          />
+
+          {/* Harmonic Pattern Panel */}
+          <HarmonicPatternPanel
+            enabled={useBackendAPI}
+            defaultX={pivotA?.price}
+            defaultA={pivotB?.price}
+            defaultB={pivotC?.price}
           />
         </div>
       </div>

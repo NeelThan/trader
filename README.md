@@ -155,7 +155,7 @@ Position Size = Risk Capital / (Entry Price - Stop Loss Price)
 5. ✅ Frontend with TradingView Lightweight Charts
 6. ✅ Yahoo Finance market data integration
 7. ✅ Auto-refresh with market status display
-8. ⬜ Connect frontend to backend API for Fibonacci/signals
+8. ✅ Connect frontend to backend API for Fibonacci/signals
 9. ⬜ Real-time pattern scanner
 10. ⬜ Broker integration
 
