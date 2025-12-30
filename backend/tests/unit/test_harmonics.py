@@ -14,7 +14,10 @@ from trader.harmonics import (
 
 @dataclass(frozen=True)
 class PatternCase:
-    """Test case for pattern validation."""
+    """Test case for pattern validation.
+
+    Encapsulates test data and provides conversion to domain objects.
+    """
 
     x: float
     a: float
@@ -24,15 +27,9 @@ class PatternCase:
     expected_type: PatternType
     expected_direction: str
 
-
-@dataclass(frozen=True)
-class ReversalZoneCase:
-    """Test case for reversal zone calculation."""
-
-    x: float
-    a: float
-    expected_d_level: float
-    expected_direction: str
+    def to_points(self) -> PatternPoints:
+        """Convert test case to PatternPoints domain object."""
+        return PatternPoints(x=self.x, a=self.a, b=self.b, c=self.c, d=self.d)
 
 
 class TestPatternValidation:
@@ -67,10 +64,7 @@ class TestPatternValidation:
     )
     def test_valid_pattern_detected(self, case: PatternCase) -> None:
         """Validate that correct pattern type and direction are detected."""
-        points = PatternPoints(
-            x=case.x, a=case.a, b=case.b, c=case.c, d=case.d
-        )
-        pattern = validate_pattern(points)
+        pattern = validate_pattern(case.to_points())
 
         assert pattern is not None
         assert pattern.pattern_type == case.expected_type
@@ -92,27 +86,23 @@ class TestReversalZoneCalculation:
     """Tests for reversal zone calculation."""
 
     @pytest.mark.parametrize(
-        "case",
+        ("x", "a", "expected_d", "expected_dir"),
         [
-            pytest.param(
-                ReversalZoneCase(100.0, 50.0, 60.7, "buy"),
-                id="bullish_gartley",
-            ),
-            pytest.param(
-                ReversalZoneCase(50.0, 100.0, 89.3, "sell"),
-                id="bearish_gartley",
-            ),
+            pytest.param(100.0, 50.0, 60.7, "buy", id="bullish_gartley"),
+            pytest.param(50.0, 100.0, 89.3, "sell", id="bearish_gartley"),
         ],
     )
-    def test_calculate_reversal_zone(self, case: ReversalZoneCase) -> None:
+    def test_calculate_reversal_zone(
+        self, x: float, a: float, expected_d: float, expected_dir: str
+    ) -> None:
         """Calculate potential D point for Gartley pattern."""
         reversal_zone = calculate_reversal_zone(
-            x=case.x, a=case.a, pattern_type=PatternType.GARTLEY
+            x=x, a=a, pattern_type=PatternType.GARTLEY
         )
 
         assert reversal_zone is not None
-        assert reversal_zone.d_level == pytest.approx(case.expected_d_level, rel=0.01)
-        assert reversal_zone.direction == case.expected_direction
+        assert reversal_zone.d_level == pytest.approx(expected_d, rel=0.01)
+        assert reversal_zone.direction == expected_dir
 
 
 class TestEdgeCases:

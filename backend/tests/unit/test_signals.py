@@ -1,5 +1,9 @@
 """Tests for signal bar detection."""
 
+from dataclasses import dataclass
+
+import pytest
+
 from trader.signals import (
     Bar,
     SignalType,
@@ -7,119 +11,194 @@ from trader.signals import (
 )
 
 
+@dataclass(frozen=True)
+class SignalCase:
+    """Test case for signal detection.
+
+    Attributes:
+        bar: The OHLC bar to test
+        level: Fibonacci level to test against
+        expected_direction: Expected signal direction ("buy" or "sell")
+    """
+
+    bar: Bar
+    level: float
+    expected_direction: str
+
+
+@dataclass(frozen=True)
+class NoSignalCase:
+    """Test case for scenarios that should not produce a signal.
+
+    Attributes:
+        bar: The OHLC bar to test
+        level: Fibonacci level to test against
+        description: Brief explanation of why no signal expected
+    """
+
+    bar: Bar
+    level: float
+    description: str
+
+
+@dataclass(frozen=True)
+class SignalTypeCase:
+    """Test case for signal type classification.
+
+    Attributes:
+        bar: The OHLC bar to test
+        level: Fibonacci level to test against
+        expected_type: Expected signal type (TYPE_1 or TYPE_2)
+        expected_direction: Expected signal direction
+    """
+
+    bar: Bar
+    level: float
+    expected_type: SignalType
+    expected_direction: str
+
+
 class TestSignalDetection:
-    """Tests for signal bar detection at Fibonacci levels."""
+    """Tests for signal bar detection at Fibonacci levels.
 
-    def test_buy_signal_bullish_bar_above_level(self) -> None:
-        """
-        BUY signal when:
-        - Close > Open (bullish)
-        - Close > Fibonacci level
-        """
-        bar = Bar(open=60.0, high=72.0, low=58.0, close=70.0)
-        fibonacci_level = 65.0
+    BUY signal: Close > Open (bullish) AND Close > Fibonacci level
+    SELL signal: Close < Open (bearish) AND Close < Fibonacci level
+    """
 
-        signal = detect_signal(bar=bar, fibonacci_level=fibonacci_level)
+    @pytest.mark.parametrize(
+        "case",
+        [
+            pytest.param(
+                SignalCase(
+                    Bar(open=60.0, high=72.0, low=58.0, close=70.0),
+                    65.0,
+                    "buy",
+                ),
+                id="buy_bullish_bar_above_level",
+            ),
+            pytest.param(
+                SignalCase(
+                    Bar(open=70.0, high=72.0, low=58.0, close=60.0),
+                    65.0,
+                    "sell",
+                ),
+                id="sell_bearish_bar_below_level",
+            ),
+        ],
+    )
+    def test_signal_detected(self, case: SignalCase) -> None:
+        """Verify signal is detected with correct direction."""
+        signal = detect_signal(bar=case.bar, fibonacci_level=case.level)
 
         assert signal is not None
-        assert signal.direction == "buy"
-        assert signal.bar == bar
-        assert signal.level == fibonacci_level
+        assert signal.direction == case.expected_direction
+        assert signal.bar == case.bar
+        assert signal.level == case.level
 
-    def test_sell_signal_bearish_bar_below_level(self) -> None:
-        """
-        SELL signal when:
-        - Close < Open (bearish)
-        - Close < Fibonacci level
-        """
-        bar = Bar(open=70.0, high=72.0, low=58.0, close=60.0)
-        fibonacci_level = 65.0
-
-        signal = detect_signal(bar=bar, fibonacci_level=fibonacci_level)
-
-        assert signal is not None
-        assert signal.direction == "sell"
-
-    def test_no_signal_bullish_bar_below_level(self) -> None:
-        """No BUY signal if bullish bar closes below Fib level."""
-        bar = Bar(open=60.0, high=68.0, low=58.0, close=63.0)
-        fibonacci_level = 65.0  # Close (63) is below level (65)
-
-        signal = detect_signal(bar=bar, fibonacci_level=fibonacci_level)
-
-        assert signal is None
-
-    def test_no_signal_bearish_bar_above_level(self) -> None:
-        """No SELL signal if bearish bar closes above Fib level."""
-        bar = Bar(open=70.0, high=72.0, low=66.0, close=67.0)
-        fibonacci_level = 65.0  # Close (67) is above level (65)
-
-        signal = detect_signal(bar=bar, fibonacci_level=fibonacci_level)
-
-        assert signal is None
-
-    def test_no_signal_doji_bar(self) -> None:
-        """No signal on doji (open == close)."""
-        bar = Bar(open=65.0, high=70.0, low=60.0, close=65.0)
-        fibonacci_level = 65.0
-
-        signal = detect_signal(bar=bar, fibonacci_level=fibonacci_level)
+    @pytest.mark.parametrize(
+        "case",
+        [
+            pytest.param(
+                NoSignalCase(
+                    Bar(open=60.0, high=68.0, low=58.0, close=63.0),
+                    65.0,
+                    "bullish bar closes below level",
+                ),
+                id="bullish_bar_below_level",
+            ),
+            pytest.param(
+                NoSignalCase(
+                    Bar(open=70.0, high=72.0, low=66.0, close=67.0),
+                    65.0,
+                    "bearish bar closes above level",
+                ),
+                id="bearish_bar_above_level",
+            ),
+            pytest.param(
+                NoSignalCase(
+                    Bar(open=65.0, high=70.0, low=60.0, close=65.0),
+                    65.0,
+                    "doji bar (open == close)",
+                ),
+                id="doji_bar",
+            ),
+        ],
+    )
+    def test_no_signal(self, case: NoSignalCase) -> None:
+        """Verify no signal when conditions are not met."""
+        signal = detect_signal(bar=case.bar, fibonacci_level=case.level)
 
         assert signal is None
 
 
 class TestSignalType:
-    """Tests for signal type classification (Type 1 vs Type 2)."""
+    """Tests for signal type classification (Type 1 vs Type 2).
 
-    def test_type1_buy_level_tested_and_rejected(self) -> None:
-        """
-        Type 1 BUY (stronger): Low penetrates level, close above.
-        Level was tested and rejected.
-        """
-        bar = Bar(open=66.0, high=72.0, low=63.0, close=70.0)
-        fibonacci_level = 65.0  # Low (63) went below level, close (70) above
+    Type 1 (stronger): Price penetrates level then reverses (tested & rejected)
+    Type 2: Price closes beyond level without testing it
+    """
 
-        signal = detect_signal(bar=bar, fibonacci_level=fibonacci_level)
-
-        assert signal is not None
-        assert signal.signal_type == SignalType.TYPE_1
-
-    def test_type2_buy_no_level_test(self) -> None:
-        """
-        Type 2 BUY: Close above level but low didn't test it.
-        """
-        bar = Bar(open=66.0, high=72.0, low=66.0, close=70.0)
-        fibonacci_level = 65.0  # Low (66) stayed above level
-
-        signal = detect_signal(bar=bar, fibonacci_level=fibonacci_level)
-
-        assert signal is not None
-        assert signal.signal_type == SignalType.TYPE_2
-
-    def test_type1_sell_level_tested_and_rejected(self) -> None:
-        """
-        Type 1 SELL (stronger): High penetrates level, close below.
-        Level was tested and rejected.
-        """
-        bar = Bar(open=64.0, high=67.0, low=58.0, close=60.0)
-        fibonacci_level = 65.0  # High (67) went above level, close (60) below
-
-        signal = detect_signal(bar=bar, fibonacci_level=fibonacci_level)
+    @pytest.mark.parametrize(
+        "case",
+        [
+            pytest.param(
+                SignalTypeCase(
+                    Bar(open=66.0, high=72.0, low=63.0, close=70.0),
+                    65.0,
+                    SignalType.TYPE_1,
+                    "buy",
+                ),
+                id="type1_buy_level_tested_and_rejected",
+            ),
+            pytest.param(
+                SignalTypeCase(
+                    Bar(open=64.0, high=67.0, low=58.0, close=60.0),
+                    65.0,
+                    SignalType.TYPE_1,
+                    "sell",
+                ),
+                id="type1_sell_level_tested_and_rejected",
+            ),
+        ],
+    )
+    def test_type1_level_tested_and_rejected(self, case: SignalTypeCase) -> None:
+        """Verify Type 1 signal when level is penetrated then rejected."""
+        signal = detect_signal(bar=case.bar, fibonacci_level=case.level)
 
         assert signal is not None
-        assert signal.signal_type == SignalType.TYPE_1
+        assert signal.signal_type == case.expected_type
+        assert signal.direction == case.expected_direction
 
-    def test_type2_sell_no_level_test(self) -> None:
-        """
-        Type 2 SELL: Close below level but high didn't test it.
-        """
-        bar = Bar(open=64.0, high=64.0, low=58.0, close=60.0)
-        fibonacci_level = 65.0  # High (64) stayed below level
-
-        signal = detect_signal(bar=bar, fibonacci_level=fibonacci_level)
+    @pytest.mark.parametrize(
+        "case",
+        [
+            pytest.param(
+                SignalTypeCase(
+                    Bar(open=66.0, high=72.0, low=66.0, close=70.0),
+                    65.0,
+                    SignalType.TYPE_2,
+                    "buy",
+                ),
+                id="type2_buy_no_level_test",
+            ),
+            pytest.param(
+                SignalTypeCase(
+                    Bar(open=64.0, high=64.0, low=58.0, close=60.0),
+                    65.0,
+                    SignalType.TYPE_2,
+                    "sell",
+                ),
+                id="type2_sell_no_level_test",
+            ),
+        ],
+    )
+    def test_type2_no_level_test(self, case: SignalTypeCase) -> None:
+        """Verify Type 2 signal when level is not tested."""
+        signal = detect_signal(bar=case.bar, fibonacci_level=case.level)
 
         assert signal is not None
-        assert signal.signal_type == SignalType.TYPE_2
+        assert signal.signal_type == case.expected_type
+        assert signal.direction == case.expected_direction
 
 
 class TestSignalStrength:
