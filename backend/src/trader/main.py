@@ -11,7 +11,7 @@ from trader.fibonacci import (
     calculate_projection_levels,
     calculate_retracement_levels,
 )
-from trader.harmonics import PatternType, calculate_prd, validate_pattern
+from trader.harmonics import PatternType, calculate_reversal_zone, validate_pattern
 from trader.signals import Bar, detect_signal
 
 app = FastAPI(
@@ -266,7 +266,7 @@ async def harmonic_reversal_zone(request: ReversalZoneRequest) -> ReversalZoneRe
         "crab": PatternType.CRAB,
     }
 
-    reversal_zone = calculate_prd(
+    reversal_zone = calculate_reversal_zone(
         x=request.x,
         a=request.a,
         b=request.b,

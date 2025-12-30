@@ -4,7 +4,7 @@ import pytest
 
 from trader.harmonics import (
     PatternType,
-    calculate_prd,
+    calculate_reversal_zone,
     validate_pattern,
 )
 
@@ -152,12 +152,12 @@ class TestNoPattern:
         assert pattern is None
 
 
-class TestPRDCalculation:
-    """Tests for Potential Reversal Zone (PRD) calculation."""
+class TestReversalZoneCalculation:
+    """Tests for reversal zone calculation."""
 
-    def test_calculate_gartley_prd(self) -> None:
+    def test_calculate_gartley_reversal_zone(self) -> None:
         """Calculate potential D point for Gartley pattern."""
-        prd = calculate_prd(
+        reversal_zone = calculate_reversal_zone(
             x=100.0,
             a=50.0,
             b=80.9,
@@ -165,13 +165,13 @@ class TestPRDCalculation:
             pattern_type=PatternType.GARTLEY,
         )
 
-        assert prd is not None
-        assert prd.d_level == pytest.approx(60.7, rel=0.01)
-        assert prd.direction == "buy"
+        assert reversal_zone is not None
+        assert reversal_zone.d_level == pytest.approx(60.7, rel=0.01)
+        assert reversal_zone.direction == "buy"
 
-    def test_calculate_bearish_prd(self) -> None:
+    def test_calculate_bearish_reversal_zone(self) -> None:
         """Calculate potential D point for bearish pattern."""
-        prd = calculate_prd(
+        reversal_zone = calculate_reversal_zone(
             x=50.0,
             a=100.0,
             b=69.1,
@@ -179,9 +179,9 @@ class TestPRDCalculation:
             pattern_type=PatternType.GARTLEY,
         )
 
-        assert prd is not None
-        assert prd.d_level == pytest.approx(89.3, rel=0.01)
-        assert prd.direction == "sell"
+        assert reversal_zone is not None
+        assert reversal_zone.d_level == pytest.approx(89.3, rel=0.01)
+        assert reversal_zone.direction == "sell"
 
 
 class TestEdgeCases:
