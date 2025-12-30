@@ -1,18 +1,37 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import Link from "next/link";
 import {
   CandlestickChart,
   OHLCData,
   PriceLine,
+  LineOverlay,
+  ChartType,
   FibonacciLevels,
 } from "@/components/trading";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LineStyle } from "lightweight-charts";
+import { useSettings } from "@/hooks/use-settings";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 type Timeframe = "1m" | "15m" | "1H" | "4H" | "1D" | "1W" | "1M";
+type MarketSymbol = "DJI" | "SPX" | "NDX" | "BTCUSD" | "EURUSD" | "GOLD";
+type DataSource = "simulated" | "yahoo";
+
+const MARKET_CONFIG: Record<
+  MarketSymbol,
+  { name: string; basePrice: number; volatilityMultiplier: number }
+> = {
+  DJI: { name: "Dow Jones Industrial Average", basePrice: 42500, volatilityMultiplier: 1 },
+  SPX: { name: "S&P 500", basePrice: 5950, volatilityMultiplier: 0.15 },
+  NDX: { name: "Nasdaq 100", basePrice: 21200, volatilityMultiplier: 0.5 },
+  BTCUSD: { name: "Bitcoin / USD", basePrice: 95000, volatilityMultiplier: 2.5 },
+  EURUSD: { name: "Euro / US Dollar", basePrice: 1.04, volatilityMultiplier: 0.00005 },
+  GOLD: { name: "Gold", basePrice: 2620, volatilityMultiplier: 0.08 },
+};
 
 const TIMEFRAME_CONFIG: Record<
   Timeframe,
@@ -66,13 +85,14 @@ const FIB_COLORS = {
   projection: "#14b8a6",
 };
 
-// Detect swing highs and lows (pivot points)
+// Detect swing highs and lows (pivot points) with alternating high-low pattern
 function detectPivotPoints(
   data: OHLCData[],
   lookback: number = 5
 ): PivotPoint[] {
-  const pivots: PivotPoint[] = [];
+  const rawPivots: PivotPoint[] = [];
 
+  // First pass: find all potential swing highs and lows
   for (let i = lookback; i < data.length - lookback; i++) {
     const currentHigh = data[i].high;
     const currentLow = data[i].low;
@@ -86,7 +106,7 @@ function detectPivotPoints(
       }
     }
     if (isSwingHigh) {
-      pivots.push({ index: i, price: currentHigh, type: "high" });
+      rawPivots.push({ index: i, price: currentHigh, type: "high" });
     }
 
     // Check for swing low
@@ -98,20 +118,53 @@ function detectPivotPoints(
       }
     }
     if (isSwingLow) {
-      pivots.push({ index: i, price: currentLow, type: "low" });
+      rawPivots.push({ index: i, price: currentLow, type: "low" });
     }
   }
 
-  return pivots.sort((a, b) => a.index - b.index);
+  // Sort by index
+  rawPivots.sort((a, b) => a.index - b.index);
+
+  // Second pass: ensure alternating high-low pattern
+  // When consecutive same types, keep the most extreme one
+  const alternatingPivots: PivotPoint[] = [];
+
+  for (const pivot of rawPivots) {
+    if (alternatingPivots.length === 0) {
+      alternatingPivots.push(pivot);
+      continue;
+    }
+
+    const lastPivot = alternatingPivots[alternatingPivots.length - 1];
+
+    if (pivot.type !== lastPivot.type) {
+      // Different type - good, add it
+      alternatingPivots.push(pivot);
+    } else {
+      // Same type - keep the more extreme one
+      if (pivot.type === "high" && pivot.price > lastPivot.price) {
+        // New high is higher, replace
+        alternatingPivots[alternatingPivots.length - 1] = pivot;
+      } else if (pivot.type === "low" && pivot.price < lastPivot.price) {
+        // New low is lower, replace
+        alternatingPivots[alternatingPivots.length - 1] = pivot;
+      }
+      // Otherwise keep the existing one
+    }
+  }
+
+  return alternatingPivots;
 }
 
-// Generate Dow Jones-like OHLC data for different timeframes
-function generateDowJonesData(
+// Generate OHLC data for different markets and timeframes
+function generateMarketData(
+  symbol: MarketSymbol,
   timeframe: Timeframe,
   periods: number
 ): OHLCData[] {
   const data: OHLCData[] = [];
-  let basePrice = 42500;
+  const marketConfig = MARKET_CONFIG[symbol];
+  let basePrice = marketConfig.basePrice;
 
   const volatilityMap: Record<Timeframe, number> = {
     "1m": 10,
@@ -122,7 +175,7 @@ function generateDowJonesData(
     "1W": 500,
     "1M": 1500,
   };
-  const baseVolatility = volatilityMap[timeframe];
+  const baseVolatility = volatilityMap[timeframe] * marketConfig.volatilityMultiplier;
 
   const intervalMap: Record<Timeframe, number> = {
     "1m": 60 * 1000,
@@ -177,15 +230,22 @@ function generateDowJonesData(
 }
 
 export default function ChartDemoPage() {
-  const [timeframe, setTimeframe] = useState<Timeframe>("1D");
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
-  const [fibVisibility, setFibVisibility] = useState<FibonacciVisibility>({
-    retracement: true,
-    extension: true,
-    expansion: true,
-    projection: true,
-  });
-  const [showPivots, setShowPivots] = useState(true);
+  const { settings } = useSettings();
+
+  // Initialize state from settings (settings are loaded via lazy init)
+  const [symbol, setSymbol] = useState<MarketSymbol>(() => settings.defaultSymbol);
+  const [timeframe, setTimeframe] = useState<Timeframe>(() => settings.defaultTimeframe);
+  const [chartType, setChartType] = useState<ChartType>(() => settings.chartType);
+  const [dataSource, setDataSource] = useState<DataSource>("simulated");
+  const [theme, setTheme] = useState<"light" | "dark">(() => settings.theme);
+  const [fibVisibility, setFibVisibility] = useState<FibonacciVisibility>(() => ({
+    retracement: settings.fibRetracement,
+    extension: settings.fibExtension,
+    expansion: settings.fibExpansion,
+    projection: settings.fibProjection,
+  }));
+  const [showPivots, setShowPivots] = useState(() => settings.showPivots);
+  const [showPivotLines, setShowPivotLines] = useState(() => settings.showPivotLines);
   const [useManualPivots, setUseManualPivots] = useState(false);
   const [manualHigh, setManualHigh] = useState<string>("");
   const [manualLow, setManualLow] = useState<string>("");
@@ -193,13 +253,34 @@ export default function ChartDemoPage() {
 
   const data = useMemo(() => {
     const config = TIMEFRAME_CONFIG[timeframe];
-    return generateDowJonesData(timeframe, config.periods);
-  }, [timeframe]);
+    return generateMarketData(symbol, timeframe, config.periods);
+  }, [symbol, timeframe]);
 
   // Detect pivot points
   const pivotPoints = useMemo(() => detectPivotPoints(data, 5), [data]);
 
-  // Get the most significant swing high and low for Fibonacci
+  // Get the recent pivot points (last 5) for Fibonacci calculations
+  // n-1 is the most recent pivot, going back ~5 pivots
+  const recentPivots = useMemo(() => {
+    if (pivotPoints.length <= 5) return pivotPoints;
+    return pivotPoints.slice(-5); // Last 5 pivot points
+  }, [pivotPoints]);
+
+  // Get A-B-C pivot points for projection (last 3 alternating pivots)
+  const { pivotA, pivotB, pivotC } = useMemo(() => {
+    if (recentPivots.length < 3) {
+      return { pivotA: null, pivotB: null, pivotC: null };
+    }
+    // Get last 3 pivots for A-B-C pattern
+    const lastThree = recentPivots.slice(-3);
+    return {
+      pivotA: lastThree[0],
+      pivotB: lastThree[1],
+      pivotC: lastThree[2],
+    };
+  }, [recentPivots]);
+
+  // Get the high and low from recent pivots for Fibonacci
   const { high, low, pivotHigh, pivotLow } = useMemo(() => {
     if (useManualPivots) {
       const manualHighVal = parseFloat(manualHigh) || 0;
@@ -212,17 +293,17 @@ export default function ChartDemoPage() {
       };
     }
 
-    // Find the highest swing high and lowest swing low
-    const swingHighs = pivotPoints.filter((p) => p.type === "high");
-    const swingLows = pivotPoints.filter((p) => p.type === "low");
+    // Use only recent pivots (last 5) for Fibonacci
+    const recentHighs = recentPivots.filter((p) => p.type === "high");
+    const recentLows = recentPivots.filter((p) => p.type === "low");
 
     const pivotHigh =
-      swingHighs.length > 0
-        ? swingHighs.reduce((max, p) => (p.price > max.price ? p : max))
+      recentHighs.length > 0
+        ? recentHighs.reduce((max, p) => (p.price > max.price ? p : max))
         : null;
     const pivotLow =
-      swingLows.length > 0
-        ? swingLows.reduce((min, p) => (p.price < min.price ? p : min))
+      recentLows.length > 0
+        ? recentLows.reduce((min, p) => (p.price < min.price ? p : min))
         : null;
 
     return {
@@ -231,7 +312,7 @@ export default function ChartDemoPage() {
       pivotHigh,
       pivotLow,
     };
-  }, [data, pivotPoints, useManualPivots, manualHigh, manualLow]);
+  }, [data, recentPivots, useManualPivots, manualHigh, manualLow]);
 
   const range = high - low;
   const currentPrice = data[data.length - 1]?.close ?? high;
@@ -294,10 +375,15 @@ export default function ChartDemoPage() {
       });
     }
 
-    // Projection levels
-    if (fibVisibility.projection) {
+    // Projection levels (using A-B-C pattern)
+    // A-B defines the range, C is the starting point for projection
+    if (fibVisibility.projection && pivotA && pivotB && pivotC) {
+      const abRange = Math.abs(pivotB.price - pivotA.price);
+      // Direction: if C is a low, project up; if C is a high, project down
+      const direction = pivotC.type === "low" ? 1 : -1;
+
       PROJECTION_RATIOS.forEach((ratio) => {
-        const price = currentPrice + range * ratio;
+        const price = pivotC.price + direction * abRange * ratio;
         lines.push({
           price,
           color: FIB_COLORS.projection,
@@ -313,11 +399,35 @@ export default function ChartDemoPage() {
     high,
     low,
     range,
-    currentPrice,
     showPivots,
     pivotPoints,
     useManualPivots,
+    pivotA,
+    pivotB,
+    pivotC,
   ]);
+
+  // Build line overlays to connect recent pivot points
+  const lineOverlays: LineOverlay[] = useMemo(() => {
+    if (!showPivotLines || useManualPivots || recentPivots.length < 2) {
+      return [];
+    }
+
+    // Create line data connecting recent pivot points in sequence
+    const lineData = recentPivots.map((pivot) => ({
+      time: data[pivot.index].time,
+      value: pivot.price,
+    }));
+
+    return [
+      {
+        data: lineData,
+        color: "#f59e0b",
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+      },
+    ];
+  }, [showPivotLines, useManualPivots, recentPivots, data]);
 
   const startPrice = data[0]?.open ?? 0;
   const priceChange = currentPrice - startPrice;
@@ -360,45 +470,110 @@ export default function ChartDemoPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold">
-                Dow Jones Industrial Average
+                {MARKET_CONFIG[symbol].name}
               </h1>
               <p className="text-muted-foreground">
-                DJI - {TIMEFRAME_CONFIG[timeframe].description}
+                {symbol} - {TIMEFRAME_CONFIG[timeframe].description}
               </p>
             </div>
             <div className="flex gap-2">
-              <Button
-                variant={theme === "dark" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTheme("dark")}
-              >
-                Dark
-              </Button>
-              <Button
-                variant={theme === "light" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTheme("light")}
-              >
-                Light
-              </Button>
+              <Link href="/settings">
+                <Button variant="outline" size="sm">
+                  Settings
+                </Button>
+              </Link>
+              <Link href="/tradingview">
+                <Button variant="outline" size="sm">
+                  TradingView
+                </Button>
+              </Link>
+              <ThemeToggle
+                theme={theme}
+                onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+              />
             </div>
           </div>
 
-          {/* Timeframe Selection */}
+          {/* Data Source Selection */}
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground mr-2">
-              Timeframe:
-            </span>
-            {(Object.keys(TIMEFRAME_CONFIG) as Timeframe[]).map((tf) => (
+            <span className="text-sm text-muted-foreground mr-2">Data Source:</span>
+            <Button
+              variant={dataSource === "simulated" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDataSource("simulated")}
+            >
+              Simulated
+            </Button>
+            <Button
+              variant={dataSource === "yahoo" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDataSource("yahoo")}
+              disabled
+              title="Yahoo Finance integration coming soon"
+            >
+              Yahoo Finance (Coming Soon)
+            </Button>
+          </div>
+
+          {/* Market Selection */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-muted-foreground mr-2">Market:</span>
+            {(Object.keys(MARKET_CONFIG) as MarketSymbol[]).map((sym) => (
               <Button
-                key={tf}
-                variant={timeframe === tf ? "default" : "outline"}
+                key={sym}
+                variant={symbol === sym ? "default" : "outline"}
                 size="sm"
-                onClick={() => setTimeframe(tf)}
+                onClick={() => setSymbol(sym)}
               >
-                {TIMEFRAME_CONFIG[tf].label}
+                {sym}
               </Button>
             ))}
+          </div>
+
+          {/* Timeframe and Chart Type Selection */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground mr-2">
+                Timeframe:
+              </span>
+              {(Object.keys(TIMEFRAME_CONFIG) as Timeframe[]).map((tf) => (
+                <Button
+                  key={tf}
+                  variant={timeframe === tf ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTimeframe(tf)}
+                >
+                  {TIMEFRAME_CONFIG[tf].label}
+                </Button>
+              ))}
+            </div>
+            <div className="w-px h-6 bg-border" />
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground mr-2">
+                Chart:
+              </span>
+              <Button
+                variant={chartType === "candlestick" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setChartType("candlestick")}
+              >
+                Candle
+              </Button>
+              <Button
+                variant={chartType === "heikin-ashi" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setChartType("heikin-ashi")}
+              >
+                Heikin Ashi
+              </Button>
+              <Button
+                variant={chartType === "bar" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setChartType("bar")}
+              >
+                Bar
+              </Button>
+            </div>
           </div>
 
           {/* Pivot Points Controls */}
@@ -412,6 +587,14 @@ export default function ChartDemoPage() {
                   onClick={() => setShowPivots(!showPivots)}
                 >
                   {showPivots ? "Hide Pivots" : "Show Pivots"}
+                </Button>
+                <Button
+                  variant={showPivotLines ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowPivotLines(!showPivotLines)}
+                  className={showPivotLines ? "bg-amber-600 hover:bg-amber-700" : ""}
+                >
+                  {showPivotLines ? "Hide Lines" : "Show Lines"}
                 </Button>
                 <Button
                   variant={useManualPivots ? "default" : "outline"}
@@ -538,7 +721,7 @@ export default function ChartDemoPage() {
           <div className="flex items-center gap-6 p-4 rounded-lg bg-card border">
             <div>
               <span className="text-muted-foreground text-sm">Symbol</span>
-              <p className="text-xl font-bold font-mono">DJI</p>
+              <p className="text-xl font-bold font-mono">{symbol}</p>
             </div>
             <div>
               <span className="text-muted-foreground text-sm">Price</span>
@@ -557,6 +740,12 @@ export default function ChartDemoPage() {
                 {formatDisplayPrice(priceChange)} ({percentChange}%)
               </p>
             </div>
+            <div>
+              <span className="text-muted-foreground text-sm">Timeframe</span>
+              <p className="text-xl font-bold font-mono">
+                {TIMEFRAME_CONFIG[timeframe].label}
+              </p>
+            </div>
           </div>
 
           {/* Chart */}
@@ -564,6 +753,8 @@ export default function ChartDemoPage() {
             <CandlestickChart
               data={data}
               priceLines={priceLines}
+              lineOverlays={lineOverlays}
+              chartType={chartType}
               height={500}
               theme={theme}
               onCrosshairMove={(price) => setCrosshairPrice(price)}
@@ -627,22 +818,35 @@ export default function ChartDemoPage() {
                 </div>
               )}
 
-              {fibVisibility.projection && (
+              {fibVisibility.projection && pivotA && pivotB && pivotC && (
                 <div className="p-4 rounded-lg bg-card border">
                   <h3 className="font-semibold mb-3 text-teal-400">
-                    Projection
+                    Projection (A-B-C)
                   </h3>
+                  <div className="text-xs text-muted-foreground mb-2">
+                    A: {pivotA.price.toFixed(2)} | B: {pivotB.price.toFixed(2)} | C: {pivotC.price.toFixed(2)}
+                  </div>
                   <FibonacciLevels
-                    direction="buy"
+                    direction={pivotC.type === "low" ? "buy" : "sell"}
                     highPrice={
-                      currentPrice + range * Math.max(...PROJECTION_RATIOS)
+                      pivotC.type === "low"
+                        ? pivotC.price + Math.abs(pivotB.price - pivotA.price) * Math.max(...PROJECTION_RATIOS)
+                        : pivotC.price
                     }
-                    lowPrice={currentPrice}
-                    levels={PROJECTION_RATIOS.map((ratio) => ({
-                      ratio,
-                      label: `${ratio * 100}%`,
-                      price: currentPrice + range * ratio,
-                    }))}
+                    lowPrice={
+                      pivotC.type === "low"
+                        ? pivotC.price
+                        : pivotC.price - Math.abs(pivotB.price - pivotA.price) * Math.max(...PROJECTION_RATIOS)
+                    }
+                    levels={PROJECTION_RATIOS.map((ratio) => {
+                      const abRange = Math.abs(pivotB.price - pivotA.price);
+                      const direction = pivotC.type === "low" ? 1 : -1;
+                      return {
+                        ratio,
+                        label: `${ratio * 100}%`,
+                        price: pivotC.price + direction * abRange * ratio,
+                      };
+                    })}
                   />
                 </div>
               )}

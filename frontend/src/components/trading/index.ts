@@ -30,4 +30,6 @@ export type {
   CandlestickChartProps,
   OHLCData,
   PriceLine,
+  LineOverlay,
+  ChartType,
 } from "./candlestick-chart";

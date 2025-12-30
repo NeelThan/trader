@@ -7,15 +7,21 @@ import {
   IChartApi,
   ISeriesApi,
   CandlestickSeries,
+  BarSeries,
+  LineSeries,
   CandlestickData,
+  BarData,
+  LineData,
   Time,
   IPriceLine,
   DeepPartial,
   ChartOptions,
   CandlestickStyleOptions,
+  BarStyleOptions,
   SeriesOptionsCommon,
   LineWidth,
   LineStyle,
+  CrosshairMode,
 } from "lightweight-charts";
 import { cn } from "@/lib/utils";
 
@@ -36,9 +42,20 @@ export type PriceLine = {
   title?: string;
 };
 
+export type LineOverlay = {
+  data: { time: Time; value: number }[];
+  color?: string;
+  lineWidth?: number;
+  lineStyle?: LineStyle;
+};
+
+export type ChartType = "candlestick" | "bar" | "heikin-ashi";
+
 export type CandlestickChartProps = {
   data: OHLCData[];
   priceLines?: PriceLine[];
+  lineOverlays?: LineOverlay[];
+  chartType?: ChartType;
   width?: number;
   height?: number;
   autoSize?: boolean;
@@ -87,9 +104,48 @@ const DARK_THEME: DeepPartial<ChartOptions> = {
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
+// Calculate Heikin Ashi values from OHLC data
+function calculateHeikinAshi(data: OHLCData[]): OHLCData[] {
+  if (data.length === 0) return [];
+
+  const result: OHLCData[] = [];
+
+  for (let i = 0; i < data.length; i++) {
+    const current = data[i];
+
+    // HA Close = (Open + High + Low + Close) / 4
+    const haClose = (current.open + current.high + current.low + current.close) / 4;
+
+    // HA Open = (Previous HA Open + Previous HA Close) / 2
+    // For the first bar, use (Open + Close) / 2
+    const haOpen =
+      i === 0
+        ? (current.open + current.close) / 2
+        : (result[i - 1].open + result[i - 1].close) / 2;
+
+    // HA High = Max(High, HA Open, HA Close)
+    const haHigh = Math.max(current.high, haOpen, haClose);
+
+    // HA Low = Min(Low, HA Open, HA Close)
+    const haLow = Math.min(current.low, haOpen, haClose);
+
+    result.push({
+      time: current.time,
+      open: haOpen,
+      high: haHigh,
+      low: haLow,
+      close: haClose,
+    });
+  }
+
+  return result;
+}
+
 export function CandlestickChart({
   data,
   priceLines = [],
+  lineOverlays = [],
+  chartType = "candlestick",
   width,
   height = 400,
   autoSize = true,
@@ -101,17 +157,20 @@ export function CandlestickChart({
 }: CandlestickChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Bar"> | null>(null);
+  const lineSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
   const priceLinesRef = useRef<IPriceLine[]>([]);
 
-  // Store latest data/priceLines in refs for access in chart creation effect
+  // Store latest data/priceLines/lineOverlays in refs for access in chart creation effect
   const dataRef = useRef(data);
   const priceLinesPropsRef = useRef(priceLines);
+  const lineOverlaysRef = useRef(lineOverlays);
 
   // Update refs in layout effect (runs synchronously before paint)
   useIsomorphicLayoutEffect(() => {
     dataRef.current = data;
     priceLinesPropsRef.current = priceLines;
+    lineOverlaysRef.current = lineOverlays;
   });
 
   // Create chart on mount
@@ -125,7 +184,7 @@ export function CandlestickChart({
       height,
       ...themeOptions,
       crosshair: {
-        mode: 1, // CrosshairMode.Normal
+        mode: CrosshairMode.Normal,
       },
       timeScale: {
         ...themeOptions.timeScale,
@@ -134,21 +193,37 @@ export function CandlestickChart({
       },
     });
 
-    const seriesOptions: DeepPartial<
-      CandlestickStyleOptions & SeriesOptionsCommon
-    > = {
-      upColor,
-      downColor,
-      borderVisible: false,
-      wickUpColor: upColor,
-      wickDownColor: downColor,
-    };
+    let series: ISeriesApi<"Candlestick"> | ISeriesApi<"Bar">;
 
-    const series = chart.addSeries(CandlestickSeries, seriesOptions);
+    if (chartType === "bar") {
+      const barOptions: DeepPartial<BarStyleOptions & SeriesOptionsCommon> = {
+        upColor,
+        downColor,
+        openVisible: true,
+        thinBars: false,
+      };
+      series = chart.addSeries(BarSeries, barOptions);
+    } else {
+      // Candlestick and Heikin Ashi both use CandlestickSeries
+      const candlestickOptions: DeepPartial<
+        CandlestickStyleOptions & SeriesOptionsCommon
+      > = {
+        upColor,
+        downColor,
+        borderVisible: false,
+        wickUpColor: upColor,
+        wickDownColor: downColor,
+      };
+      series = chart.addSeries(CandlestickSeries, candlestickOptions);
+    }
 
-    // Set initial data from ref
+    // Set initial data from ref (apply Heikin Ashi transformation if needed)
     if (dataRef.current.length > 0) {
-      series.setData(dataRef.current as CandlestickData[]);
+      const chartData =
+        chartType === "heikin-ashi"
+          ? calculateHeikinAshi(dataRef.current)
+          : dataRef.current;
+      series.setData(chartData as (CandlestickData | BarData)[]);
       chart.timeScale().fitContent();
     }
 
@@ -163,6 +238,22 @@ export function CandlestickChart({
         title: lineConfig.title ?? "",
       });
       priceLinesRef.current.push(line);
+    });
+
+    // Create line overlays from ref
+    lineOverlaysRef.current.forEach((overlay) => {
+      const lineSeries = chart.addSeries(LineSeries, {
+        color: overlay.color ?? "#f59e0b",
+        lineWidth: (overlay.lineWidth ?? 2) as LineWidth,
+        lineStyle: overlay.lineStyle ?? LineStyle.Solid,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      if (overlay.data.length > 0) {
+        lineSeries.setData(overlay.data as LineData[]);
+      }
+      lineSeriesRef.current.push(lineSeries);
     });
 
     chartRef.current = chart;
@@ -188,15 +279,18 @@ export function CandlestickChart({
       chartRef.current = null;
       seriesRef.current = null;
       priceLinesRef.current = [];
+      lineSeriesRef.current = [];
     };
-  }, [theme, height, width, upColor, downColor, onCrosshairMove]);
+  }, [theme, height, width, upColor, downColor, chartType, onCrosshairMove]);
 
   // Update data when it changes
   useEffect(() => {
     if (!seriesRef.current || data.length === 0) return;
-    seriesRef.current.setData(data as CandlestickData[]);
+    const chartData =
+      chartType === "heikin-ashi" ? calculateHeikinAshi(data) : data;
+    seriesRef.current.setData(chartData as (CandlestickData | BarData)[]);
     chartRef.current?.timeScale().fitContent();
-  }, [data]);
+  }, [data, chartType]);
 
   // Update price lines when they change
   useEffect(() => {
@@ -223,6 +317,33 @@ export function CandlestickChart({
       }
     });
   }, [priceLines]);
+
+  // Update line overlays when they change
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    // Remove existing line series
+    lineSeriesRef.current.forEach((series) => {
+      chartRef.current?.removeSeries(series);
+    });
+    lineSeriesRef.current = [];
+
+    // Add new line overlays
+    lineOverlays.forEach((overlay) => {
+      const lineSeries = chartRef.current?.addSeries(LineSeries, {
+        color: overlay.color ?? "#f59e0b",
+        lineWidth: (overlay.lineWidth ?? 2) as LineWidth,
+        lineStyle: overlay.lineStyle ?? LineStyle.Solid,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      if (lineSeries && overlay.data.length > 0) {
+        lineSeries.setData(overlay.data as LineData[]);
+        lineSeriesRef.current.push(lineSeries);
+      }
+    });
+  }, [lineOverlays]);
 
   // Handle resize with ResizeObserver
   const handleResize = useCallback(() => {
