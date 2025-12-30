@@ -20,3 +20,4 @@ export { PivotPointsPanel } from "./PivotPointsPanel";
 export { PriceSummary } from "./PriceSummary";
 export { RefreshStatus } from "./RefreshStatus";
 export { SignalDetectionPanel } from "./SignalDetectionPanel";
+export { TrendAlignmentPanel } from "./TrendAlignmentPanel";

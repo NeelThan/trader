@@ -124,3 +124,165 @@ export const MARKET_STATUS_STYLES = {
     dot: "bg-gray-400",
   },
 };
+
+// ============================================================================
+// Multi-Timeframe Trend Analysis
+// ============================================================================
+
+/**
+ * Trend direction for a single timeframe.
+ */
+export type TrendDirection = "UP" | "DOWN" | "NEUTRAL";
+
+/**
+ * A timeframe pair configuration for trend alignment analysis.
+ * The higher timeframe determines the primary trend, while the lower
+ * timeframe is used to find entry opportunities.
+ */
+export type TimeframePair = {
+  id: string;
+  name: string;
+  higherTF: Timeframe;
+  lowerTF: Timeframe;
+  tradingStyle: TradingStyle;
+};
+
+export type TradingStyle = "position" | "swing" | "day" | "scalping";
+
+/**
+ * Trade action recommendation based on trend alignment.
+ * - GO_LONG: Higher TF up, lower TF down - buy the dip
+ * - GO_SHORT: Higher TF down, lower TF up - sell the rally
+ * - STAND_ASIDE: Both TFs in same direction - wait for pullback
+ */
+export type TradeAction = "GO_LONG" | "GO_SHORT" | "STAND_ASIDE";
+
+/**
+ * Trend analysis result for a single timeframe.
+ */
+export type TimeframeTrend = {
+  timeframe: Timeframe;
+  direction: TrendDirection;
+  strength: number; // 0-1, how strong the trend is
+  pivotHigh: number | null;
+  pivotLow: number | null;
+};
+
+/**
+ * Complete trend alignment analysis for a timeframe pair.
+ */
+export type TrendAlignment = {
+  pair: TimeframePair;
+  higherTrend: TimeframeTrend;
+  lowerTrend: TimeframeTrend;
+  action: TradeAction;
+  confidence: number; // 0-1, how confident is the alignment signal
+};
+
+/**
+ * Preset timeframe pairs for different trading styles.
+ * Based on SignalPro strategy recommendations.
+ */
+export const TIMEFRAME_PAIR_PRESETS: TimeframePair[] = [
+  {
+    id: "monthly-weekly",
+    name: "Monthly / Weekly",
+    higherTF: "1M",
+    lowerTF: "1W",
+    tradingStyle: "position",
+  },
+  {
+    id: "weekly-daily",
+    name: "Weekly / Daily",
+    higherTF: "1W",
+    lowerTF: "1D",
+    tradingStyle: "position",
+  },
+  {
+    id: "daily-4h",
+    name: "Daily / 4-Hour",
+    higherTF: "1D",
+    lowerTF: "4H",
+    tradingStyle: "swing",
+  },
+  {
+    id: "4h-1h",
+    name: "4-Hour / 1-Hour",
+    higherTF: "4H",
+    lowerTF: "1H",
+    tradingStyle: "day",
+  },
+  {
+    id: "1h-15m",
+    name: "1-Hour / 15-Minute",
+    higherTF: "1H",
+    lowerTF: "15m",
+    tradingStyle: "day",
+  },
+  {
+    id: "15m-1m",
+    name: "15-Minute / 1-Minute",
+    higherTF: "15m",
+    lowerTF: "1m",
+    tradingStyle: "scalping",
+  },
+];
+
+/**
+ * Trading style display configuration.
+ */
+export const TRADING_STYLE_CONFIG: Record<TradingStyle, { label: string; description: string; color: string }> = {
+  position: {
+    label: "Position Trading",
+    description: "Hold for weeks/months",
+    color: "#3b82f6", // blue
+  },
+  swing: {
+    label: "Swing Trading",
+    description: "Hold for days/weeks",
+    color: "#22c55e", // green
+  },
+  day: {
+    label: "Day Trading",
+    description: "Intraday positions",
+    color: "#f59e0b", // amber
+  },
+  scalping: {
+    label: "Scalping",
+    description: "Very short-term",
+    color: "#ef4444", // red
+  },
+};
+
+/**
+ * Trade action display configuration.
+ */
+export const TRADE_ACTION_CONFIG: Record<TradeAction, { label: string; description: string; color: string; bgColor: string }> = {
+  GO_LONG: {
+    label: "GO LONG",
+    description: "Buy the dip - Higher TF up, Lower TF down",
+    color: "#22c55e",
+    bgColor: "bg-green-500/20",
+  },
+  GO_SHORT: {
+    label: "GO SHORT",
+    description: "Sell the rally - Higher TF down, Lower TF up",
+    color: "#ef4444",
+    bgColor: "bg-red-500/20",
+  },
+  STAND_ASIDE: {
+    label: "STAND ASIDE",
+    description: "Wait for pullback - Both timeframes aligned",
+    color: "#9ca3af",
+    bgColor: "bg-gray-500/20",
+  },
+};
+
+/**
+ * Trend direction display configuration.
+ */
+export const TREND_DIRECTION_CONFIG: Record<TrendDirection, { label: string; icon: string; color: string }> = {
+  UP: { label: "Uptrend", icon: "↑", color: "#22c55e" },
+  DOWN: { label: "Downtrend", icon: "↓", color: "#ef4444" },
+  NEUTRAL: { label: "Neutral", icon: "→", color: "#9ca3af" },
+};

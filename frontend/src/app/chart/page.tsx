@@ -7,6 +7,7 @@ import { useSettings, COLOR_SCHEMES, ColorScheme, DEFAULT_SETTINGS } from "@/hoo
 import { useMarketData } from "@/hooks/use-market-data";
 import { usePivotAnalysis, BackendLevels, PivotConfig, DEFAULT_PIVOT_CONFIG } from "@/hooks/use-pivot-analysis";
 import { useFibonacciAPI } from "@/hooks/use-fibonacci-api";
+import { useTrendAnalysis } from "@/hooks/use-trend-analysis";
 import {
   Timeframe,
   MarketSymbol,
@@ -27,6 +28,7 @@ import {
   PriceSummary,
   RefreshStatus,
   SignalDetectionPanel,
+  TrendAlignmentPanel,
   type AllFibonacciConfigs,
   type FibonacciPivots,
 } from "@/components/chart";
@@ -60,6 +62,7 @@ export default function ChartDemoPage() {
   const [showPivots, setShowPivots] = useState(false);
   const [showPivotLines, setShowPivotLines] = useState(false);
   const [showPivotPanel, setShowPivotPanel] = useState(false);
+  const [showTrendPanel, setShowTrendPanel] = useState(false);
   const [pivotConfig, setPivotConfig] = useState<PivotConfig>(DEFAULT_PIVOT_CONFIG);
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
   const [settingsApplied, setSettingsApplied] = useState(false);
@@ -134,6 +137,12 @@ export default function ChartDemoPage() {
     refreshNow,
     loadMoreData,
   } = useMarketData(symbol, timeframe, dataSource, hasMounted);
+
+  // Use trend analysis hook for multi-timeframe alignment
+  const trendAnalysis = useTrendAnalysis({
+    symbol,
+    enabled: hasMounted && showTrendPanel,
+  });
 
   // Use pivot analysis hook (first pass to get high/low)
   const pivotAnalysis = usePivotAnalysis(
@@ -273,6 +282,32 @@ export default function ChartDemoPage() {
 
           {/* Market Selection */}
           <MarketSelector symbol={symbol} onSelect={setSymbol} />
+
+          {/* Trend Alignment Panel Toggle */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showTrendPanel ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowTrendPanel(!showTrendPanel)}
+            >
+              {showTrendPanel ? "Hide" : "Show"} Trend Alignment
+            </Button>
+            {!showTrendPanel && (
+              <span className="text-xs text-muted-foreground">
+                Multi-timeframe trend analysis for trade direction
+              </span>
+            )}
+          </div>
+          {showTrendPanel && (
+            <TrendAlignmentPanel
+              alignments={trendAnalysis.alignments}
+              selectedPair={trendAnalysis.selectedPair}
+              isLoading={trendAnalysis.isLoading}
+              error={trendAnalysis.error}
+              onSelectPair={trendAnalysis.setSelectedPair}
+              onRefresh={trendAnalysis.refresh}
+            />
+          )}
 
           {/* Timeframe, Chart Type, and Color Selection */}
           <ChartControls
