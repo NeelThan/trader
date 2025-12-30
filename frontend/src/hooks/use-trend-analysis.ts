@@ -186,10 +186,14 @@ async function fetchTimeframeData(
   timeframe: Timeframe
 ): Promise<OHLCData[]> {
   const response = await fetch(
-    `/api/yahoo?symbol=${symbol}&timeframe=${timeframe}`
+    `/api/market-data?symbol=${symbol}&timeframe=${timeframe}`
   );
 
   if (!response.ok) {
+    // Don't throw for 404 - just return empty data (e.g., intraday when market closed)
+    if (response.status === 404) {
+      return [];
+    }
     throw new Error(`Failed to fetch ${timeframe} data for ${symbol}`);
   }
 
