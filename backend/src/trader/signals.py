@@ -43,7 +43,7 @@ class Signal:
     strength: float
 
 
-def detect_signal(bar: Bar, fib_level: float) -> Signal | None:
+def detect_signal(bar: Bar, fibonacci_level: float) -> Signal | None:
     """
     Detect trading signal at a Fibonacci level.
 
@@ -61,31 +61,31 @@ def detect_signal(bar: Bar, fib_level: float) -> Signal | None:
 
     Args:
         bar: OHLC price bar
-        fib_level: Fibonacci level to check against
+        fibonacci_level: Fibonacci level to check against
 
     Returns:
         Signal if valid signal detected, None otherwise
     """
     # Check for BUY signal
-    if bar.is_bullish and bar.close > fib_level:
-        signal_type = _classify_buy_signal(bar, fib_level)
-        strength = _calculate_strength(signal_type, bar, fib_level, "buy")
+    if bar.is_bullish and bar.close > fibonacci_level:
+        signal_type = _classify_buy_signal(bar, fibonacci_level)
+        strength = _calculate_strength(signal_type, bar, fibonacci_level, "buy")
         return Signal(
             direction="buy",
             bar=bar,
-            level=fib_level,
+            level=fibonacci_level,
             signal_type=signal_type,
             strength=strength,
         )
 
     # Check for SELL signal
-    if bar.is_bearish and bar.close < fib_level:
-        signal_type = _classify_sell_signal(bar, fib_level)
-        strength = _calculate_strength(signal_type, bar, fib_level, "sell")
+    if bar.is_bearish and bar.close < fibonacci_level:
+        signal_type = _classify_sell_signal(bar, fibonacci_level)
+        strength = _calculate_strength(signal_type, bar, fibonacci_level, "sell")
         return Signal(
             direction="sell",
             bar=bar,
-            level=fib_level,
+            level=fibonacci_level,
             signal_type=signal_type,
             strength=strength,
         )
@@ -93,26 +93,26 @@ def detect_signal(bar: Bar, fib_level: float) -> Signal | None:
     return None
 
 
-def _classify_buy_signal(bar: Bar, fib_level: float) -> SignalType:
+def _classify_buy_signal(bar: Bar, fibonacci_level: float) -> SignalType:
     """
     Classify BUY signal as Type 1 or Type 2.
 
     Type 1: Low penetrated the level (tested and rejected)
     Type 2: Low stayed above the level (no deep test)
     """
-    if bar.low < fib_level:
+    if bar.low < fibonacci_level:
         return SignalType.TYPE_1
     return SignalType.TYPE_2
 
 
-def _classify_sell_signal(bar: Bar, fib_level: float) -> SignalType:
+def _classify_sell_signal(bar: Bar, fibonacci_level: float) -> SignalType:
     """
     Classify SELL signal as Type 1 or Type 2.
 
     Type 1: High penetrated the level (tested and rejected)
     Type 2: High stayed below the level (no deep test)
     """
-    if bar.high > fib_level:
+    if bar.high > fibonacci_level:
         return SignalType.TYPE_1
     return SignalType.TYPE_2
 
@@ -120,7 +120,7 @@ def _classify_sell_signal(bar: Bar, fib_level: float) -> SignalType:
 def _calculate_strength(
     signal_type: SignalType,
     bar: Bar,
-    fib_level: float,
+    fibonacci_level: float,
     direction: Literal["buy", "sell"],
 ) -> float:
     """
@@ -137,9 +137,9 @@ def _calculate_strength(
     bar_range = bar.high - bar.low
     if bar_range > 0:
         if direction == "buy":
-            close_distance = bar.close - fib_level
+            close_distance = bar.close - fibonacci_level
         else:
-            close_distance = fib_level - bar.close
+            close_distance = fibonacci_level - bar.close
 
         distance_ratio = min(close_distance / bar_range, 1.0)
         distance_bonus = distance_ratio * 0.3

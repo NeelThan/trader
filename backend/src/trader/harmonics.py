@@ -40,9 +40,9 @@ class ReversalZone:
 class PatternRatios:
     """Calculated Fibonacci ratios for pattern validation."""
 
-    ab: float  # AB retracement of XA
-    bc: float  # BC retracement of AB
-    xd: float  # XD retracement/extension of XA
+    ab_ratio: float  # AB retracement of XA
+    bc_ratio: float  # BC retracement of AB
+    xd_ratio: float  # XD retracement/extension of XA
 
 
 # Tolerance for Fibonacci ratio matching (5%)
@@ -71,12 +71,14 @@ def _get_direction(x: float, a: float) -> Literal["buy", "sell"]:
     return "buy" if x > a else "sell"
 
 
-def _calculate_ratios(xa: float, ab: float, bc: float, xd: float) -> PatternRatios:
+def _calculate_ratios(
+    xa_leg: float, ab_leg: float, bc_leg: float, xd_leg: float
+) -> PatternRatios:
     """Calculate Fibonacci ratios from leg distances."""
     return PatternRatios(
-        ab=_ratio(ab, xa),
-        bc=_ratio(bc, ab),
-        xd=_ratio(xd, xa),
+        ab_ratio=_ratio(ab_leg, xa_leg),
+        bc_ratio=_ratio(bc_leg, ab_leg),
+        xd_ratio=_ratio(xd_leg, xa_leg),
     )
 
 
@@ -90,9 +92,9 @@ def _check_gartley(ratios: PatternRatios) -> bool:
     - D: 78.6% retracement of XA
     """
     return (
-        _is_near(ratios.ab, 0.618)
-        and _is_within_range(ratios.bc, 0.382, 0.886)
-        and _is_near(ratios.xd, 0.786)
+        _is_near(ratios.ab_ratio, 0.618)
+        and _is_within_range(ratios.bc_ratio, 0.382, 0.886)
+        and _is_near(ratios.xd_ratio, 0.786)
     )
 
 
@@ -106,9 +108,9 @@ def _check_butterfly(ratios: PatternRatios) -> bool:
     - D: 127.2% - 161.8% extension of XA
     """
     return (
-        _is_near(ratios.ab, 0.786)
-        and _is_within_range(ratios.bc, 0.382, 0.886)
-        and _is_within_range(ratios.xd, 1.272, 1.618)
+        _is_near(ratios.ab_ratio, 0.786)
+        and _is_within_range(ratios.bc_ratio, 0.382, 0.886)
+        and _is_within_range(ratios.xd_ratio, 1.272, 1.618)
     )
 
 
@@ -122,9 +124,9 @@ def _check_bat(ratios: PatternRatios) -> bool:
     - D: 88.6% retracement of XA
     """
     return (
-        _is_within_range(ratios.ab, 0.382, 0.50)
-        and _is_within_range(ratios.bc, 0.382, 0.886)
-        and _is_near(ratios.xd, 0.886)
+        _is_within_range(ratios.ab_ratio, 0.382, 0.50)
+        and _is_within_range(ratios.bc_ratio, 0.382, 0.886)
+        and _is_near(ratios.xd_ratio, 0.886)
     )
 
 
@@ -138,9 +140,9 @@ def _check_crab(ratios: PatternRatios) -> bool:
     - D: 161.8% extension of XA
     """
     return (
-        _is_within_range(ratios.ab, 0.382, 0.618)
-        and _is_within_range(ratios.bc, 0.382, 0.886)
-        and _is_near(ratios.xd, 1.618)
+        _is_within_range(ratios.ab_ratio, 0.382, 0.618)
+        and _is_within_range(ratios.bc_ratio, 0.382, 0.886)
+        and _is_near(ratios.xd_ratio, 1.618)
     )
 
 
@@ -163,8 +165,8 @@ def validate_pattern(
     direction = _get_direction(x, a)
 
     # Calculate leg distances and ratios
-    xa, ab, bc, xd = a - x, b - a, c - b, d - x
-    ratios = _calculate_ratios(xa, ab, bc, xd)
+    xa_leg, ab_leg, bc_leg, xd_leg = a - x, b - a, c - b, d - x
+    ratios = _calculate_ratios(xa_leg, ab_leg, bc_leg, xd_leg)
 
     # Check patterns in order of specificity
     pattern_checks = [
@@ -210,7 +212,7 @@ def calculate_reversal_zone(
         ReversalZone with calculated D level, or None if invalid pattern type
     """
     direction = _get_direction(x, a)
-    xa = a - x
+    xa_leg = a - x
 
     # D point ratios for each pattern type
     d_ratios = {
@@ -227,10 +229,10 @@ def calculate_reversal_zone(
     # Calculate D level based on direction
     if direction == "buy":
         # Bullish: X > A, D below X
-        d_level = x - (abs(xa) * ratio)
+        d_level = x - (abs(xa_leg) * ratio)
     else:
         # Bearish: X < A, D above X
-        d_level = x + (abs(xa) * ratio)
+        d_level = x + (abs(xa_leg) * ratio)
 
     return ReversalZone(
         d_level=d_level,

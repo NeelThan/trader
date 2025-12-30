@@ -70,7 +70,7 @@ class SignalRequest(BaseModel):
     high: float
     low: float
     close: float
-    fib_level: float
+    fibonacci_level: float
 
 
 class SignalData(BaseModel):
@@ -212,7 +212,7 @@ async def detect(request: SignalRequest) -> SignalResponse:
         low=request.low,
         close=request.close,
     )
-    signal = detect_signal(bar=bar, fib_level=request.fib_level)
+    signal = detect_signal(bar=bar, fibonacci_level=request.fibonacci_level)
 
     if signal is None:
         return SignalResponse(signal=None)

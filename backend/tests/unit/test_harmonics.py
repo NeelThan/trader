@@ -19,7 +19,7 @@ class ReversalZoneCase:
     a: float
     b: float
     c: float
-    expected_d: float
+    expected_d_level: float
     expected_direction: str
 
 
@@ -189,7 +189,7 @@ class TestReversalZoneCalculation:
         )
 
         assert reversal_zone is not None
-        assert reversal_zone.d_level == pytest.approx(case.expected_d, rel=0.01)
+        assert reversal_zone.d_level == pytest.approx(case.expected_d_level, rel=0.01)
         assert reversal_zone.direction == case.expected_direction
 
 

@@ -130,7 +130,7 @@ class TestSignalEndpoint:
                 "high": 72.0,
                 "low": 58.0,
                 "close": 70.0,
-                "fib_level": 65.0,
+                "fibonacci_level": 65.0,
             },
         )
 
@@ -150,7 +150,7 @@ class TestSignalEndpoint:
                 "high": 72.0,
                 "low": 58.0,
                 "close": 60.0,
-                "fib_level": 65.0,
+                "fibonacci_level": 65.0,
             },
         )
 
@@ -168,7 +168,7 @@ class TestSignalEndpoint:
                 "high": 70.0,
                 "low": 60.0,
                 "close": 65.0,  # Doji - no signal
-                "fib_level": 65.0,
+                "fibonacci_level": 65.0,
             },
         )
 
