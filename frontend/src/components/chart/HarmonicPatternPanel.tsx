@@ -32,6 +32,14 @@ const PATTERN_BG: Record<string, string> = {
   crab: "bg-cyan-500/10 border-cyan-500/30",
 };
 
+// Example valid patterns from backend tests
+const EXAMPLE_PATTERNS = {
+  gartley: { x: "100", a: "50", b: "80.9", c: "61.8", d: "60.7", label: "Bullish Gartley" },
+  butterfly: { x: "100", a: "50", b: "89.3", c: "65", d: "36.4", label: "Bullish Butterfly" },
+  bat: { x: "100", a: "50", b: "75", c: "59.55", d: "55.7", label: "Bullish Bat" },
+  crab: { x: "100", a: "50", b: "75", c: "59.55", d: "19.1", label: "Bullish Crab" },
+};
+
 function PatternResultCard({ pattern }: { pattern: ValidatedPattern }) {
   const isBullish = pattern.direction === "buy";
   const colorClass = PATTERN_COLORS[pattern.pattern_type] || "text-gray-400";
@@ -96,6 +104,7 @@ export function HarmonicPatternPanel({
   const [c, setC] = useState(defaultC.toString());
   const [d, setD] = useState("");
   const [selectedPatternType, setSelectedPatternType] = useState<PatternType>("gartley");
+  const [lastValidation, setLastValidation] = useState<"success" | "no_pattern" | null>(null);
 
   const {
     patterns,
@@ -115,8 +124,19 @@ export function HarmonicPatternPanel({
     const dVal = parseFloat(d) || 0;
 
     if (xVal && aVal && bVal && cVal && dVal) {
-      await validatePattern({ x: xVal, a: aVal, b: bVal, c: cVal, d: dVal });
+      const result = await validatePattern({ x: xVal, a: aVal, b: bVal, c: cVal, d: dVal });
+      setLastValidation(result ? "success" : "no_pattern");
     }
+  };
+
+  const loadExample = (patternKey: keyof typeof EXAMPLE_PATTERNS) => {
+    const example = EXAMPLE_PATTERNS[patternKey];
+    setX(example.x);
+    setA(example.a);
+    setB(example.b);
+    setC(example.c);
+    setD(example.d);
+    setLastValidation(null);
   };
 
   const handleCalculateReversal = async () => {
@@ -215,6 +235,22 @@ export function HarmonicPatternPanel({
             </div>
           </div>
 
+          {/* Example Buttons */}
+          <div className="flex flex-wrap gap-1">
+            <span className="text-xs text-muted-foreground mr-1">Load example:</span>
+            {(Object.keys(EXAMPLE_PATTERNS) as Array<keyof typeof EXAMPLE_PATTERNS>).map((key) => (
+              <Button
+                key={key}
+                variant="outline"
+                size="sm"
+                onClick={() => loadExample(key)}
+                className={`text-xs h-6 capitalize ${PATTERN_COLORS[key]}`}
+              >
+                {key}
+              </Button>
+            ))}
+          </div>
+
           {/* Actions */}
           <div className="flex items-center gap-2">
             <Button
@@ -230,7 +266,7 @@ export function HarmonicPatternPanel({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={clearPatterns}
+                onClick={() => { clearPatterns(); setLastValidation(null); }}
               >
                 Clear
               </Button>
@@ -287,6 +323,17 @@ export function HarmonicPatternPanel({
           {error && (
             <div className="p-2 rounded bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
               {error}
+            </div>
+          )}
+
+          {/* No Pattern Detected Feedback */}
+          {lastValidation === "no_pattern" && !error && (
+            <div className="p-2 rounded bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm">
+              <div className="font-medium">No valid pattern detected</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                The XABCD points do not match any harmonic pattern ratios.
+                Try loading an example pattern to see valid inputs.
+              </div>
             </div>
           )}
 
