@@ -200,7 +200,7 @@ export function CandlestickChart({
         upColor,
         downColor,
         openVisible: true,
-        thinBars: false,
+        thinBars: true,
       };
       series = chart.addSeries(BarSeries, barOptions);
     } else {
@@ -210,7 +210,9 @@ export function CandlestickChart({
       > = {
         upColor,
         downColor,
-        borderVisible: false,
+        borderVisible: true,
+        borderUpColor: upColor,
+        borderDownColor: downColor,
         wickUpColor: upColor,
         wickDownColor: downColor,
       };
