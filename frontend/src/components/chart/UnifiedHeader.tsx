@@ -167,6 +167,11 @@ export function UnifiedHeader({
 
         {/* Navigation */}
         <div className="hidden sm:flex gap-1">
+          <Link href="/dashboard">
+            <Button variant="ghost" size="sm" className="h-8 text-xs">
+              Dashboard
+            </Button>
+          </Link>
           <Link href="/trend-analysis">
             <Button variant="ghost" size="sm" className="h-8 text-xs">
               Trends
