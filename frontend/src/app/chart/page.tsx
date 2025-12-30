@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { CandlestickChart, CandlestickChartHandle, ChartType } from "@/components/trading";
 import { useSettings, COLOR_SCHEMES, ColorScheme, DEFAULT_SETTINGS } from "@/hooks/use-settings";
 import { useMarketData } from "@/hooks/use-market-data";
-import { usePivotAnalysis } from "@/hooks/use-pivot-analysis";
+import { usePivotAnalysis, BackendLevels } from "@/hooks/use-pivot-analysis";
+import { useFibonacciAPI } from "@/hooks/use-fibonacci-api";
 import {
   Timeframe,
   MarketSymbol,
@@ -12,6 +13,7 @@ import {
   FibonacciVisibility,
 } from "@/lib/chart-constants";
 import {
+  BackendStatus,
   ChartControls,
   ChartHeader,
   ChartToolbar,
@@ -46,6 +48,7 @@ export default function ChartDemoPage() {
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
   const [settingsApplied, setSettingsApplied] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
+  const [useBackendAPI, setUseBackendAPI] = useState(true);
 
   // Track when component has mounted to avoid hydration mismatch.
   // This is intentional - we need to detect client-side mounting to prevent
@@ -111,7 +114,16 @@ export default function ChartDemoPage() {
     loadMoreData,
   } = useMarketData(symbol, timeframe, dataSource, hasMounted);
 
-  // Use pivot analysis hook
+  // Use pivot analysis hook (first pass to get high/low)
+  const pivotAnalysis = usePivotAnalysis(
+    data,
+    fibVisibility,
+    showPivots,
+    showPivotLines,
+    upColor,
+    downColor
+  );
+
   const {
     pivotPoints,
     pivotA,
@@ -120,8 +132,6 @@ export default function ChartDemoPage() {
     high,
     low,
     range,
-    priceLines,
-    lineOverlays,
     useManualPivots,
     manualHigh,
     manualLow,
@@ -129,7 +139,32 @@ export default function ChartDemoPage() {
     setManualHigh,
     setManualLow,
     applyDetectedPivots,
-  } = usePivotAnalysis(data, fibVisibility, showPivots, showPivotLines, upColor, downColor);
+  } = pivotAnalysis;
+
+  // Fetch Fibonacci levels from backend API
+  const { retracement, extension, isBackendAvailable } = useFibonacciAPI({
+    high: high > 0 ? high : null,
+    low: low > 0 ? low : null,
+    direction: "buy", // TODO: Determine direction from trend analysis
+    enabled: useBackendAPI && high > 0 && low > 0,
+  });
+
+  // Build backend levels object for the pivot analysis hook
+  const backendLevels: BackendLevels | null =
+    useBackendAPI && isBackendAvailable && (retracement.length > 0 || extension.length > 0)
+      ? { retracement, extension }
+      : null;
+
+  // Use pivot analysis hook with backend levels for price lines
+  const { priceLines, lineOverlays } = usePivotAnalysis(
+    data,
+    fibVisibility,
+    showPivots,
+    showPivotLines,
+    upColor,
+    downColor,
+    backendLevels
+  );
 
   // Calculate price changes
   const currentPrice = data[data.length - 1]?.close ?? high;
@@ -170,6 +205,12 @@ export default function ChartDemoPage() {
             onSelect={setDataSource}
             isLoading={isLoading}
             error={fetchError}
+          />
+
+          {/* Backend API Status */}
+          <BackendStatus
+            useBackend={useBackendAPI}
+            onToggle={() => setUseBackendAPI(!useBackendAPI)}
           />
 
           {/* Yahoo Finance Refresh Status */}

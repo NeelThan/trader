@@ -1,3 +1,4 @@
+export { BackendStatus } from "./BackendStatus";
 export { ChartControls } from "./ChartControls";
 export { ChartHeader } from "./ChartHeader";
 export { ChartToolbar } from "./ChartToolbar";

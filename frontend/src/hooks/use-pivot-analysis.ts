@@ -17,6 +17,12 @@ import {
   FIB_COLORS,
 } from "@/lib/chart-constants";
 import { detectPivotPoints } from "@/lib/market-utils";
+import type { FibonacciLevel } from "@/lib/api";
+
+export type BackendLevels = {
+  retracement: FibonacciLevel[];
+  extension: FibonacciLevel[];
+};
 
 export type UsePivotAnalysisReturn = {
   pivotPoints: PivotPoint[];
@@ -41,13 +47,24 @@ export type UsePivotAnalysisReturn = {
   applyDetectedPivots: () => void;
 };
 
+export type UsePivotAnalysisOptions = {
+  data: OHLCData[];
+  fibVisibility: FibonacciVisibility;
+  showPivots: boolean;
+  showPivotLines: boolean;
+  upColor: string;
+  downColor: string;
+  backendLevels?: BackendLevels | null;
+};
+
 export function usePivotAnalysis(
   data: OHLCData[],
   fibVisibility: FibonacciVisibility,
   showPivots: boolean,
   showPivotLines: boolean,
   upColor: string,
-  downColor: string
+  downColor: string,
+  backendLevels?: BackendLevels | null
 ): UsePivotAnalysisReturn {
   // Manual pivot state
   const [useManualPivots, setUseManualPivots] = useState(false);
@@ -127,30 +144,56 @@ export function usePivotAnalysis(
       });
     }
 
-    // Retracement levels
+    // Retracement levels - use backend levels if available, otherwise client-side
     if (fibVisibility.retracement) {
-      RETRACEMENT_RATIOS.forEach((ratio) => {
-        const price = high - range * ratio;
-        lines.push({
-          price,
-          color: FIB_COLORS.retracement[ratio] ?? "#6b7280",
-          title: `R ${(ratio * 100).toFixed(2)}%`,
-          lineStyle: ratio === 0 || ratio === 1 ? LineStyle.Dotted : LineStyle.Dashed,
+      if (backendLevels?.retracement && backendLevels.retracement.length > 0) {
+        // Use backend-calculated levels
+        backendLevels.retracement.forEach((level) => {
+          lines.push({
+            price: level.price,
+            color: FIB_COLORS.retracement[level.ratio] ?? "#6b7280",
+            title: `R ${(level.ratio * 100).toFixed(1)}%`,
+            lineStyle: level.ratio === 0 || level.ratio === 1 ? LineStyle.Dotted : LineStyle.Dashed,
+          });
         });
-      });
+      } else {
+        // Fallback to client-side calculation
+        RETRACEMENT_RATIOS.forEach((ratio) => {
+          const price = high - range * ratio;
+          lines.push({
+            price,
+            color: FIB_COLORS.retracement[ratio] ?? "#6b7280",
+            title: `R ${(ratio * 100).toFixed(1)}%`,
+            lineStyle: ratio === 0 || ratio === 1 ? LineStyle.Dotted : LineStyle.Dashed,
+          });
+        });
+      }
     }
 
-    // Extension levels
+    // Extension levels - use backend levels if available, otherwise client-side
     if (fibVisibility.extension) {
-      EXTENSION_RATIOS.forEach((ratio) => {
-        const price = high - range * ratio;
-        lines.push({
-          price,
-          color: FIB_COLORS.extension,
-          title: `Ext ${(ratio * 100).toFixed(2)}%`,
-          lineStyle: LineStyle.Dashed,
+      if (backendLevels?.extension && backendLevels.extension.length > 0) {
+        // Use backend-calculated levels
+        backendLevels.extension.forEach((level) => {
+          lines.push({
+            price: level.price,
+            color: FIB_COLORS.extension,
+            title: `Ext ${(level.ratio * 100).toFixed(1)}%`,
+            lineStyle: LineStyle.Dashed,
+          });
         });
-      });
+      } else {
+        // Fallback to client-side calculation
+        EXTENSION_RATIOS.forEach((ratio) => {
+          const price = high - range * ratio;
+          lines.push({
+            price,
+            color: FIB_COLORS.extension,
+            title: `Ext ${(ratio * 100).toFixed(1)}%`,
+            lineStyle: LineStyle.Dashed,
+          });
+        });
+      }
     }
 
     // Expansion levels
@@ -196,6 +239,7 @@ export function usePivotAnalysis(
     pivotC,
     upColor,
     downColor,
+    backendLevels,
   ]);
 
   // Build line overlays to connect recent pivot points
