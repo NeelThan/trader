@@ -147,6 +147,13 @@ export default function SettingsPage() {
                   Back to Chart
                 </Button>
               </Link>
+              {process.env.NODE_ENV === "development" && (
+                <Link href="/dev/components">
+                  <Button variant="outline" size="sm">
+                    Components
+                  </Button>
+                </Link>
+              )}
               <ThemeToggle
                 theme={pageTheme}
                 onToggle={() => setPageTheme(pageTheme === "dark" ? "light" : "dark")}

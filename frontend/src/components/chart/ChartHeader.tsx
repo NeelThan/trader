@@ -32,6 +32,13 @@ export function ChartHeader({
             Settings
           </Button>
         </Link>
+        {process.env.NODE_ENV === "development" && (
+          <Link href="/dev/components">
+            <Button variant="outline" size="sm">
+              Components
+            </Button>
+          </Link>
+        )}
         <Link href="/tradingview">
           <Button variant="outline" size="sm">
             TradingView
