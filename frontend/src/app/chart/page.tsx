@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import Link from "next/link";
 import {
   CandlestickChart,
@@ -251,10 +251,60 @@ export default function ChartDemoPage() {
   const [manualLow, setManualLow] = useState<string>("");
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
 
-  const data = useMemo(() => {
+  // Yahoo Finance API state
+  const [yahooData, setYahooData] = useState<OHLCData[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Generate simulated data
+  const simulatedData = useMemo(() => {
     const config = TIMEFRAME_CONFIG[timeframe];
     return generateMarketData(symbol, timeframe, config.periods);
   }, [symbol, timeframe]);
+
+  // Fetch Yahoo Finance data when dataSource is "yahoo"
+  useEffect(() => {
+    if (dataSource !== "yahoo") {
+      setFetchError(null);
+      return;
+    }
+
+    const fetchData = async () => {
+      setIsLoading(true);
+      setFetchError(null);
+
+      try {
+        const response = await fetch(
+          `/api/market-data?symbol=${symbol}&timeframe=${timeframe}`
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to fetch data");
+        }
+
+        const result = await response.json();
+        setYahooData(result.data as OHLCData[]);
+      } catch (error) {
+        console.error("Failed to fetch market data:", error);
+        setFetchError(
+          error instanceof Error ? error.message : "Failed to fetch market data"
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [dataSource, symbol, timeframe]);
+
+  // Use appropriate data based on source
+  const data = useMemo(() => {
+    if (dataSource === "yahoo" && yahooData.length > 0) {
+      return yahooData;
+    }
+    return simulatedData;
+  }, [dataSource, yahooData, simulatedData]);
 
   // Detect pivot points
   const pivotPoints = useMemo(() => detectPivotPoints(data, 5), [data]);
@@ -495,7 +545,7 @@ export default function ChartDemoPage() {
           </div>
 
           {/* Data Source Selection */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm text-muted-foreground mr-2">Data Source:</span>
             <Button
               variant={dataSource === "simulated" ? "default" : "outline"}
@@ -508,11 +558,19 @@ export default function ChartDemoPage() {
               variant={dataSource === "yahoo" ? "default" : "outline"}
               size="sm"
               onClick={() => setDataSource("yahoo")}
-              disabled
-              title="Yahoo Finance integration coming soon"
             >
-              Yahoo Finance (Coming Soon)
+              Yahoo Finance
             </Button>
+            {isLoading && (
+              <span className="text-sm text-muted-foreground ml-2">
+                Loading...
+              </span>
+            )}
+            {fetchError && (
+              <span className="text-sm text-red-500 ml-2">
+                Error: {fetchError}
+              </span>
+            )}
           </div>
 
           {/* Market Selection */}
