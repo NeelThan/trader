@@ -62,19 +62,19 @@ const INTERVAL_MAP: Record<string, string> = {
 function getTimeframeSpan(timeframe: string): number {
   switch (timeframe) {
     case "1m":
-      return 4 * 60 * 60 * 1000; // 4 hours
+      return 7 * 24 * 60 * 60 * 1000; // 7 days (Yahoo limits 1m data)
     case "15m":
-      return 2 * 24 * 60 * 60 * 1000; // 2 days
-    case "1H":
-      return 7 * 24 * 60 * 60 * 1000; // 1 week
-    case "4H":
       return 21 * 24 * 60 * 60 * 1000; // 3 weeks
+    case "1H":
+      return 60 * 24 * 60 * 60 * 1000; // 2 months
+    case "4H":
+      return 60 * 24 * 60 * 60 * 1000; // 2 months
     case "1D":
-      return 90 * 24 * 60 * 60 * 1000; // 90 days
-    case "1W":
       return 365 * 24 * 60 * 60 * 1000; // 1 year
+    case "1W":
+      return 3 * 365 * 24 * 60 * 60 * 1000; // 3 years
     case "1M":
-      return 5 * 365 * 24 * 60 * 60 * 1000; // 5 years
+      return 10 * 365 * 24 * 60 * 60 * 1000; // 10 years
     default:
       return 90 * 24 * 60 * 60 * 1000;
   }

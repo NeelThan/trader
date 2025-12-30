@@ -26,6 +26,18 @@ export type ChartSettings = {
   fibExtension: boolean;
   fibExpansion: boolean;
   fibProjection: boolean;
+
+  // Trend Indicators
+  trendUsePivots: boolean; // Use pivot-based HH/HL/LH/LL analysis
+  trendUseMA: boolean; // Use moving average crossover
+  trendMAFast: number; // Fast MA period (default: 20)
+  trendMASlow: number; // Slow MA period (default: 50)
+  trendUseRSI: boolean; // Use RSI for trend confirmation
+  trendRSIPeriod: number; // RSI period (default: 14)
+  trendRSIThreshold: number; // RSI center threshold (default: 50)
+  trendUseADX: boolean; // Use ADX for trend strength
+  trendADXPeriod: number; // ADX period (default: 14)
+  trendADXThreshold: number; // Minimum ADX for trending market (default: 25)
 };
 
 // Color scheme definitions
@@ -51,6 +63,17 @@ const DEFAULT_SETTINGS: ChartSettings = {
   fibExtension: true,
   fibExpansion: true,
   fibProjection: true,
+  // Trend Indicators - all enabled by default
+  trendUsePivots: true,
+  trendUseMA: true,
+  trendMAFast: 20,
+  trendMASlow: 50,
+  trendUseRSI: true,
+  trendRSIPeriod: 14,
+  trendRSIThreshold: 50,
+  trendUseADX: false, // ADX disabled by default (more advanced)
+  trendADXPeriod: 14,
+  trendADXThreshold: 25,
 };
 
 const SETTINGS_KEY = "trader-chart-settings";

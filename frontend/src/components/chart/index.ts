@@ -1,3 +1,4 @@
+export { AnalysisTabs } from "./AnalysisTabs";
 export { BackendStatus } from "./BackendStatus";
 export { ChartControls } from "./ChartControls";
 export { ChartHeader } from "./ChartHeader";
@@ -21,3 +22,4 @@ export { PriceSummary } from "./PriceSummary";
 export { RefreshStatus } from "./RefreshStatus";
 export { SignalDetectionPanel } from "./SignalDetectionPanel";
 export { TrendAlignmentPanel } from "./TrendAlignmentPanel";
+export { UnifiedHeader } from "./UnifiedHeader";

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Button } from "@/components/ui/button";
 import { CandlestickChart, CandlestickChartHandle, ChartType } from "@/components/trading";
 import { useSettings, COLOR_SCHEMES, ColorScheme, DEFAULT_SETTINGS } from "@/hooks/use-settings";
 import { useMarketData } from "@/hooks/use-market-data";
@@ -15,43 +14,35 @@ import {
   FibonacciVisibility,
 } from "@/lib/chart-constants";
 import {
-  BackendStatus,
-  ChartControls,
-  ChartHeader,
+  AnalysisTabs,
   ChartToolbar,
-  DataSourceSelector,
-  FibonacciControls,
-  FibonacciCalculationsPanel,
-  HarmonicPatternPanel,
-  MarketSelector,
-  PivotPointsPanel,
   PriceSummary,
   RefreshStatus,
-  SignalDetectionPanel,
-  TrendAlignmentPanel,
+  UnifiedHeader,
   type AllFibonacciConfigs,
   type FibonacciPivots,
 } from "@/components/chart";
 
-export default function ChartDemoPage() {
+export default function ChartPage() {
   const { settings } = useSettings();
   const chartRef = useRef<CandlestickChartHandle>(null);
 
-  // Initialize state with defaults (same as DEFAULT_SETTINGS to prevent hydration mismatch)
+  // Core state
   const [symbol, setSymbol] = useState<MarketSymbol>("DJI");
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
   const [chartType, setChartType] = useState<ChartType>("candlestick");
   const [colorScheme, setColorScheme] = useState<ColorScheme>("blue-red");
   const [dataSource, setDataSource] = useState<DataSource>("yahoo");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const [useBackendAPI, setUseBackendAPI] = useState(true);
+
+  // Fibonacci state
   const [fibVisibility, setFibVisibility] = useState<FibonacciVisibility>({
     retracement: true,
     extension: true,
     expansion: true,
     projection: true,
   });
-
-  // Independent Fibonacci configs with separate pivot points for each type
   const [fibConfigs, setFibConfigs] = useState<AllFibonacciConfigs>({
     retracement: { enabled: true, pivots: { high: 0, low: 0 }, useAutoDetect: true },
     extension: { enabled: true, pivots: { high: 0, low: 0 }, useAutoDetect: true },
@@ -59,29 +50,26 @@ export default function ChartDemoPage() {
     projection: { enabled: true, pivots: { high: 0, low: 0, pointA: 0, pointB: 0, pointC: 0 }, useAutoDetect: true },
   });
 
+  // Pivot state
   const [showPivots, setShowPivots] = useState(false);
   const [showPivotLines, setShowPivotLines] = useState(false);
-  const [showPivotPanel, setShowPivotPanel] = useState(false);
-  const [showTrendPanel, setShowTrendPanel] = useState(false);
   const [pivotConfig, setPivotConfig] = useState<PivotConfig>(DEFAULT_PIVOT_CONFIG);
+
+  // UI state
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
   const [settingsApplied, setSettingsApplied] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
-  const [useBackendAPI, setUseBackendAPI] = useState(true);
 
-  // Track when component has mounted to avoid hydration mismatch.
-  // This is intentional - we need to detect client-side mounting to prevent
-  // hydration errors from random data generation.
+  // Track mount
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional mount detection
     setHasMounted(true);
   }, []);
 
-  // Get colors from selected scheme
+  // Get colors from scheme
   const { up: upColor, down: downColor } = COLOR_SCHEMES[colorScheme];
 
-  // Apply settings from localStorage after hydration (only once).
-  // This syncs external storage (localStorage) with React state - a valid use case for effects.
+  // Apply settings from localStorage
   useEffect(() => {
     if (!settingsApplied) {
       const hasCustomSettings =
@@ -91,11 +79,7 @@ export default function ChartDemoPage() {
         settings.colorScheme !== DEFAULT_SETTINGS.colorScheme ||
         settings.theme !== DEFAULT_SETTINGS.theme ||
         settings.showPivots !== DEFAULT_SETTINGS.showPivots ||
-        settings.showPivotLines !== DEFAULT_SETTINGS.showPivotLines ||
-        settings.fibRetracement !== DEFAULT_SETTINGS.fibRetracement ||
-        settings.fibExtension !== DEFAULT_SETTINGS.fibExtension ||
-        settings.fibExpansion !== DEFAULT_SETTINGS.fibExpansion ||
-        settings.fibProjection !== DEFAULT_SETTINGS.fibProjection;
+        settings.showPivotLines !== DEFAULT_SETTINGS.showPivotLines;
 
       if (hasCustomSettings) {
         /* eslint-disable react-hooks/set-state-in-effect -- Syncing external storage with state */
@@ -123,7 +107,7 @@ export default function ChartDemoPage() {
     }
   }, [settings, settingsApplied]);
 
-  // Use market data hook
+  // Market data
   const {
     data,
     isLoading,
@@ -138,13 +122,13 @@ export default function ChartDemoPage() {
     loadMoreData,
   } = useMarketData(symbol, timeframe, dataSource, hasMounted);
 
-  // Use trend analysis hook for multi-timeframe alignment
+  // Trend analysis
   const trendAnalysis = useTrendAnalysis({
     symbol,
-    enabled: hasMounted && showTrendPanel,
+    enabled: hasMounted,
   });
 
-  // Use pivot analysis hook (first pass to get high/low)
+  // Pivot analysis (first pass)
   const pivotAnalysis = usePivotAnalysis(
     data,
     fibVisibility,
@@ -163,7 +147,6 @@ export default function ChartDemoPage() {
     pivotC,
     high,
     low,
-    range,
     useManualPivots,
     manualHigh,
     manualLow,
@@ -173,21 +156,21 @@ export default function ChartDemoPage() {
     applyDetectedPivots,
   } = pivotAnalysis;
 
-  // Fetch Fibonacci levels from backend API
+  // Fibonacci API
   const { retracement, extension, isBackendAvailable } = useFibonacciAPI({
     high: high > 0 ? high : null,
     low: low > 0 ? low : null,
-    direction: "buy", // TODO: Determine direction from trend analysis
+    direction: "buy",
     enabled: useBackendAPI && high > 0 && low > 0,
   });
 
-  // Build backend levels object for the pivot analysis hook
+  // Backend levels
   const backendLevels: BackendLevels | null =
     useBackendAPI && isBackendAvailable && (retracement.length > 0 || extension.length > 0)
       ? { retracement, extension }
       : null;
 
-  // Use pivot analysis hook with backend levels for price lines
+  // Pivot analysis with backend levels
   const { priceLines, lineOverlays } = usePivotAnalysis(
     data,
     fibVisibility,
@@ -199,13 +182,13 @@ export default function ChartDemoPage() {
     pivotConfig
   );
 
-  // Calculate price changes
+  // Price calculations
   const currentPrice = data[data.length - 1]?.close ?? high;
   const startPrice = data[0]?.open ?? 0;
   const priceChange = currentPrice - startPrice;
   const percentChange = startPrice > 0 ? ((priceChange / startPrice) * 100).toFixed(2) : "0.00";
 
-  // Toggle handlers - sync both fibVisibility and fibConfigs
+  // Toggle handlers
   const toggleFibType = (type: keyof FibonacciVisibility) => {
     setFibVisibility((prev) => ({ ...prev, [type]: !prev[type] }));
     setFibConfigs((prev) => ({
@@ -231,7 +214,7 @@ export default function ChartDemoPage() {
     }));
   };
 
-  // Build auto-detected pivots from pivot analysis
+  // Auto-detected pivots
   const autoDetectedPivots: FibonacciPivots = useMemo(() => ({
     high,
     low,
@@ -242,186 +225,125 @@ export default function ChartDemoPage() {
 
   return (
     <div className={theme === "dark" ? "dark" : ""}>
-      <div className="min-h-screen bg-background text-foreground p-6">
-        <div className="max-w-6xl mx-auto space-y-6">
-          {/* Header */}
-          <ChartHeader
+      <div className="min-h-screen bg-background text-foreground">
+        <div className="max-w-7xl mx-auto p-4 space-y-4">
+          {/* Unified Header: Market, Timeframe, Settings, Navigation */}
+          <UnifiedHeader
             symbol={symbol}
             timeframe={timeframe}
             theme={theme}
-            onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-          />
-
-          {/* Data Source Selection */}
-          <DataSourceSelector
             dataSource={dataSource}
-            onSelect={setDataSource}
-            isLoading={isLoading}
-            error={fetchError}
-          />
-
-          {/* Backend API Status */}
-          <BackendStatus
-            useBackend={useBackendAPI}
-            onToggle={() => setUseBackendAPI(!useBackendAPI)}
-          />
-
-          {/* Yahoo Finance Refresh Status */}
-          {dataSource === "yahoo" && (
-            <RefreshStatus
-              isLoading={isLoading}
-              autoRefreshEnabled={autoRefreshEnabled}
-              countdown={countdown}
-              lastUpdated={lastUpdated}
-              marketStatus={marketStatus}
-              timeframe={timeframe}
-              onToggleAutoRefresh={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
-              onRefreshNow={refreshNow}
-            />
-          )}
-
-          {/* Market Selection */}
-          <MarketSelector symbol={symbol} onSelect={setSymbol} />
-
-          {/* Trend Alignment Panel Toggle */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant={showTrendPanel ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowTrendPanel(!showTrendPanel)}
-            >
-              {showTrendPanel ? "Hide" : "Show"} Trend Alignment
-            </Button>
-            {!showTrendPanel && (
-              <span className="text-xs text-muted-foreground">
-                Multi-timeframe trend analysis for trade direction
-              </span>
-            )}
-          </div>
-          {showTrendPanel && (
-            <TrendAlignmentPanel
-              alignments={trendAnalysis.alignments}
-              selectedPair={trendAnalysis.selectedPair}
-              isLoading={trendAnalysis.isLoading}
-              error={trendAnalysis.error}
-              onSelectPair={trendAnalysis.setSelectedPair}
-              onRefresh={trendAnalysis.refresh}
-            />
-          )}
-
-          {/* Timeframe, Chart Type, and Color Selection */}
-          <ChartControls
-            timeframe={timeframe}
-            chartType={chartType}
-            colorScheme={colorScheme}
+            useBackendAPI={useBackendAPI}
+            onSymbolChange={setSymbol}
             onTimeframeChange={setTimeframe}
-            onChartTypeChange={setChartType}
-            onColorSchemeChange={setColorScheme}
+            onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+            onDataSourceChange={setDataSource}
+            onBackendToggle={() => setUseBackendAPI(!useBackendAPI)}
           />
 
-          {/* Pivot Points Controls - Hidden by default, toggle with button */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant={showPivotPanel ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowPivotPanel(!showPivotPanel)}
-            >
-              {showPivotPanel ? "Hide" : "Show"} Pivot Controls
-            </Button>
-            {!showPivotPanel && (
-              <span className="text-xs text-muted-foreground">
-                Individual Fibonacci panels have their own pivot point settings
-              </span>
-            )}
-          </div>
-          {showPivotPanel && (
-            <PivotPointsPanel
-              pivotPoints={pivotPoints}
-              high={high}
-              low={low}
-              showPivots={showPivots}
-              showPivotLines={showPivotLines}
-              useManualPivots={useManualPivots}
-              manualHigh={manualHigh}
-              manualLow={manualLow}
-              pivotConfig={pivotConfig}
-              onTogglePivots={() => setShowPivots(!showPivots)}
-              onTogglePivotLines={() => setShowPivotLines(!showPivotLines)}
-              onToggleManualPivots={() => setUseManualPivots(!useManualPivots)}
-              onManualHighChange={setManualHigh}
-              onManualLowChange={setManualLow}
-              onApplyDetectedPivots={applyDetectedPivots}
-              onPivotConfigChange={(config) => setPivotConfig((prev) => ({ ...prev, ...config }))}
-            />
-          )}
-
-          {/* Fibonacci Controls */}
-          <FibonacciControls
-            visibility={fibVisibility}
-            onToggle={toggleFibType}
-            onToggleAll={toggleAllFib}
-          />
-
-          {/* Price Summary */}
-          <PriceSummary
-            symbol={symbol}
-            currentPrice={currentPrice}
-            crosshairPrice={crosshairPrice}
-            priceChange={priceChange}
-            percentChange={percentChange}
-            timeframe={timeframe}
-          />
-
-          {/* Chart with Toolbar */}
-          <div className="space-y-2">
-            <ChartToolbar
-              onZoomIn={() => chartRef.current?.zoomIn()}
-              onZoomOut={() => chartRef.current?.zoomOut()}
-              onResetView={() => chartRef.current?.resetView()}
-            />
-            <div className="rounded-lg border overflow-hidden relative">
-              <CandlestickChart
-                ref={chartRef}
-                data={data}
-                priceLines={priceLines}
-                lineOverlays={lineOverlays}
-                chartType={chartType}
-                height={500}
-                theme={theme}
-                upColor={upColor}
-                downColor={downColor}
-                onCrosshairMove={(price) => setCrosshairPrice(price)}
-                onLoadMore={loadMoreData}
-              />
-              {isLoadingMore && (
-                <div className="absolute top-2 left-2 px-2 py-1 bg-background/80 rounded text-sm text-muted-foreground">
-                  Loading history...
-                </div>
+          {/* Main Content: Chart + Analysis */}
+          <div className="space-y-4">
+            {/* Chart Section */}
+            <div className="space-y-3">
+              {/* Refresh Status (compact) */}
+              {dataSource === "yahoo" && (
+                <RefreshStatus
+                  isLoading={isLoading}
+                  autoRefreshEnabled={autoRefreshEnabled}
+                  countdown={countdown}
+                  lastUpdated={lastUpdated}
+                  marketStatus={marketStatus}
+                  timeframe={timeframe}
+                  onToggleAutoRefresh={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+                  onRefreshNow={refreshNow}
+                />
               )}
+
+              {/* Price Summary */}
+              <PriceSummary
+                symbol={symbol}
+                currentPrice={currentPrice}
+                crosshairPrice={crosshairPrice}
+                priceChange={priceChange}
+                percentChange={percentChange}
+                timeframe={timeframe}
+              />
+
+              {/* Chart with Toolbar */}
+              <div className="space-y-2">
+                <ChartToolbar
+                  onZoomIn={() => chartRef.current?.zoomIn()}
+                  onZoomOut={() => chartRef.current?.zoomOut()}
+                  onResetView={() => chartRef.current?.resetView()}
+                />
+                <div className="rounded-lg border overflow-hidden relative">
+                  <CandlestickChart
+                    ref={chartRef}
+                    data={data}
+                    priceLines={priceLines}
+                    lineOverlays={lineOverlays}
+                    chartType={chartType}
+                    height={500}
+                    theme={theme}
+                    upColor={upColor}
+                    downColor={downColor}
+                    onCrosshairMove={(price) => setCrosshairPrice(price)}
+                    onLoadMore={loadMoreData}
+                  />
+                  {isLoadingMore && (
+                    <div className="absolute top-2 left-2 px-2 py-1 bg-background/80 rounded text-sm text-muted-foreground">
+                      Loading history...
+                    </div>
+                  )}
+                  {fetchError && (
+                    <div className="absolute top-2 right-2 px-2 py-1 bg-red-500/20 rounded text-sm text-red-400">
+                      {fetchError}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Analysis Panel (below chart) */}
+            <div className="p-4 rounded-lg bg-card border">
+              <AnalysisTabs
+                  data={data}
+                  fibonacciLevels={priceLines.map((line) => line.price)}
+                  fibVisibility={fibVisibility}
+                  fibConfigs={fibConfigs}
+                  autoDetectedPivots={autoDetectedPivots}
+                  onFibVisibilityChange={toggleFibType}
+                  onFibToggleAll={toggleAllFib}
+                  onFibConfigsChange={setFibConfigs}
+                  pivotPoints={pivotPoints}
+                  high={high}
+                  low={low}
+                  showPivots={showPivots}
+                  showPivotLines={showPivotLines}
+                  useManualPivots={useManualPivots}
+                  manualHigh={manualHigh}
+                  manualLow={manualLow}
+                  pivotConfig={pivotConfig}
+                  onTogglePivots={() => setShowPivots(!showPivots)}
+                  onTogglePivotLines={() => setShowPivotLines(!showPivotLines)}
+                  onToggleManualPivots={() => setUseManualPivots(!useManualPivots)}
+                  onManualHighChange={setManualHigh}
+                  onManualLowChange={setManualLow}
+                  onApplyDetectedPivots={applyDetectedPivots}
+                  onPivotConfigChange={(config) => setPivotConfig((prev) => ({ ...prev, ...config }))}
+                  trendAlignments={trendAnalysis.alignments}
+                  selectedPair={trendAnalysis.selectedPair}
+                  trendLoading={trendAnalysis.isLoading}
+                  trendError={trendAnalysis.error}
+                  onSelectPair={trendAnalysis.setSelectedPair}
+                  onTrendRefresh={trendAnalysis.refresh}
+                  useBackendAPI={useBackendAPI}
+                  defaultX={pivotA?.price}
+                  defaultA={pivotB?.price}
+                  defaultB={pivotC?.price}
+                />
             </div>
           </div>
-
-          {/* Fibonacci Calculations Panel - with independent pivot points */}
-          <FibonacciCalculationsPanel
-            configs={fibConfigs}
-            autoDetectedPivots={autoDetectedPivots}
-            onConfigsChange={setFibConfigs}
-          />
-
-          {/* Signal Detection Panel */}
-          <SignalDetectionPanel
-            data={data}
-            fibonacciLevels={priceLines.map((line) => line.price)}
-            enabled={useBackendAPI}
-          />
-
-          {/* Harmonic Pattern Panel */}
-          <HarmonicPatternPanel
-            enabled={useBackendAPI}
-            defaultX={pivotA?.price}
-            defaultA={pivotB?.price}
-            defaultB={pivotC?.price}
-          />
         </div>
       </div>
     </div>

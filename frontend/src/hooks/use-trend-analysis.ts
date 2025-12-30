@@ -7,6 +7,12 @@
  * - Higher TF UP + Lower TF DOWN = GO LONG (buy the dip)
  * - Higher TF DOWN + Lower TF UP = GO SHORT (sell the rally)
  * - Both same direction = STAND ASIDE (wait for pullback)
+ *
+ * Supports configurable trend indicators:
+ * - Pivot points (HH/HL/LH/LL analysis)
+ * - Moving averages (fast/slow crossover)
+ * - RSI (above/below threshold)
+ * - ADX (trend strength and direction)
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -19,15 +25,33 @@ import {
   TrendAlignment,
   TrendDirection,
   TradeAction,
+  TrendIndicators,
+  IndicatorSignal,
   TIMEFRAME_PAIR_PRESETS,
 } from "@/lib/chart-constants";
 import { detectPivotPoints } from "@/lib/market-utils";
+import { calculateIndicators, IndicatorValues } from "@/lib/technical-indicators";
+import { useSettings } from "@/hooks/use-settings";
+
+export type TrendIndicatorConfig = {
+  usePivots: boolean;
+  useMA: boolean;
+  maFastPeriod: number;
+  maSlowPeriod: number;
+  useRSI: boolean;
+  rsiPeriod: number;
+  rsiThreshold: number;
+  useADX: boolean;
+  adxPeriod: number;
+  adxThreshold: number;
+};
 
 export type UseTrendAnalysisOptions = {
   symbol: MarketSymbol;
   pairs?: TimeframePair[];
   lookback?: number; // Pivot detection lookback
   enabled?: boolean;
+  indicatorConfig?: Partial<TrendIndicatorConfig>; // Override settings
 };
 
 export type UseTrendAnalysisReturn = {
@@ -37,47 +61,60 @@ export type UseTrendAnalysisReturn = {
   selectedPair: TimeframePair | null;
   setSelectedPair: (pair: TimeframePair) => void;
   refresh: () => void;
+  indicatorConfig: TrendIndicatorConfig;
 };
 
 /**
- * Detect trend direction from OHLC data using pivot analysis.
+ * Create default empty indicators.
+ */
+function createEmptyIndicators(): TrendIndicators {
+  return {
+    pivotSignal: "neutral",
+    pivotHigh: null,
+    pivotLow: null,
+    smaFast: null,
+    smaSlow: null,
+    maSignal: "neutral",
+    rsi: null,
+    rsiSignal: "neutral",
+    adx: null,
+    plusDI: null,
+    minusDI: null,
+    adxSignal: "neutral",
+    isTrending: false,
+  };
+}
+
+/**
+ * Detect pivot-based trend direction from OHLC data.
  * UP: Higher highs and higher lows
  * DOWN: Lower highs and lower lows
  * NEUTRAL: Mixed or insufficient data
  */
-function detectTrendDirection(
+function detectPivotTrend(
   data: OHLCData[],
-  timeframe: Timeframe,
   lookback: number = 5
-): TimeframeTrend {
+): { direction: TrendDirection; strength: number; pivotHigh: number | null; pivotLow: number | null; signal: IndicatorSignal } {
   if (data.length < lookback * 2 + 1) {
-    return {
-      timeframe,
-      direction: "NEUTRAL",
-      strength: 0,
-      pivotHigh: null,
-      pivotLow: null,
-    };
+    return { direction: "NEUTRAL", strength: 0, pivotHigh: null, pivotLow: null, signal: "neutral" };
   }
 
   const pivots = detectPivotPoints(data, lookback);
-  const recentPivots = pivots.slice(-6); // Last 6 pivots for analysis
+  const recentPivots = pivots.slice(-6);
 
   const highs = recentPivots.filter((p) => p.type === "high").map((p) => p.price);
   const lows = recentPivots.filter((p) => p.type === "low").map((p) => p.price);
 
-  // Need at least 2 of each type to determine trend
   if (highs.length < 2 || lows.length < 2) {
     return {
-      timeframe,
       direction: "NEUTRAL",
       strength: 0.3,
       pivotHigh: highs[highs.length - 1] ?? null,
       pivotLow: lows[lows.length - 1] ?? null,
+      signal: "neutral",
     };
   }
 
-  // Check for higher highs (HH) and higher lows (HL)
   const lastTwoHighs = highs.slice(-2);
   const lastTwoLows = lows.slice(-2);
 
@@ -88,47 +125,197 @@ function detectTrendDirection(
 
   let direction: TrendDirection = "NEUTRAL";
   let strength = 0.5;
+  let signal: IndicatorSignal = "neutral";
 
   if (higherHighs && higherLows) {
-    // Clear uptrend: HH + HL
     direction = "UP";
     strength = 0.9;
+    signal = "bullish";
   } else if (lowerHighs && lowerLows) {
-    // Clear downtrend: LH + LL
     direction = "DOWN";
     strength = 0.9;
+    signal = "bearish";
   } else if (higherHighs || higherLows) {
-    // Weak uptrend: Only one condition met
     direction = "UP";
     strength = 0.6;
+    signal = "bullish";
   } else if (lowerHighs || lowerLows) {
-    // Weak downtrend: Only one condition met
     direction = "DOWN";
     strength = 0.6;
+    signal = "bearish";
   }
 
-  // Also check recent price action relative to pivots
+  // Price action bias
   const currentPrice = data[data.length - 1].close;
   const latestHigh = highs[highs.length - 1];
   const latestLow = lows[lows.length - 1];
 
-  // If price is near new highs, bias toward uptrend
   if (latestHigh && currentPrice > latestHigh * 0.995) {
-    if (direction === "NEUTRAL") direction = "UP";
+    if (direction === "NEUTRAL") {
+      direction = "UP";
+      signal = "bullish";
+    }
     strength = Math.min(strength + 0.1, 1.0);
   }
-  // If price is near new lows, bias toward downtrend
   if (latestLow && currentPrice < latestLow * 1.005) {
-    if (direction === "NEUTRAL") direction = "DOWN";
+    if (direction === "NEUTRAL") {
+      direction = "DOWN";
+      signal = "bearish";
+    }
     strength = Math.min(strength + 0.1, 1.0);
   }
 
   return {
-    timeframe,
     direction,
     strength,
     pivotHigh: latestHigh ?? null,
     pivotLow: latestLow ?? null,
+    signal,
+  };
+}
+
+/**
+ * Combine multiple indicator signals into a single trend direction.
+ */
+function combineTrendSignals(
+  pivotResult: { direction: TrendDirection; strength: number; signal: IndicatorSignal },
+  indicatorValues: IndicatorValues,
+  config: TrendIndicatorConfig
+): { direction: TrendDirection; strength: number } {
+  const signals: { direction: TrendDirection; weight: number }[] = [];
+
+  // Add pivot signal
+  if (config.usePivots) {
+    signals.push({ direction: pivotResult.direction, weight: 0.4 });
+  }
+
+  // Add MA signal
+  if (config.useMA && indicatorValues.maSignal !== "neutral") {
+    const maDirection: TrendDirection = indicatorValues.maSignal === "bullish" ? "UP" : "DOWN";
+    signals.push({ direction: maDirection, weight: 0.25 });
+  }
+
+  // Add RSI signal
+  if (config.useRSI && indicatorValues.rsiSignal !== "neutral") {
+    const rsiDirection: TrendDirection = indicatorValues.rsiSignal === "bullish" ? "UP" : "DOWN";
+    signals.push({ direction: rsiDirection, weight: 0.2 });
+  }
+
+  // Add ADX signal (only if market is trending)
+  if (config.useADX && indicatorValues.isTrending && indicatorValues.adxSignal !== "neutral") {
+    const adxDirection: TrendDirection = indicatorValues.adxSignal === "bullish" ? "UP" : "DOWN";
+    signals.push({ direction: adxDirection, weight: 0.15 });
+  }
+
+  if (signals.length === 0) {
+    return { direction: "NEUTRAL", strength: 0 };
+  }
+
+  // Calculate weighted consensus
+  let upWeight = 0;
+  let downWeight = 0;
+  let totalWeight = 0;
+
+  for (const signal of signals) {
+    if (signal.direction === "UP") {
+      upWeight += signal.weight;
+    } else if (signal.direction === "DOWN") {
+      downWeight += signal.weight;
+    }
+    totalWeight += signal.weight;
+  }
+
+  // Normalize weights
+  upWeight /= totalWeight;
+  downWeight /= totalWeight;
+
+  // Determine direction based on consensus
+  let direction: TrendDirection = "NEUTRAL";
+  let strength = 0.5;
+
+  if (upWeight > 0.6) {
+    direction = "UP";
+    strength = 0.5 + upWeight * 0.5;
+  } else if (downWeight > 0.6) {
+    direction = "DOWN";
+    strength = 0.5 + downWeight * 0.5;
+  } else if (upWeight > downWeight) {
+    direction = "UP";
+    strength = 0.4 + (upWeight - 0.5) * 0.5;
+  } else if (downWeight > upWeight) {
+    direction = "DOWN";
+    strength = 0.4 + (downWeight - 0.5) * 0.5;
+  }
+
+  // ADX can boost strength if trending strongly
+  if (config.useADX && indicatorValues.isTrending && indicatorValues.adx) {
+    const adxBonus = Math.min((indicatorValues.adx - config.adxThreshold) / 50, 0.15);
+    strength = Math.min(strength + adxBonus, 1.0);
+  }
+
+  return { direction, strength };
+}
+
+/**
+ * Detect trend direction from OHLC data using configurable indicators.
+ */
+function detectTrendDirection(
+  data: OHLCData[],
+  timeframe: Timeframe,
+  config: TrendIndicatorConfig,
+  lookback: number = 5
+): TimeframeTrend {
+  if (data.length < Math.max(lookback * 2 + 1, config.maSlowPeriod + 10)) {
+    return {
+      timeframe,
+      direction: "NEUTRAL",
+      strength: 0,
+      pivotHigh: null,
+      pivotLow: null,
+      indicators: createEmptyIndicators(),
+    };
+  }
+
+  // Calculate pivot-based trend
+  const pivotResult = detectPivotTrend(data, lookback);
+
+  // Calculate technical indicators
+  const indicatorValues = calculateIndicators(data, {
+    maFastPeriod: config.maFastPeriod,
+    maSlowPeriod: config.maSlowPeriod,
+    rsiPeriod: config.rsiPeriod,
+    rsiThreshold: config.rsiThreshold,
+    adxPeriod: config.adxPeriod,
+    adxThreshold: config.adxThreshold,
+  });
+
+  // Combine signals
+  const combined = combineTrendSignals(pivotResult, indicatorValues, config);
+
+  // Build indicators object
+  const indicators: TrendIndicators = {
+    pivotSignal: pivotResult.signal,
+    pivotHigh: pivotResult.pivotHigh,
+    pivotLow: pivotResult.pivotLow,
+    smaFast: indicatorValues.smaFast,
+    smaSlow: indicatorValues.smaSlow,
+    maSignal: indicatorValues.maSignal,
+    rsi: indicatorValues.rsi,
+    rsiSignal: indicatorValues.rsiSignal,
+    adx: indicatorValues.adx,
+    plusDI: indicatorValues.plusDI,
+    minusDI: indicatorValues.minusDI,
+    adxSignal: indicatorValues.adxSignal,
+    isTrending: indicatorValues.isTrending,
+  };
+
+  return {
+    timeframe,
+    direction: combined.direction,
+    strength: combined.strength,
+    pivotHigh: pivotResult.pivotHigh,
+    pivotLow: pivotResult.pivotLow,
+    indicators,
   };
 }
 
@@ -139,17 +326,12 @@ function determineTradeAction(
   higherTrend: TrendDirection,
   lowerTrend: TrendDirection
 ): TradeAction {
-  // Higher TF UP + Lower TF DOWN = Buy the dip
   if (higherTrend === "UP" && lowerTrend === "DOWN") {
     return "GO_LONG";
   }
-
-  // Higher TF DOWN + Lower TF UP = Sell the rally
   if (higherTrend === "DOWN" && lowerTrend === "UP") {
     return "GO_SHORT";
   }
-
-  // Both same direction or neutral = Stand aside
   return "STAND_ASIDE";
 }
 
@@ -162,13 +344,11 @@ function calculateConfidence(
   action: TradeAction
 ): number {
   if (action === "STAND_ASIDE") {
-    return 0.3; // Low confidence - no trade signal
+    return 0.3;
   }
 
-  // Average of both trend strengths
   const strengthAvg = (higherTrend.strength + lowerTrend.strength) / 2;
 
-  // Bonus for opposite directions (the ideal scenario)
   const oppositeBonus =
     (higherTrend.direction === "UP" && lowerTrend.direction === "DOWN") ||
     (higherTrend.direction === "DOWN" && lowerTrend.direction === "UP")
@@ -190,7 +370,6 @@ async function fetchTimeframeData(
   );
 
   if (!response.ok) {
-    // Don't throw for 404 - just return empty data (e.g., intraday when market closed)
     if (response.status === 404) {
       return [];
     }
@@ -209,7 +388,24 @@ export function useTrendAnalysis({
   pairs = TIMEFRAME_PAIR_PRESETS,
   lookback = 5,
   enabled = true,
+  indicatorConfig: configOverride,
 }: UseTrendAnalysisOptions): UseTrendAnalysisReturn {
+  const { settings } = useSettings();
+
+  // Build indicator config from settings with optional overrides
+  const indicatorConfig = useMemo<TrendIndicatorConfig>(() => ({
+    usePivots: configOverride?.usePivots ?? settings.trendUsePivots,
+    useMA: configOverride?.useMA ?? settings.trendUseMA,
+    maFastPeriod: configOverride?.maFastPeriod ?? settings.trendMAFast,
+    maSlowPeriod: configOverride?.maSlowPeriod ?? settings.trendMASlow,
+    useRSI: configOverride?.useRSI ?? settings.trendUseRSI,
+    rsiPeriod: configOverride?.rsiPeriod ?? settings.trendRSIPeriod,
+    rsiThreshold: configOverride?.rsiThreshold ?? settings.trendRSIThreshold,
+    useADX: configOverride?.useADX ?? settings.trendUseADX,
+    adxPeriod: configOverride?.adxPeriod ?? settings.trendADXPeriod,
+    adxThreshold: configOverride?.adxThreshold ?? settings.trendADXThreshold,
+  }), [settings, configOverride]);
+
   const [dataCache, setDataCache] = useState<Map<Timeframe, OHLCData[]>>(
     new Map()
   );
@@ -279,8 +475,8 @@ export function useTrendAnalysis({
       const higherData = dataCache.get(pair.higherTF) || [];
       const lowerData = dataCache.get(pair.lowerTF) || [];
 
-      const higherTrend = detectTrendDirection(higherData, pair.higherTF, lookback);
-      const lowerTrend = detectTrendDirection(lowerData, pair.lowerTF, lookback);
+      const higherTrend = detectTrendDirection(higherData, pair.higherTF, indicatorConfig, lookback);
+      const lowerTrend = detectTrendDirection(lowerData, pair.lowerTF, indicatorConfig, lookback);
       const action = determineTradeAction(higherTrend.direction, lowerTrend.direction);
       const confidence = calculateConfidence(higherTrend, lowerTrend, action);
 
@@ -292,7 +488,7 @@ export function useTrendAnalysis({
         confidence,
       };
     });
-  }, [dataCache, pairs, lookback]);
+  }, [dataCache, pairs, lookback, indicatorConfig]);
 
   const refresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -305,5 +501,6 @@ export function useTrendAnalysis({
     selectedPair,
     setSelectedPair,
     refresh,
+    indicatorConfig,
   };
 }

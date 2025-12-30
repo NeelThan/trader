@@ -158,6 +158,34 @@ export type TradingStyle = "position" | "swing" | "day" | "scalping";
 export type TradeAction = "GO_LONG" | "GO_SHORT" | "STAND_ASIDE";
 
 /**
+ * Indicator signals for trend confirmation.
+ */
+export type IndicatorSignal = "bullish" | "bearish" | "neutral";
+
+/**
+ * Technical indicator values for a timeframe.
+ */
+export type TrendIndicators = {
+  // Pivot-based
+  pivotSignal: IndicatorSignal;
+  pivotHigh: number | null;
+  pivotLow: number | null;
+  // Moving Average
+  smaFast: number | null;
+  smaSlow: number | null;
+  maSignal: IndicatorSignal;
+  // RSI
+  rsi: number | null;
+  rsiSignal: IndicatorSignal;
+  // ADX
+  adx: number | null;
+  plusDI: number | null;
+  minusDI: number | null;
+  adxSignal: IndicatorSignal;
+  isTrending: boolean;
+};
+
+/**
  * Trend analysis result for a single timeframe.
  */
 export type TimeframeTrend = {
@@ -166,6 +194,7 @@ export type TimeframeTrend = {
   strength: number; // 0-1, how strong the trend is
   pivotHigh: number | null;
   pivotLow: number | null;
+  indicators: TrendIndicators;
 };
 
 /**

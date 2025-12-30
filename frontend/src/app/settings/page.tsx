@@ -349,6 +349,157 @@ export default function SettingsPage() {
             />
           </SettingSection>
 
+          {/* Trend Indicators */}
+          <SettingSection title="Trend Indicators">
+            <p className="text-xs text-muted-foreground pb-2">
+              Configure which indicators are used for multi-timeframe trend analysis.
+              Multiple indicators provide confirmation through weighted consensus.
+            </p>
+
+            {/* Pivot-based */}
+            <ToggleSetting
+              label="Pivot Point Analysis"
+              description="Use HH/HL/LH/LL pivot patterns to determine trend direction"
+              checked={settings.trendUsePivots}
+              onChange={(checked) => setSettings({ trendUsePivots: checked })}
+            />
+
+            {/* Moving Averages */}
+            <div className="pt-2 border-t">
+              <ToggleSetting
+                label="Moving Average Crossover"
+                description="Use fast/slow SMA crossover for trend confirmation"
+                checked={settings.trendUseMA}
+                onChange={(checked) => setSettings({ trendUseMA: checked })}
+              />
+              {settings.trendUseMA && (
+                <div className="ml-4 mt-2 space-y-3 pb-2">
+                  <div className="flex items-center gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Fast MA</Label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={settings.trendMAFast}
+                          onChange={(e) => setSettings({ trendMAFast: parseInt(e.target.value) || 20 })}
+                          className="w-16 h-8 rounded-md border bg-background px-2 font-mono text-sm"
+                          min={5}
+                          max={50}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Slow MA</Label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={settings.trendMASlow}
+                          onChange={(e) => setSettings({ trendMASlow: parseInt(e.target.value) || 50 })}
+                          className="w-16 h-8 rounded-md border bg-background px-2 font-mono text-sm"
+                          min={10}
+                          max={200}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Bullish when fast MA &gt; slow MA, bearish when fast MA &lt; slow MA
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* RSI */}
+            <div className="pt-2 border-t">
+              <ToggleSetting
+                label="RSI (Relative Strength Index)"
+                description="Use RSI to confirm trend momentum"
+                checked={settings.trendUseRSI}
+                onChange={(checked) => setSettings({ trendUseRSI: checked })}
+              />
+              {settings.trendUseRSI && (
+                <div className="ml-4 mt-2 space-y-3 pb-2">
+                  <div className="flex items-center gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Period</Label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={settings.trendRSIPeriod}
+                          onChange={(e) => setSettings({ trendRSIPeriod: parseInt(e.target.value) || 14 })}
+                          className="w-16 h-8 rounded-md border bg-background px-2 font-mono text-sm"
+                          min={5}
+                          max={50}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Threshold</Label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={settings.trendRSIThreshold}
+                          onChange={(e) => setSettings({ trendRSIThreshold: parseInt(e.target.value) || 50 })}
+                          className="w-16 h-8 rounded-md border bg-background px-2 font-mono text-sm"
+                          min={30}
+                          max={70}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Bullish when RSI &gt; threshold, bearish when RSI &lt; threshold
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* ADX */}
+            <div className="pt-2 border-t">
+              <ToggleSetting
+                label="ADX (Average Directional Index)"
+                description="Use ADX for trend strength and direction"
+                checked={settings.trendUseADX}
+                onChange={(checked) => setSettings({ trendUseADX: checked })}
+              />
+              {settings.trendUseADX && (
+                <div className="ml-4 mt-2 space-y-3 pb-2">
+                  <div className="flex items-center gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Period</Label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={settings.trendADXPeriod}
+                          onChange={(e) => setSettings({ trendADXPeriod: parseInt(e.target.value) || 14 })}
+                          className="w-16 h-8 rounded-md border bg-background px-2 font-mono text-sm"
+                          min={5}
+                          max={50}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Threshold</Label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={settings.trendADXThreshold}
+                          onChange={(e) => setSettings({ trendADXThreshold: parseInt(e.target.value) || 25 })}
+                          className="w-16 h-8 rounded-md border bg-background px-2 font-mono text-sm"
+                          min={15}
+                          max={50}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    ADX &gt; threshold indicates trending market. +DI &gt; -DI = bullish, -DI &gt; +DI = bearish
+                  </p>
+                </div>
+              )}
+            </div>
+          </SettingSection>
+
           {/* Actions */}
           <div className="flex justify-between pt-4">
             <Button variant="outline" onClick={resetSettings}>

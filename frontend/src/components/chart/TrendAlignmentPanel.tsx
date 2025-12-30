@@ -11,6 +11,8 @@ import {
   TrendAlignment,
   TrendDirection,
   TradeAction,
+  TimeframeTrend,
+  IndicatorSignal,
   TRADE_ACTION_CONFIG,
   TREND_DIRECTION_CONFIG,
   TRADING_STYLE_CONFIG,
@@ -59,6 +61,86 @@ function TrendIndicator({
         </div>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * Displays an indicator signal badge.
+ */
+function SignalBadge({ signal, label, value }: { signal: IndicatorSignal; label: string; value?: string }) {
+  const colors = {
+    bullish: "text-green-400 bg-green-500/10",
+    bearish: "text-red-400 bg-red-500/10",
+    neutral: "text-gray-400 bg-gray-500/10",
+  };
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs ${colors[signal]}`}>
+      <span className="font-medium">{label}</span>
+      {value && <span className="opacity-75">({value})</span>}
+    </span>
+  );
+}
+
+/**
+ * Displays indicator details for a timeframe trend.
+ */
+function IndicatorDetails({ trend }: { trend: TimeframeTrend }) {
+  const { indicators } = trend;
+  const hasIndicators =
+    indicators.maSignal !== "neutral" ||
+    indicators.rsi !== null ||
+    indicators.adx !== null;
+
+  if (!hasIndicators) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1 mt-2">
+      {/* Pivot Signal */}
+      {indicators.pivotSignal !== "neutral" && (
+        <SignalBadge signal={indicators.pivotSignal} label="Pivots" />
+      )}
+
+      {/* MA Signal */}
+      {indicators.smaFast !== null && indicators.smaSlow !== null && (
+        <SignalBadge
+          signal={indicators.maSignal}
+          label="MA"
+          value={`${indicators.smaFast.toFixed(0)}/${indicators.smaSlow.toFixed(0)}`}
+        />
+      )}
+
+      {/* RSI */}
+      {indicators.rsi !== null && (
+        <SignalBadge
+          signal={indicators.rsiSignal}
+          label="RSI"
+          value={indicators.rsi.toFixed(1)}
+        />
+      )}
+
+      {/* ADX */}
+      {indicators.adx !== null && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <SignalBadge
+                signal={indicators.isTrending ? indicators.adxSignal : "neutral"}
+                label="ADX"
+                value={indicators.adx.toFixed(1)}
+              />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">
+            <p>+DI: {indicators.plusDI?.toFixed(1) ?? "N/A"}</p>
+            <p>-DI: {indicators.minusDI?.toFixed(1) ?? "N/A"}</p>
+            <p>{indicators.isTrending ? "Trending" : "Ranging"}</p>
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
   );
 }
 
@@ -194,6 +276,7 @@ function AlignmentSummary({ alignment }: { alignment: TrendAlignment }) {
               Low: {alignment.higherTrend.pivotLow.toFixed(2)}
             </p>
           )}
+          <IndicatorDetails trend={alignment.higherTrend} />
         </div>
 
         <div className="p-3 rounded bg-background/50">
@@ -214,6 +297,7 @@ function AlignmentSummary({ alignment }: { alignment: TrendAlignment }) {
               Low: {alignment.lowerTrend.pivotLow.toFixed(2)}
             </p>
           )}
+          <IndicatorDetails trend={alignment.lowerTrend} />
         </div>
       </div>
 
