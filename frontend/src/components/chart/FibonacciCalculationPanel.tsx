@@ -278,12 +278,12 @@ export function FibonacciCalculationPanel({
         {/* Levels Table */}
         <div className="space-y-1">
           {isExpanded ? (
-            // Expanded view: show ratio, price, and full calculation
+            // Expanded view: Ratio → Calculation → Price (reads left to right)
             <>
               <div className="flex text-xs text-muted-foreground font-medium pb-1 border-b">
                 <span className="w-16">Ratio</span>
-                <span className="w-24 text-right">Price</span>
-                <span className="flex-1 text-right pl-4">Calculation</span>
+                <span className="flex-1 pl-2">Calculation</span>
+                <span className="w-28 text-right">= Price</span>
               </div>
               {levels.map(({ ratio, price, calculation }) => (
                 <div
@@ -293,11 +293,11 @@ export function FibonacciCalculationPanel({
                   <span className={`w-16 font-medium ${typeConfig.color}`}>
                     {(ratio * 100).toFixed(1)}%
                   </span>
-                  <span className="w-24 text-right font-mono">
-                    {formatPrice(price)}
+                  <span className="flex-1 pl-2 text-xs text-muted-foreground font-mono">
+                    {calculation}
                   </span>
-                  <span className="flex-1 text-right pl-4 text-xs text-muted-foreground font-mono">
-                    = {calculation}
+                  <span className="w-28 text-right font-mono font-medium">
+                    = {formatPrice(price)}
                   </span>
                 </div>
               ))}
