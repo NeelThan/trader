@@ -40,11 +40,17 @@ const SETTINGS_KEY = "trader-chart-settings";
 // Storage event listeners for cross-tab sync
 const listeners = new Set<() => void>();
 
+// Cache for getSnapshot to avoid infinite loops
+let cachedSettings: ChartSettings = DEFAULT_SETTINGS;
+let cachedRawValue: string | null = null;
+
 function subscribe(callback: () => void) {
   listeners.add(callback);
   // Also listen for storage events from other tabs
   const handleStorage = (e: StorageEvent) => {
     if (e.key === SETTINGS_KEY) {
+      // Invalidate cache
+      cachedRawValue = null;
       callback();
     }
   };
@@ -56,20 +62,31 @@ function subscribe(callback: () => void) {
 }
 
 function notifyListeners() {
+  // Invalidate cache before notifying
+  cachedRawValue = null;
   listeners.forEach((listener) => listener());
 }
 
 function getSnapshot(): ChartSettings {
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
+    // Return cached value if storage hasn't changed
+    if (stored === cachedRawValue) {
+      return cachedSettings;
+    }
+    // Update cache
+    cachedRawValue = stored;
     if (stored) {
       const parsed = JSON.parse(stored) as Partial<ChartSettings>;
-      return { ...DEFAULT_SETTINGS, ...parsed };
+      cachedSettings = { ...DEFAULT_SETTINGS, ...parsed };
+    } else {
+      cachedSettings = DEFAULT_SETTINGS;
     }
+    return cachedSettings;
   } catch (error) {
     console.error("Failed to load settings:", error);
+    return cachedSettings;
   }
-  return DEFAULT_SETTINGS;
 }
 
 function getServerSnapshot(): ChartSettings {
