@@ -254,6 +254,12 @@ export default function ChartDemoPage() {
   const [manualLow, setManualLow] = useState<string>("");
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
   const [settingsApplied, setSettingsApplied] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
+
+  // Track when component has mounted to avoid hydration mismatch
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   // Get colors from selected scheme
   const { up: upColor, down: downColor } = COLOR_SCHEMES[colorScheme];
@@ -311,11 +317,12 @@ export default function ChartDemoPage() {
     isClosed: boolean;
   } | null>(null);
 
-  // Generate simulated data
+  // Generate simulated data (only after mount to avoid hydration mismatch from Math.random)
   const simulatedData = useMemo(() => {
+    if (!hasMounted) return [];
     const config = TIMEFRAME_CONFIG[timeframe];
     return generateMarketData(symbol, timeframe, config.periods);
-  }, [symbol, timeframe]);
+  }, [symbol, timeframe, hasMounted]);
 
   // Fetch Yahoo Finance data function
   const fetchYahooData = useCallback(async () => {
