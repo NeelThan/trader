@@ -2,11 +2,11 @@
 
 /**
  * Hook for fetching and managing market data from Yahoo Finance.
- * Handles auto-refresh, countdown timer, and market status.
+ * Handles auto-refresh, countdown timer, market status, and infinite scrolling.
  */
 
-import { useState, useCallback, useEffect, useMemo } from "react";
-import { OHLCData } from "@/components/trading";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { OHLCData, Time } from "@/components/trading";
 import {
   Timeframe,
   MarketSymbol,
@@ -19,6 +19,7 @@ import { generateMarketData } from "@/lib/market-utils";
 export type UseMarketDataReturn = {
   data: OHLCData[];
   isLoading: boolean;
+  isLoadingMore: boolean;
   fetchError: string | null;
   lastUpdated: Date | null;
   countdown: number;
@@ -26,6 +27,7 @@ export type UseMarketDataReturn = {
   marketStatus: MarketStatus | null;
   setAutoRefreshEnabled: (enabled: boolean) => void;
   refreshNow: () => void;
+  loadMoreData: (oldestTime: Time) => void;
 };
 
 export function useMarketData(
@@ -37,11 +39,13 @@ export function useMarketData(
   // Yahoo Finance API state
   const [yahooData, setYahooData] = useState<OHLCData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [countdown, setCountdown] = useState<number>(0);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   const [marketStatus, setMarketStatus] = useState<MarketStatus | null>(null);
+  const oldestLoadedTimeRef = useRef<string | null>(null);
 
   // Generate simulated data (only after mount to avoid hydration mismatch)
   const simulatedData = useMemo(() => {
@@ -69,9 +73,15 @@ export function useMarketData(
         throw new Error(result.error || "Failed to fetch data");
       }
 
-      setYahooData(result.data as OHLCData[]);
+      const newData = result.data as OHLCData[];
+      setYahooData(newData);
       setLastUpdated(new Date());
       setCountdown(TIMEFRAME_CONFIG[timeframe].refreshInterval);
+
+      // Track the oldest loaded time for preventing duplicate loads
+      if (newData.length > 0) {
+        oldestLoadedTimeRef.current = String(newData[0].time);
+      }
 
       if (result.market) {
         setMarketStatus(result.market);
@@ -85,6 +95,64 @@ export function useMarketData(
       setIsLoading(false);
     }
   }, [symbol, timeframe]);
+
+  // Load more historical data (for infinite scroll)
+  const loadMoreData = useCallback(async (oldestTime: Time) => {
+    if (dataSource !== "yahoo" || isLoadingMore) return;
+
+    // Convert time to ISO string for API
+    let beforeDate: string;
+    if (typeof oldestTime === "number") {
+      // Unix timestamp (seconds)
+      beforeDate = new Date(oldestTime * 1000).toISOString();
+    } else if (typeof oldestTime === "string") {
+      // Date string (YYYY-MM-DD)
+      beforeDate = new Date(oldestTime).toISOString();
+    } else {
+      // BusinessDay object { year, month, day }
+      beforeDate = new Date(oldestTime.year, oldestTime.month - 1, oldestTime.day).toISOString();
+    }
+
+    // Prevent loading the same data twice
+    if (oldestLoadedTimeRef.current === String(oldestTime)) {
+      return;
+    }
+
+    setIsLoadingMore(true);
+
+    try {
+      const response = await fetch(
+        `/api/market-data?symbol=${symbol}&timeframe=${timeframe}&before=${beforeDate}`
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error("Failed to load more data:", result.error);
+        return;
+      }
+
+      const olderData = result.data as OHLCData[];
+
+      if (olderData.length > 0) {
+        // Update oldest loaded time
+        oldestLoadedTimeRef.current = String(olderData[0].time);
+
+        // Prepend older data to existing data (avoid duplicates by checking time)
+        setYahooData((prev) => {
+          const existingTimes = new Set(prev.map((d) => String(d.time)));
+          const uniqueOlderData = olderData.filter(
+            (d) => !existingTimes.has(String(d.time))
+          );
+          return [...uniqueOlderData, ...prev];
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load more data:", error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [symbol, timeframe, dataSource, isLoadingMore]);
 
   // Fetch Yahoo Finance data when dataSource is "yahoo"
   useEffect(() => {
@@ -129,6 +197,7 @@ export function useMarketData(
   return {
     data,
     isLoading,
+    isLoadingMore,
     fetchError,
     lastUpdated,
     countdown,
@@ -136,5 +205,6 @@ export function useMarketData(
     marketStatus,
     setAutoRefreshEnabled,
     refreshNow: fetchYahooData,
+    loadMoreData,
   };
 }

@@ -100,6 +100,7 @@ export default function ChartDemoPage() {
   const {
     data,
     isLoading,
+    isLoadingMore,
     fetchError,
     lastUpdated,
     countdown,
@@ -107,6 +108,7 @@ export default function ChartDemoPage() {
     marketStatus,
     setAutoRefreshEnabled,
     refreshNow,
+    loadMoreData,
   } = useMarketData(symbol, timeframe, dataSource, hasMounted);
 
   // Use pivot analysis hook
@@ -239,7 +241,7 @@ export default function ChartDemoPage() {
               onZoomOut={() => chartRef.current?.zoomOut()}
               onResetView={() => chartRef.current?.resetView()}
             />
-            <div className="rounded-lg border overflow-hidden">
+            <div className="rounded-lg border overflow-hidden relative">
               <CandlestickChart
                 ref={chartRef}
                 data={data}
@@ -251,7 +253,13 @@ export default function ChartDemoPage() {
                 upColor={upColor}
                 downColor={downColor}
                 onCrosshairMove={(price) => setCrosshairPrice(price)}
+                onLoadMore={loadMoreData}
               />
+              {isLoadingMore && (
+                <div className="absolute top-2 left-2 px-2 py-1 bg-background/80 rounded text-sm text-muted-foreground">
+                  Loading history...
+                </div>
+              )}
             </div>
           </div>
 

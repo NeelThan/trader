@@ -64,6 +64,7 @@ export type CandlestickChartProps = {
   downColor?: string;
   className?: string;
   onCrosshairMove?: (price: number | null, time: Time | null) => void;
+  onLoadMore?: (oldestTime: Time) => void; // Called when user scrolls to start of data
 };
 
 export type CandlestickChartHandle = {
@@ -162,6 +163,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       downColor = "#ef4444",
       className,
       onCrosshairMove,
+      onLoadMore,
     },
     ref
   ) {
@@ -214,6 +216,8 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
   const priceLinesPropsRef = useRef(priceLines);
   const lineOverlaysRef = useRef(lineOverlays);
   const onCrosshairMoveRef = useRef(onCrosshairMove);
+  const onLoadMoreRef = useRef(onLoadMore);
+  const isLoadingMoreRef = useRef(false);
 
   // Update refs in layout effect (runs synchronously before paint)
   useIsomorphicLayoutEffect(() => {
@@ -221,6 +225,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     priceLinesPropsRef.current = priceLines;
     lineOverlaysRef.current = lineOverlays;
     onCrosshairMoveRef.current = onCrosshairMove;
+    onLoadMoreRef.current = onLoadMore;
   });
 
   // Create chart on mount
@@ -324,6 +329,21 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       onCrosshairMoveRef.current(seriesData?.close ?? null, param.time);
     });
 
+    // Handle visible range change to detect when user scrolls to start of data
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (!range || !onLoadMoreRef.current || isLoadingMoreRef.current) return;
+
+      // If the visible range starts before or at index 0, we're at the left edge
+      // Load more when user is within 10 bars of the start
+      if (range.from <= 10 && dataRef.current.length > 0) {
+        const oldestData = dataRef.current[0];
+        if (oldestData) {
+          isLoadingMoreRef.current = true;
+          onLoadMoreRef.current(oldestData.time);
+        }
+      }
+    });
+
     // Mark as initialized since we just fit content
     hasInitializedRef.current = true;
 
@@ -344,6 +364,9 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     const chartData =
       chartType === "heikin-ashi" ? calculateHeikinAshi(data) : data;
     seriesRef.current.setData(chartData as (CandlestickData | BarData)[]);
+
+    // Reset loading flag so we can load more again
+    isLoadingMoreRef.current = false;
 
     // Only fit content on first data load, preserve user's zoom/pan on refreshes
     if (!hasInitializedRef.current) {

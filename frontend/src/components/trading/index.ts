@@ -34,3 +34,6 @@ export type {
   LineOverlay,
   ChartType,
 } from "./candlestick-chart";
+
+// Re-export Time type from lightweight-charts for convenience
+export type { Time } from "lightweight-charts";

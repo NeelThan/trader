@@ -58,44 +58,33 @@ const INTERVAL_MAP: Record<string, string> = {
   "1M": "1mo",
 };
 
-// Calculate periods based on timeframe
-function getPeriodDates(timeframe: string): { period1: Date; period2: Date } {
-  const now = new Date();
-  const period2 = now;
-  let period1: Date;
-
+// Get the time span for each timeframe (in milliseconds)
+function getTimeframeSpan(timeframe: string): number {
   switch (timeframe) {
     case "1m":
-      // 4 hours of 1-minute data
-      period1 = new Date(now.getTime() - 4 * 60 * 60 * 1000);
-      break;
+      return 4 * 60 * 60 * 1000; // 4 hours
     case "15m":
-      // 2 days of 15-minute data
-      period1 = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
-      break;
+      return 2 * 24 * 60 * 60 * 1000; // 2 days
     case "1H":
-      // 1 week of hourly data
-      period1 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      break;
+      return 7 * 24 * 60 * 60 * 1000; // 1 week
     case "4H":
-      // 3 weeks of 4-hour data (fetched as hourly then aggregated)
-      period1 = new Date(now.getTime() - 21 * 24 * 60 * 60 * 1000);
-      break;
+      return 21 * 24 * 60 * 60 * 1000; // 3 weeks
     case "1D":
-      // 90 days of daily data
-      period1 = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-      break;
+      return 90 * 24 * 60 * 60 * 1000; // 90 days
     case "1W":
-      // 1 year of weekly data
-      period1 = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-      break;
+      return 365 * 24 * 60 * 60 * 1000; // 1 year
     case "1M":
-      // 5 years of monthly data
-      period1 = new Date(now.getTime() - 5 * 365 * 24 * 60 * 60 * 1000);
-      break;
+      return 5 * 365 * 24 * 60 * 60 * 1000; // 5 years
     default:
-      period1 = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      return 90 * 24 * 60 * 60 * 1000;
   }
+}
+
+// Calculate periods based on timeframe, optionally ending at a specific date
+function getPeriodDates(timeframe: string, endDate?: Date): { period1: Date; period2: Date } {
+  const period2 = endDate || new Date();
+  const span = getTimeframeSpan(timeframe);
+  const period1 = new Date(period2.getTime() - span);
 
   return { period1, period2 };
 }
@@ -135,6 +124,7 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const symbol = searchParams.get("symbol") || "DJI";
   const timeframe = searchParams.get("timeframe") || "1D";
+  const before = searchParams.get("before"); // ISO date string to load data before
 
   try {
     const yahooSymbol = SYMBOL_MAP[symbol];
@@ -143,7 +133,8 @@ export async function GET(request: NextRequest) {
     }
 
     const interval = (INTERVAL_MAP[timeframe] || "1d") as YahooInterval;
-    const { period1, period2 } = getPeriodDates(timeframe);
+    const endDate = before ? new Date(before) : undefined;
+    const { period1, period2 } = getPeriodDates(timeframe, endDate);
 
     const result: ChartResultArray = await yahooFinance.chart(yahooSymbol, {
       period1,
