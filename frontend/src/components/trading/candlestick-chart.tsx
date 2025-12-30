@@ -209,16 +209,18 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       },
     }));
 
-  // Store latest data/priceLines/lineOverlays in refs for access in chart creation effect
+  // Store latest data/priceLines/lineOverlays/callbacks in refs for access in effects
   const dataRef = useRef(data);
   const priceLinesPropsRef = useRef(priceLines);
   const lineOverlaysRef = useRef(lineOverlays);
+  const onCrosshairMoveRef = useRef(onCrosshairMove);
 
   // Update refs in layout effect (runs synchronously before paint)
   useIsomorphicLayoutEffect(() => {
     dataRef.current = data;
     priceLinesPropsRef.current = priceLines;
     lineOverlaysRef.current = lineOverlays;
+    onCrosshairMoveRef.current = onCrosshairMove;
   });
 
   // Create chart on mount
@@ -309,19 +311,21 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     chartRef.current = chart;
     seriesRef.current = series;
 
-    // Handle crosshair move
-    if (onCrosshairMove) {
-      chart.subscribeCrosshairMove((param) => {
-        if (!param.time || !param.point) {
-          onCrosshairMove(null, null);
-          return;
-        }
-        const seriesData = param.seriesData.get(series) as
-          | CandlestickData
-          | undefined;
-        onCrosshairMove(seriesData?.close ?? null, param.time);
-      });
-    }
+    // Handle crosshair move (use ref to avoid recreating chart when callback changes)
+    chart.subscribeCrosshairMove((param) => {
+      if (!onCrosshairMoveRef.current) return;
+      if (!param.time || !param.point) {
+        onCrosshairMoveRef.current(null, null);
+        return;
+      }
+      const seriesData = param.seriesData.get(series) as
+        | CandlestickData
+        | undefined;
+      onCrosshairMoveRef.current(seriesData?.close ?? null, param.time);
+    });
+
+    // Mark as initialized since we just fit content
+    hasInitializedRef.current = true;
 
     // Cleanup
     return () => {
@@ -332,7 +336,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       lineSeriesRef.current = [];
       hasInitializedRef.current = false; // Reset so new chart fits content
     };
-  }, [theme, height, width, upColor, downColor, chartType, onCrosshairMove]);
+  }, [theme, height, width, upColor, downColor, chartType]);
 
   // Update data when it changes
   useEffect(() => {
