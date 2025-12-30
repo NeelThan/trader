@@ -277,28 +277,53 @@ export function FibonacciCalculationPanel({
 
         {/* Levels Table */}
         <div className="space-y-1">
-          <div className="grid grid-cols-3 text-xs text-muted-foreground font-medium pb-1 border-b">
-            <span>Ratio</span>
-            <span className="text-right">Price</span>
-            {isExpanded && <span className="text-right">Calculation</span>}
-          </div>
-
-          {levels.map(({ ratio, price, calculation }) => (
-            <div
-              key={ratio}
-              className="grid grid-cols-3 text-sm py-1 hover:bg-muted/50 rounded"
-            >
-              <span className={`font-medium ${typeConfig.color}`}>
-                {(ratio * 100).toFixed(1)}%
-              </span>
-              <span className="text-right font-mono">{formatPrice(price)}</span>
-              {isExpanded && (
-                <span className="text-right text-xs text-muted-foreground font-mono truncate">
-                  {calculation}
-                </span>
-              )}
-            </div>
-          ))}
+          {isExpanded ? (
+            // Expanded view: show ratio, price, and full calculation
+            <>
+              <div className="flex text-xs text-muted-foreground font-medium pb-1 border-b">
+                <span className="w-16">Ratio</span>
+                <span className="w-24 text-right">Price</span>
+                <span className="flex-1 text-right pl-4">Calculation</span>
+              </div>
+              {levels.map(({ ratio, price, calculation }) => (
+                <div
+                  key={ratio}
+                  className="flex text-sm py-1.5 hover:bg-muted/50 rounded items-baseline"
+                >
+                  <span className={`w-16 font-medium ${typeConfig.color}`}>
+                    {(ratio * 100).toFixed(1)}%
+                  </span>
+                  <span className="w-24 text-right font-mono">
+                    {formatPrice(price)}
+                  </span>
+                  <span className="flex-1 text-right pl-4 text-xs text-muted-foreground font-mono">
+                    = {calculation}
+                  </span>
+                </div>
+              ))}
+            </>
+          ) : (
+            // Collapsed view: just ratio and price
+            <>
+              <div className="flex text-xs text-muted-foreground font-medium pb-1 border-b">
+                <span className="w-16">Ratio</span>
+                <span className="flex-1 text-right">Price</span>
+              </div>
+              {levels.map(({ ratio, price }) => (
+                <div
+                  key={ratio}
+                  className="flex text-sm py-1 hover:bg-muted/50 rounded"
+                >
+                  <span className={`w-16 font-medium ${typeConfig.color}`}>
+                    {(ratio * 100).toFixed(1)}%
+                  </span>
+                  <span className="flex-1 text-right font-mono">
+                    {formatPrice(price)}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </CardContent>
     </Card>
