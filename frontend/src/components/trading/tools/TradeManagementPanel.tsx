@@ -48,6 +48,8 @@ type TradeManagementPanelProps = {
 
   // Workflow integration
   onComplete?: () => void;
+  onStartNewTrade?: () => void;
+  onGoToDashboard?: () => void;
   workflowMode?: boolean;
 
   // Display customization
@@ -80,6 +82,8 @@ export function TradeManagementPanel({
   onAddLogEntry,
   onChange,
   onComplete,
+  onStartNewTrade,
+  onGoToDashboard,
   workflowMode = false,
   compact = false,
 }: TradeManagementPanelProps) {
@@ -454,11 +458,18 @@ export function TradeManagementPanel({
               {currentPnL >= 0 ? "+" : ""}{currentPnL.toFixed(2)}
             </span>
           </div>
-          {onComplete && (
-            <Button onClick={onComplete}>
-              Start New Trade
-            </Button>
-          )}
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            {onGoToDashboard && (
+              <Button variant="outline" onClick={onGoToDashboard}>
+                Complete & Go to Dashboard
+              </Button>
+            )}
+            {onStartNewTrade && (
+              <Button onClick={onStartNewTrade}>
+                Start New Trade
+              </Button>
+            )}
+          </div>
         </div>
       )}
     </div>

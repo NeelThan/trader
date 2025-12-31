@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWorkflowState, WORKFLOW_STEPS } from "@/hooks/use-workflow-state";
+import { useWorkflowManager } from "@/hooks/use-workflow-manager";
 import { StepIndicator, StepIndicatorWithPhases } from "./StepIndicator";
 import { StepNavigation } from "./StepNavigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -30,9 +32,11 @@ import { TradeManagementPanel } from "@/components/trading/tools/TradeManagement
 type WorkflowStepperProps = {
   showPhases?: boolean;
   className?: string;
+  onBackToDashboard?: () => void;
 };
 
-export function WorkflowStepper({ showPhases = false, className }: WorkflowStepperProps) {
+export function WorkflowStepper({ showPhases = false, className, onBackToDashboard }: WorkflowStepperProps) {
+  const router = useRouter();
   const {
     state,
     setState,
@@ -45,6 +49,12 @@ export function WorkflowStepper({ showPhases = false, className }: WorkflowStepp
     getStepValidation,
     getCurrentStepInfo,
   } = useWorkflowState();
+
+  const {
+    completeWorkflow,
+    createWorkflow,
+    activeWorkflow,
+  } = useWorkflowManager();
 
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -97,6 +107,26 @@ export function WorkflowStepper({ showPhases = false, className }: WorkflowStepp
     resetWorkflow();
     setShowResetDialog(false);
   }, [resetWorkflow]);
+
+  // Complete workflow and go to dashboard
+  const handleGoToDashboard = useCallback(() => {
+    if (activeWorkflow) {
+      completeWorkflow(activeWorkflow.id);
+    }
+    if (onBackToDashboard) {
+      onBackToDashboard();
+    } else {
+      router.push("/workflow");
+    }
+  }, [activeWorkflow, completeWorkflow, onBackToDashboard, router]);
+
+  // Complete current workflow and start a new one
+  const handleStartNewTrade = useCallback(() => {
+    if (activeWorkflow) {
+      completeWorkflow(activeWorkflow.id);
+    }
+    createWorkflow();
+  }, [activeWorkflow, completeWorkflow, createWorkflow]);
 
   // Render the current step's content
   const renderStepContent = () => {
@@ -237,6 +267,8 @@ export function WorkflowStepper({ showPhases = false, className }: WorkflowStepp
             tradeLog={state.tradeLog}
             onAddLogEntry={addTradeLogEntry}
             onChange={handleStateChange}
+            onStartNewTrade={handleStartNewTrade}
+            onGoToDashboard={handleGoToDashboard}
           />
         );
 

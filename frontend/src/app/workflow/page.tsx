@@ -109,7 +109,11 @@ export default function WorkflowPage() {
             />
           </div>
         ) : (
-          <WorkflowStepper showPhases={true} className="flex-1" />
+          <WorkflowStepper
+            showPhases={true}
+            className="flex-1"
+            onBackToDashboard={handleBackToDashboard}
+          />
         )}
       </main>
     </div>
