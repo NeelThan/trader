@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { CandlestickChart, CandlestickChartHandle, ChartType } from "@/components/trading";
 import { useSettings, COLOR_SCHEMES, ColorScheme, DEFAULT_SETTINGS } from "@/hooks/use-settings";
-import { useMarketData } from "@/hooks/use-market-data";
+import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { usePivotAnalysis, BackendLevels, PivotConfig, DEFAULT_PIVOT_CONFIG } from "@/hooks/use-pivot-analysis";
 import { useFibonacciAPI } from "@/hooks/use-fibonacci-api";
 import { useTrendAnalysis } from "@/hooks/use-trend-analysis";
@@ -107,7 +107,7 @@ export default function ChartPage() {
     }
   }, [settings, settingsApplied]);
 
-  // Market data
+  // Market data (from centralized store)
   const {
     data,
     isLoading,
@@ -123,7 +123,7 @@ export default function ChartPage() {
     setAutoRefreshEnabled,
     refreshNow,
     loadMoreData,
-  } = useMarketData(symbol, timeframe, dataSource, hasMounted);
+  } = useMarketDataSubscription(symbol, timeframe, dataSource, { enabled: hasMounted });
 
   // Trend analysis
   const trendAnalysis = useTrendAnalysis({

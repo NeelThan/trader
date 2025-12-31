@@ -32,6 +32,7 @@ import {
 import { detectPivotPoints } from "@/lib/market-utils";
 import { calculateIndicators, IndicatorValues } from "@/lib/technical-indicators";
 import { useSettings } from "@/hooks/use-settings";
+import { useMarketDataContext } from "@/contexts/MarketDataContext";
 
 export type TrendIndicatorConfig = {
   usePivots: boolean;
@@ -358,33 +359,10 @@ function calculateConfidence(
   return Math.min(strengthAvg + oppositeBonus, 1.0);
 }
 
-/**
- * Fetch data for a specific timeframe from the backend API.
- */
-async function fetchTimeframeData(
-  symbol: MarketSymbol,
-  timeframe: Timeframe
-): Promise<OHLCData[]> {
-  const response = await fetch(
-    `/api/trader/market-data?symbol=${symbol}&timeframe=${timeframe}&periods=100`
-  );
-
-  if (!response.ok) {
-    if (response.status === 404) {
-      return [];
-    }
-    throw new Error(`Failed to fetch ${timeframe} data for ${symbol}`);
-  }
-
-  const result = await response.json();
-  if (!result.success) {
-    return [];
-  }
-  return result.data || [];
-}
 
 /**
  * Hook for multi-timeframe trend analysis.
+ * Uses centralized MarketDataContext for data fetching.
  */
 export function useTrendAnalysis({
   symbol,
@@ -394,6 +372,7 @@ export function useTrendAnalysis({
   indicatorConfig: configOverride,
 }: UseTrendAnalysisOptions): UseTrendAnalysisReturn {
   const { settings } = useSettings();
+  const context = useMarketDataContext();
 
   // Build indicator config from settings with optional overrides
   const indicatorConfig = useMemo<TrendIndicatorConfig>(() => ({
@@ -429,7 +408,7 @@ export function useTrendAnalysis({
     return Array.from(tfs);
   }, [pairs]);
 
-  // Fetch data for all unique timeframes
+  // Fetch data for all unique timeframes using centralized store
   useEffect(() => {
     if (!enabled || uniqueTimeframes.length === 0) return;
 
@@ -441,14 +420,21 @@ export function useTrendAnalysis({
 
     const fetchAll = async () => {
       try {
+        // Fetch all timeframes in parallel using centralized store
         const results = await Promise.all(
           uniqueTimeframes.map(async (tf) => {
-            const data = await fetchTimeframeData(symbol, tf);
-            return { tf, data };
+            const entry = await context.fetchData(symbol, tf);
+            return { tf, data: entry.data, error: entry.error };
           })
         );
 
         if (cancelled) return;
+
+        // Check for any errors
+        const firstError = results.find((r) => r.error);
+        if (firstError?.error) {
+          setError(firstError.error);
+        }
 
         const newCache = new Map<Timeframe, OHLCData[]>();
         results.forEach(({ tf, data }) => {
@@ -468,7 +454,7 @@ export function useTrendAnalysis({
     return () => {
       cancelled = true;
     };
-  }, [symbol, uniqueTimeframes, enabled, refreshKey]);
+  }, [symbol, uniqueTimeframes, enabled, refreshKey, context]);
 
   // Calculate alignments for all pairs
   const alignments = useMemo(() => {

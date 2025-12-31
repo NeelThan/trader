@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
@@ -12,6 +12,7 @@ import { Timeframe, MarketSymbol } from "@/lib/chart-constants";
 import { detectPivotPoints } from "@/lib/market-utils";
 import { OHLCData } from "@/components/trading";
 import { validateHarmonicPattern, type PatternType } from "@/lib/api";
+import { useMarketDataContext } from "@/contexts/MarketDataContext";
 
 type DetectedPattern = {
   timeframe: Timeframe;
@@ -60,22 +61,6 @@ function formatPrice(price: number): string {
   return price.toFixed(6);
 }
 
-async function fetchTimeframeData(
-  symbol: MarketSymbol,
-  timeframe: Timeframe
-): Promise<OHLCData[]> {
-  const response = await fetch(
-    `/api/trader/market-data?symbol=${symbol}&timeframe=${timeframe}&periods=100`
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${timeframe} data`);
-  }
-  const result = await response.json();
-  if (!result.success) {
-    return [];
-  }
-  return result.data || [];
-}
 
 async function scanForPatterns(
   data: OHLCData[],
@@ -144,6 +129,7 @@ export function HarmonicScanner({
   symbol,
   enabled = true,
 }: HarmonicScannerProps) {
+  const context = useMarketDataContext();
   const [isExpanded, setIsExpanded] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [results, setResults] = useState<TimeframeScanResult[]>([]);
@@ -153,30 +139,34 @@ export function HarmonicScanner({
     setIsScanning(true);
     const newResults: TimeframeScanResult[] = [];
 
-    for (const timeframe of SCAN_TIMEFRAMES) {
+    // Fetch all timeframes in parallel using centralized store
+    const fetchPromises = SCAN_TIMEFRAMES.map(async (timeframe) => {
       try {
-        const data = await fetchTimeframeData(symbol, timeframe);
-        const patterns = await scanForPatterns(data, timeframe);
-        newResults.push({
+        const entry = await context.fetchData(symbol, timeframe);
+        const patterns = await scanForPatterns(entry.data, timeframe);
+        return {
           timeframe,
           patterns,
           isLoading: false,
-          error: null,
-        });
+          error: entry.error,
+        };
       } catch (error) {
-        newResults.push({
+        return {
           timeframe,
           patterns: [],
           isLoading: false,
           error: error instanceof Error ? error.message : "Scan failed",
-        });
+        };
       }
-    }
+    });
+
+    const fetchResults = await Promise.all(fetchPromises);
+    newResults.push(...fetchResults);
 
     setResults(newResults);
     setLastScanTime(new Date());
     setIsScanning(false);
-  }, [symbol]);
+  }, [symbol, context]);
 
   // Don't auto-scan (harmonic scanning is more expensive)
   // User must click "Scan Now"

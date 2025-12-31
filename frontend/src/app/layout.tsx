@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
+import { MarketDataProvider } from "@/contexts/MarketDataContext";
 import "./globals.css";
 
 const inter = Inter({
@@ -32,7 +33,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <MarketDataProvider>
+            {children}
+          </MarketDataProvider>
         </ThemeProvider>
       </body>
     </html>

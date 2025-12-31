@@ -1,35 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import {
   MarketSymbol,
-  Timeframe,
   MARKET_CONFIG,
   TIMEFRAME_PAIR_PRESETS,
 } from "@/lib/chart-constants";
-
-type MarketData = {
-  symbol: MarketSymbol;
-  price: number;
-  change: number;
-  changePercent: number;
-  high: number;
-  low: number;
-  isLoading: boolean;
-  error: string | null;
-  isBackendError?: boolean; // True when error is due to backend being unavailable
-};
-
-type SignalSummary = {
-  symbol: MarketSymbol;
-  buySignals: number;
-  sellSignals: number;
-  type1Count: number;
-};
+import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
+import { useIsBackendUnavailable } from "@/contexts/MarketDataContext";
 
 const MARKETS: MarketSymbol[] = ["DJI", "SPX", "NDX", "BTCUSD", "EURUSD", "GOLD"];
 
@@ -47,102 +29,79 @@ function formatChange(change: number, symbol: MarketSymbol): string {
   return `${prefix}${change.toFixed(2)}`;
 }
 
-async function fetchMarketData(symbol: MarketSymbol): Promise<MarketData> {
-  try {
-    // Use backend route which has caching and fallback providers
-    const response = await fetch(`/api/trader/market-data?symbol=${symbol}&timeframe=1D&periods=20`);
-    if (!response.ok) throw new Error("Failed to fetch");
+/**
+ * Market card that uses centralized store for data.
+ * Shares data with Chart page when viewing the same symbol+timeframe.
+ */
+function MarketCard({ symbol }: { symbol: MarketSymbol }) {
+  const config = MARKET_CONFIG[symbol];
 
-    const result = await response.json();
-    if (!result.success) throw new Error(result.error || "Failed to fetch");
-    const data = result.data || [];
+  // Subscribe to 1D timeframe data from centralized store
+  const { data, isLoading, fetchError } = useMarketDataSubscription(
+    symbol,
+    "1D",
+    "yahoo",
+    { autoRefresh: true }
+  );
 
+  // Calculate derived values from OHLC data
+  const { price, change, changePercent, high, low } = useMemo(() => {
     if (data.length < 2) {
-      return {
-        symbol,
-        price: 0,
-        change: 0,
-        changePercent: 0,
-        high: 0,
-        low: 0,
-        isLoading: false,
-        error: "No data",
-      };
+      return { price: 0, change: 0, changePercent: 0, high: 0, low: 0 };
     }
 
     const current = data[data.length - 1];
     const previous = data[data.length - 2];
-    const change = current.close - previous.close;
-    const changePercent = (change / previous.close) * 100;
+    const priceChange = current.close - previous.close;
+    const pctChange = (priceChange / previous.close) * 100;
 
     // Get high/low from recent data
     const recentData = data.slice(-20);
-    const high = Math.max(...recentData.map((d: { high: number }) => d.high));
-    const low = Math.min(...recentData.map((d: { low: number }) => d.low));
+    const recentHigh = Math.max(...recentData.map((d) => d.high));
+    const recentLow = Math.min(...recentData.map((d) => d.low));
 
     return {
-      symbol,
       price: current.close,
-      change,
-      changePercent,
-      high,
-      low,
-      isLoading: false,
-      error: null,
+      change: priceChange,
+      changePercent: pctChange,
+      high: recentHigh,
+      low: recentLow,
     };
-  } catch (error) {
-    // Check if this is a connection error (backend unavailable)
-    const isBackendError = error instanceof TypeError &&
-      (error.message.includes("fetch failed") || error.message.includes("Failed to fetch"));
+  }, [data]);
 
-    return {
-      symbol,
-      price: 0,
-      change: 0,
-      changePercent: 0,
-      high: 0,
-      low: 0,
-      isLoading: false,
-      error: isBackendError ? "Backend offline" : (error instanceof Error ? error.message : "Error"),
-      isBackendError,
-    };
-  }
-}
-
-function MarketCard({ data }: { data: MarketData }) {
-  const config = MARKET_CONFIG[data.symbol];
-  const isPositive = data.change >= 0;
+  const isPositive = change >= 0;
+  const hasError = !!fetchError && data.length === 0;
 
   return (
-    <Link href={`/chart?symbol=${data.symbol}`}>
+    <Link href={`/chart?symbol=${symbol}`}>
       <Card className="hover:border-primary/50 transition-colors cursor-pointer">
         <CardContent className="p-4">
           <div className="flex items-start justify-between mb-2">
             <div>
-              <h3 className="font-bold text-lg">{data.symbol}</h3>
+              <h3 className="font-bold text-lg">{symbol}</h3>
               <p className="text-xs text-muted-foreground truncate max-w-[150px]">
                 {config.name}
               </p>
             </div>
-            {data.error ? (
-              <span className="text-xs text-red-400">{data.error}</span>
-            ) : data.isLoading ? (
+            {hasError ? (
+              <span className="text-xs text-red-400">{fetchError}</span>
+            ) : isLoading && data.length === 0 ? (
               <span className="text-xs text-muted-foreground">Loading...</span>
             ) : null}
           </div>
 
-          {!data.error && !data.isLoading && (
+          {!hasError && data.length > 0 && (
             <>
               <div className="text-2xl font-mono font-bold mb-1">
-                {formatPrice(data.price, data.symbol)}
+                {formatPrice(price, symbol)}
               </div>
               <div className={`flex items-center gap-2 text-sm ${isPositive ? "text-green-400" : "text-red-400"}`}>
-                <span>{formatChange(data.change, data.symbol)}</span>
-                <span>({isPositive ? "+" : ""}{data.changePercent.toFixed(2)}%)</span>
+                <span>{formatChange(change, symbol)}</span>
+                <span>({isPositive ? "+" : ""}{changePercent.toFixed(2)}%)</span>
               </div>
               <div className="mt-2 text-xs text-muted-foreground flex justify-between">
-                <span>H: {formatPrice(data.high, data.symbol)}</span>
-                <span>L: {formatPrice(data.low, data.symbol)}</span>
+                <span>H: {formatPrice(high, symbol)}</span>
+                <span>L: {formatPrice(low, symbol)}</span>
               </div>
             </>
           )}
@@ -152,71 +111,11 @@ function MarketCard({ data }: { data: MarketData }) {
   );
 }
 
-function SignalCard({ summary }: { summary: SignalSummary }) {
-  const total = summary.buySignals + summary.sellSignals;
-  if (total === 0) return null;
-
-  return (
-    <div className="flex items-center justify-between p-2 rounded bg-muted/30">
-      <span className="font-medium">{summary.symbol}</span>
-      <div className="flex items-center gap-3 text-sm">
-        {summary.buySignals > 0 && (
-          <span className="text-green-400">
-            {summary.buySignals} Buy
-          </span>
-        )}
-        {summary.sellSignals > 0 && (
-          <span className="text-red-400">
-            {summary.sellSignals} Sell
-          </span>
-        )}
-        {summary.type1Count > 0 && (
-          <span className="text-amber-400 text-xs">
-            ({summary.type1Count} T1)
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function DashboardPage() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const [markets, setMarkets] = useState<MarketData[]>(
-    MARKETS.map((symbol) => ({
-      symbol,
-      price: 0,
-      change: 0,
-      changePercent: 0,
-      high: 0,
-      low: 0,
-      isLoading: true,
-      error: null,
-    }))
-  );
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const refreshData = useCallback(async () => {
-    setIsRefreshing(true);
-    const results = await Promise.all(MARKETS.map(fetchMarketData));
-    setMarkets(results);
-    setLastUpdated(new Date());
-    setIsRefreshing(false);
-  }, []);
-
-  // Initial load
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional initial data fetch
-    refreshData();
-  }, [refreshData]);
-
-  // Count totals
-  const totalPositive = markets.filter((m) => m.change > 0 && !m.error).length;
-  const totalNegative = markets.filter((m) => m.change < 0 && !m.error).length;
-
-  // Check if backend is unavailable (all markets have backend error)
-  const isBackendUnavailable = markets.every((m) => m.isBackendError) && !markets.some((m) => m.isLoading);
+  // Global backend status from centralized store
+  const isBackendUnavailable = useIsBackendUnavailable();
 
   return (
     <div className={theme === "dark" ? "dark" : ""}>
@@ -231,14 +130,6 @@ export default function DashboardPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={refreshData}
-                disabled={isRefreshing}
-              >
-                {isRefreshing ? "Refreshing..." : "Refresh"}
-              </Button>
               <Link href="/chart">
                 <Button variant="outline" size="sm">
                   Chart
@@ -286,37 +177,32 @@ export default function DashboardPage() {
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <div className="text-3xl font-bold text-green-400">{totalPositive}</div>
-                <div className="text-sm text-muted-foreground">Up Today</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
-                <div className="text-3xl font-bold text-red-400">{totalNegative}</div>
-                <div className="text-sm text-muted-foreground">Down Today</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
                 <div className="text-3xl font-bold">{TIMEFRAME_PAIR_PRESETS.length}</div>
                 <div className="text-sm text-muted-foreground">TF Pairs</div>
               </CardContent>
             </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <div className="text-3xl font-bold">7</div>
+                <div className="text-sm text-muted-foreground">Timeframes</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <div className={`text-3xl font-bold ${isBackendUnavailable ? "text-orange-400" : "text-green-400"}`}>
+                  {isBackendUnavailable ? "Offline" : "Online"}
+                </div>
+                <div className="text-sm text-muted-foreground">Backend</div>
+              </CardContent>
+            </Card>
           </div>
-
-          {/* Last Updated */}
-          {lastUpdated && (
-            <div className="text-xs text-muted-foreground text-right">
-              Last updated: {lastUpdated.toLocaleTimeString()}
-            </div>
-          )}
 
           {/* Market Cards */}
           <div>
             <h2 className="text-lg font-semibold mb-3">Markets</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {markets.map((market) => (
-                <MarketCard key={market.symbol} data={market} />
+              {MARKETS.map((symbol) => (
+                <MarketCard key={symbol} symbol={symbol} />
               ))}
             </div>
           </div>

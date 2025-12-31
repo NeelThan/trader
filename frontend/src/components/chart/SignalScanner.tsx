@@ -8,9 +8,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Timeframe, MarketSymbol, TIMEFRAME_CONFIG } from "@/lib/chart-constants";
+import { Timeframe, MarketSymbol } from "@/lib/chart-constants";
 import { detectPivotPoints } from "@/lib/market-utils";
 import { OHLCData } from "@/components/trading";
+import { useMarketDataContext } from "@/contexts/MarketDataContext";
 
 type ScannedSignal = {
   timeframe: Timeframe;
@@ -117,22 +118,6 @@ function calculateSignalStrength(
   return Math.min(1, baseStrength);
 }
 
-async function fetchTimeframeData(
-  symbol: MarketSymbol,
-  timeframe: Timeframe
-): Promise<OHLCData[]> {
-  const response = await fetch(
-    `/api/trader/market-data?symbol=${symbol}&timeframe=${timeframe}&periods=100`
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${timeframe} data`);
-  }
-  const result = await response.json();
-  if (!result.success) {
-    return [];
-  }
-  return result.data || [];
-}
 
 function scanForSignals(
   data: OHLCData[],
@@ -235,6 +220,7 @@ export function SignalScanner({
   enabled = true,
   lookbackBars = 10,
 }: SignalScannerProps) {
+  const context = useMarketDataContext();
   const [isExpanded, setIsExpanded] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [results, setResults] = useState<TimeframeScanResult[]>([]);
@@ -244,34 +230,39 @@ export function SignalScanner({
     setIsScanning(true);
     const newResults: TimeframeScanResult[] = [];
 
-    for (const timeframe of SCAN_TIMEFRAMES) {
+    // Fetch all timeframes in parallel using centralized store
+    const fetchPromises = SCAN_TIMEFRAMES.map(async (timeframe) => {
       try {
-        const data = await fetchTimeframeData(symbol, timeframe);
+        const entry = await context.fetchData(symbol, timeframe);
+        const data = entry.data;
         const { signals, high, low } = scanForSignals(data, timeframe, lookbackBars);
-        newResults.push({
+        return {
           timeframe,
           signals,
           high,
           low,
           isLoading: false,
-          error: null,
-        });
+          error: entry.error,
+        };
       } catch (error) {
-        newResults.push({
+        return {
           timeframe,
           signals: [],
           high: 0,
           low: 0,
           isLoading: false,
           error: error instanceof Error ? error.message : "Scan failed",
-        });
+        };
       }
-    }
+    });
+
+    const fetchResults = await Promise.all(fetchPromises);
+    newResults.push(...fetchResults);
 
     setResults(newResults);
     setLastScanTime(new Date());
     setIsScanning(false);
-  }, [symbol, lookbackBars]);
+  }, [symbol, lookbackBars, context]);
 
   // Auto-scan on mount
   useEffect(() => {
