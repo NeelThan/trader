@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { TradeAction } from "@/lib/chart-constants";
 import type { ChecklistItem, GoNoGoDecision } from "@/hooks/use-workflow-state";
+import { useSettings } from "@/hooks/use-settings";
 
 type PreTradeChecklistProps = {
   // Data props
@@ -55,23 +56,39 @@ export function PreTradeChecklist({
   workflowMode = false,
   compact = false,
 }: PreTradeChecklistProps) {
+  // Get auto-validation setting
+  const { settings } = useSettings();
+  const autoValidationEnabled = settings.workflowAutoValidation;
+
+  // Apply auto-validation setting to items
+  const effectiveItems = useMemo(() => {
+    if (autoValidationEnabled) {
+      return checklistItems;
+    }
+    // When auto-validation is disabled, remove autoValidated flag from all items
+    return checklistItems.map((item) => ({
+      ...item,
+      autoValidated: false,
+    }));
+  }, [checklistItems, autoValidationEnabled]);
+
   // Group items by category
   const groupedItems = useMemo(() => {
     const groups: Record<string, ChecklistItem[]> = {};
-    for (const item of checklistItems) {
+    for (const item of effectiveItems) {
       if (!groups[item.category]) {
         groups[item.category] = [];
       }
       groups[item.category].push(item);
     }
     return groups;
-  }, [checklistItems]);
+  }, [effectiveItems]);
 
   // Calculate progress
   const progress = useMemo(() => {
-    const required = checklistItems.filter((i) => i.required);
+    const required = effectiveItems.filter((i) => i.required);
     const requiredChecked = required.filter((i) => i.checked);
-    const all = checklistItems;
+    const all = effectiveItems;
     const allChecked = all.filter((i) => i.checked);
 
     return {

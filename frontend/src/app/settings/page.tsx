@@ -349,6 +349,16 @@ export default function SettingsPage() {
             />
           </SettingSection>
 
+          {/* Workflow */}
+          <SettingSection title="Workflow">
+            <ToggleSetting
+              label="Auto-Validate Checklist Items"
+              description="Automatically check items based on workflow state (disable for testing)"
+              checked={settings.workflowAutoValidation}
+              onChange={(checked) => setSettings({ workflowAutoValidation: checked })}
+            />
+          </SettingSection>
+
           {/* Trend Indicators */}
           <SettingSection title="Trend Indicators">
             <p className="text-xs text-muted-foreground pb-2">

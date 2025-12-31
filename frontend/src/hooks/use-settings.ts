@@ -38,6 +38,9 @@ export type ChartSettings = {
   trendUseADX: boolean; // Use ADX for trend strength
   trendADXPeriod: number; // ADX period (default: 14)
   trendADXThreshold: number; // Minimum ADX for trending market (default: 25)
+
+  // Workflow settings
+  workflowAutoValidation: boolean; // Auto-validate checklist items based on workflow state
 };
 
 // Color scheme definitions
@@ -74,6 +77,8 @@ const DEFAULT_SETTINGS: ChartSettings = {
   trendUseADX: false, // ADX disabled by default (more advanced)
   trendADXPeriod: 14,
   trendADXThreshold: 25,
+  // Workflow settings
+  workflowAutoValidation: true, // Auto-validate enabled by default
 };
 
 const SETTINGS_KEY = "trader-chart-settings";
