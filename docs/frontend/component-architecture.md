@@ -251,7 +251,7 @@ flowchart TB
     end
 
     subgraph "State"
-        MARKETS[markets: MarketData[]]
+        MARKETS["markets: MarketData[]"]
         REFRESH[isRefreshing]
         UPDATED[lastUpdated]
         UNAVAIL[isBackendUnavailable]
@@ -346,7 +346,7 @@ flowchart TB
     end
 
     subgraph "Output"
-        ALIGN[alignments: TrendAlignment[]]
+        ALIGN["alignments: TrendAlignment[]"]
         LOAD[isLoading]
         ERR[error]
     end
@@ -666,7 +666,7 @@ flowchart TB
     end
 
     subgraph "State"
-        WORKFLOWS[workflows: WorkflowSummary[]]
+        WORKFLOWS["workflows: WorkflowSummary[]"]
         ACTIVE[activeWorkflow: StoredWorkflow]
         PENDING[pendingWorkflows]
         COMPLETED[completedWorkflows]
@@ -719,15 +719,95 @@ classDiagram
 
 ---
 
+## Centralized Market Data Store
+
+### MarketDataProvider Architecture
+
+All market data fetching is centralized through `MarketDataContext` to ensure a **single source of truth** across all pages and components.
+
+```mermaid
+graph TB
+    subgraph "MarketDataProvider (layout.tsx)"
+        CACHE["Cache Map<br>key: symbol:timeframe"]
+        PENDING["Pending Requests<br>for deduplication"]
+        BACKEND_STATUS[Backend Availability]
+    end
+
+    subgraph "Components Using Data"
+        CHART[Chart Page]
+        DASH[Dashboard Cards]
+        TREND[Trend Analysis]
+        SIGNAL[Signal Scanner]
+        HARMONIC[Harmonic Scanner]
+    end
+
+    subgraph "Subscription Hook"
+        HOOK[useMarketDataSubscription]
+        HOOK --> |subscribe| CACHE
+        HOOK --> |fetch| PENDING
+    end
+
+    CHART --> HOOK
+    DASH --> HOOK
+    TREND --> |direct| CACHE
+    SIGNAL --> |direct| CACHE
+    HARMONIC --> |direct| CACHE
+```
+
+### Cache Key Strategy
+
+Each unique symbol+timeframe combination has its own cache entry:
+
+```typescript
+type CacheKey = `${MarketSymbol}:${Timeframe}`;
+// Examples: "DJI:1D", "SPX:4H", "BTCUSD:15m"
+```
+
+### Request Deduplication
+
+Multiple components requesting the same data share a single API call:
+
+```mermaid
+sequenceDiagram
+    participant ChartPage
+    participant Dashboard
+    participant Context as MarketDataContext
+    participant API as Backend API
+
+    ChartPage->>Context: fetchData("DJI", "1D")
+    Note over Context: Create pending request
+    Dashboard->>Context: fetchData("DJI", "1D")
+    Note over Context: Return existing pending
+    Context->>API: GET /api/trader/market-data?symbol=DJI&timeframe=1D
+    API-->>Context: OHLC data
+    Context-->>ChartPage: Cache entry
+    Context-->>Dashboard: Same cache entry
+```
+
+### TTL-Based Cache Expiration
+
+Uses `TIMEFRAME_CONFIG[timeframe].refreshInterval` for cache TTL:
+- 1m, 15m: 60 seconds
+- 1H, 4H: 5 minutes
+- 1D: 15 minutes
+- 1W, 1M: 1 hour
+
+---
+
 ## Shared Hooks
 
 ### Hook Dependency Graph
 
 ```mermaid
 graph TB
+    subgraph "Context Providers"
+        MDC[MarketDataContext]
+    end
+
     subgraph "Core Hooks"
         US[useSettings]
-        UMD[useMarketData]
+        UMDS[useMarketDataSubscription]
+        UMD[useMarketData - deprecated]
     end
 
     subgraph "Analysis Hooks"
@@ -746,11 +826,14 @@ graph TB
         UWS[useWorkflowState]
     end
 
-    US --> UMD
+    MDC --> UMDS
+    MDC --> UTA
+
+    US --> UMDS
     US --> UTA
     US --> UPA
 
-    UMD --> UPA
+    UMDS --> UPA
     UPA --> UBP
     UPA --> UFA
 
@@ -762,12 +845,12 @@ graph TB
 
 | Hook | Storage | API Calls | Purpose |
 |------|---------|-----------|---------|
+| `useMarketDataSubscription` | MarketDataContext | `/api/trader/market-data` | Shared OHLC data with auto-refresh |
 | `useSettings` | localStorage | No | Chart/indicator settings |
-| `useMarketData` | None | `/api/trader/market-data` | OHLC data with auto-refresh |
 | `usePivotAnalysis` | None | Optional backend | Detect swing highs/lows |
 | `useBackendPivots` | None | `/api/trader/pivots` | Server-side pivot detection |
 | `useFibonacciAPI` | None | `/api/trader/fibonacci/*` | Fib level calculations |
-| `useTrendAnalysis` | None | `/api/trader/market-data` | Multi-TF trend alignment |
+| `useTrendAnalysis` | MarketDataContext | Uses centralized store | Multi-TF trend alignment |
 | `useSignalDetection` | None | `/api/trader/signal/detect` | Type 1/2 signal detection |
 | `useHarmonicPatterns` | None | `/api/trader/harmonic/validate` | Pattern validation |
 | `usePositionSizing` | localStorage | No | Account settings |
