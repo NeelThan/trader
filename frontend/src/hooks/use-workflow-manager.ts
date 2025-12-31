@@ -61,12 +61,14 @@ function generateName(symbol: string, tradeDirection: string): string {
   return `${symbol} ${direction} - ${date}`;
 }
 
+const DEFAULT_STORE: WorkflowStore = {
+  workflows: [],
+  activeWorkflowId: null,
+  version: 1,
+};
+
 function getDefaultStore(): WorkflowStore {
-  return {
-    workflows: [],
-    activeWorkflowId: null,
-    version: 1,
-  };
+  return DEFAULT_STORE;
 }
 
 function subscribe(callback: () => void) {
