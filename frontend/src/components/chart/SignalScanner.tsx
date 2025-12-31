@@ -122,12 +122,15 @@ async function fetchTimeframeData(
   timeframe: Timeframe
 ): Promise<OHLCData[]> {
   const response = await fetch(
-    `/api/market-data?symbol=${symbol}&timeframe=${timeframe}`
+    `/api/trader/market-data?symbol=${symbol}&timeframe=${timeframe}&periods=100`
   );
   if (!response.ok) {
     throw new Error(`Failed to fetch ${timeframe} data`);
   }
   const result = await response.json();
+  if (!result.success) {
+    return [];
+  }
   return result.data || [];
 }
 

@@ -15,6 +15,7 @@ import {
   MarketSymbol,
   Timeframe,
   TradingStyle,
+  DataSource,
   MARKET_CONFIG,
   TIMEFRAME_CONFIG,
   TIMEFRAME_PAIR_PRESETS,
@@ -27,11 +28,13 @@ type MarketTimeframeSelectorProps = {
   higherTimeframe: Timeframe;
   lowerTimeframe: Timeframe;
   tradingStyle: TradingStyle;
+  dataSource?: DataSource;
   onChange: (updates: {
     symbol?: MarketSymbol;
     higherTimeframe?: Timeframe;
     lowerTimeframe?: Timeframe;
     tradingStyle?: TradingStyle;
+    dataSource?: DataSource;
   }) => void;
 
   // Workflow integration
@@ -48,6 +51,7 @@ export function MarketTimeframeSelector({
   higherTimeframe,
   lowerTimeframe,
   tradingStyle,
+  dataSource = "yahoo",
   onChange,
   onComplete,
   workflowMode = false,
@@ -246,6 +250,35 @@ export function MarketTimeframeSelector({
               </SelectContent>
             </Select>
           </div>
+        </div>
+      </div>
+
+      {/* Data Source Selection */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Data Source</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant={dataSource === "yahoo" ? "default" : "outline"}
+            size="sm"
+            onClick={() => onChange({ dataSource: "yahoo" })}
+            className="h-auto py-2"
+          >
+            <div className="text-center">
+              <div className="font-semibold">Real Data</div>
+              <div className="text-[10px] opacity-70">Yahoo Finance API</div>
+            </div>
+          </Button>
+          <Button
+            variant={dataSource === "simulated" ? "default" : "outline"}
+            size="sm"
+            onClick={() => onChange({ dataSource: "simulated" })}
+            className="h-auto py-2"
+          >
+            <div className="text-center">
+              <div className="font-semibold">Simulated</div>
+              <div className="text-[10px] opacity-70">Practice mode</div>
+            </div>
+          </Button>
         </div>
       </div>
 

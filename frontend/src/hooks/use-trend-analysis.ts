@@ -359,14 +359,14 @@ function calculateConfidence(
 }
 
 /**
- * Fetch data for a specific timeframe from the Next.js API.
+ * Fetch data for a specific timeframe from the backend API.
  */
 async function fetchTimeframeData(
   symbol: MarketSymbol,
   timeframe: Timeframe
 ): Promise<OHLCData[]> {
   const response = await fetch(
-    `/api/market-data?symbol=${symbol}&timeframe=${timeframe}`
+    `/api/trader/market-data?symbol=${symbol}&timeframe=${timeframe}&periods=100`
   );
 
   if (!response.ok) {
@@ -377,6 +377,9 @@ async function fetchTimeframeData(
   }
 
   const result = await response.json();
+  if (!result.success) {
+    return [];
+  }
   return result.data || [];
 }
 

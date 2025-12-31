@@ -8,6 +8,7 @@ import type {
   TradeAction,
   TradingStyle,
   PivotPoint,
+  DataSource,
 } from "@/lib/chart-constants";
 
 // Re-export types that are used in components
@@ -91,6 +92,7 @@ export type WorkflowState = {
   higherTimeframe: Timeframe;
   lowerTimeframe: Timeframe;
   tradingStyle: TradingStyle;
+  dataSource: DataSource;
 
   // Step 2: Trend Alignment
   higherTrend: TrendDirection;
@@ -174,6 +176,7 @@ const DEFAULT_STATE: WorkflowState = {
   higherTimeframe: "1D",
   lowerTimeframe: "4H",
   tradingStyle: "swing",
+  dataSource: "yahoo",
 
   // Step 2: Trend Alignment
   higherTrend: "NEUTRAL",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,8 +18,11 @@ import {
   Timeframe,
   TradeAction,
   PivotPoint,
+  DataSource,
 } from "@/lib/chart-constants";
 import type { FibonacciTool, FibonacciLevel } from "@/hooks/use-workflow-state";
+import { useMarketData } from "@/hooks/use-market-data";
+import { useBackendPivots } from "@/hooks/use-backend-pivots";
 
 type FibonacciSetupToolProps = {
   // Data props
@@ -30,6 +33,7 @@ type FibonacciSetupToolProps = {
   fibLevels: FibonacciLevel[];
   selectedLevelIndex: number | null;
   tradeDirection: TradeAction;
+  dataSource?: DataSource;
   onChange: (updates: {
     pivots?: PivotPoint[];
     fibTool?: FibonacciTool;
@@ -67,33 +71,50 @@ export function FibonacciSetupTool({
   fibLevels,
   selectedLevelIndex,
   tradeDirection,
+  dataSource = "yahoo",
   onChange,
   onComplete,
   workflowMode = false,
   compact = false,
 }: FibonacciSetupToolProps) {
-  const [isDetecting, setIsDetecting] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
 
-  // Auto-detect pivots (simulated)
-  const detectPivots = useCallback(async () => {
-    setIsDetecting(true);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+  // Handle hydration
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
-      // Simulated pivot detection
-      const basePrice = 5000; // Would come from actual chart data
-      const simulatedPivots: PivotPoint[] = [
-        { index: 10, price: basePrice + 100, type: "high" },
-        { index: 25, price: basePrice - 50, type: "low" },
-        { index: 40, price: basePrice + 80, type: "high" },
-      ];
+  // Fetch market data for pivot detection
+  const { data: marketData, isLoading: isLoadingData } = useMarketData(
+    symbol,
+    timeframe,
+    dataSource,
+    hasMounted
+  );
 
-      onChange({ pivots: simulatedPivots });
-    } finally {
-      setIsDetecting(false);
+  // Detect pivots from market data using backend
+  const {
+    recentPivots: backendPivots,
+    isLoading: isDetecting,
+    error: pivotError,
+  } = useBackendPivots(marketData, true, { lookback: 5, count: 10 });
+
+  // Convert backend pivot format to workflow pivot format
+  const detectedPivots = useMemo(() => {
+    return backendPivots.map((p) => ({
+      index: p.index,
+      price: p.price,
+      type: p.type as "high" | "low",
+    }));
+  }, [backendPivots]);
+
+  // Auto-update pivots when detected
+  useEffect(() => {
+    if (detectedPivots.length > 0 && pivots.length === 0) {
+      onChange({ pivots: detectedPivots });
     }
-  }, [onChange]);
+  }, [detectedPivots, pivots.length, onChange]);
 
   // Calculate Fibonacci levels based on pivots and tool type
   const calculateLevels = useCallback(async () => {
@@ -174,12 +195,17 @@ export function FibonacciSetupTool({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Label className="text-sm font-medium">Pivot Points</Label>
-          <Button variant="outline" size="sm" onClick={detectPivots} disabled={isDetecting}>
-            {isDetecting ? "Detecting..." : "Auto-Detect Pivots"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {isLoadingData && (
+              <span className="text-xs text-muted-foreground">Loading data...</span>
+            )}
+            {pivotError && (
+              <span className="text-xs text-destructive">Error: {pivotError}</span>
+            )}
+          </div>
         </div>
 
-        {isDetecting ? (
+        {isDetecting || isLoadingData ? (
           <div className="grid grid-cols-3 gap-2">
             <Skeleton className="h-20" />
             <Skeleton className="h-20" />
@@ -217,7 +243,9 @@ export function FibonacciSetupTool({
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            No pivots detected. Click &quot;Auto-Detect Pivots&quot; or manually identify swing points on the chart.
+            {pivotError
+              ? "Failed to detect pivots. Check backend connection or data source."
+              : "No pivots detected yet. Pivots are automatically detected from market data."}
           </div>
         )}
       </div>

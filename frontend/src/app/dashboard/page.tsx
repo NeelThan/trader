@@ -48,10 +48,12 @@ function formatChange(change: number, symbol: MarketSymbol): string {
 
 async function fetchMarketData(symbol: MarketSymbol): Promise<MarketData> {
   try {
-    const response = await fetch(`/api/market-data?symbol=${symbol}&timeframe=1D`);
+    // Use backend route which has caching and fallback providers
+    const response = await fetch(`/api/trader/market-data?symbol=${symbol}&timeframe=1D&periods=20`);
     if (!response.ok) throw new Error("Failed to fetch");
 
     const result = await response.json();
+    if (!result.success) throw new Error(result.error || "Failed to fetch");
     const data = result.data || [];
 
     if (data.length < 2) {

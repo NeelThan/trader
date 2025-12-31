@@ -114,6 +114,7 @@ export function WorkflowStepper({ showPhases = false, className }: WorkflowStepp
             higherTimeframe={state.higherTimeframe}
             lowerTimeframe={state.lowerTimeframe}
             tradingStyle={state.tradingStyle}
+            dataSource={state.dataSource}
             onChange={handleStateChange}
           />
         );
@@ -144,6 +145,7 @@ export function WorkflowStepper({ showPhases = false, className }: WorkflowStepp
             fibLevels={state.fibLevels}
             selectedLevelIndex={state.selectedLevelIndex}
             tradeDirection={state.tradeDirection}
+            dataSource={state.dataSource}
             onChange={handleStateChange}
           />
         );
