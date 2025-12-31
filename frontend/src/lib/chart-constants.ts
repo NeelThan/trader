@@ -45,18 +45,20 @@ export const TIMEFRAME_CONFIG: Record<
   Timeframe,
   { label: string; periods: number; description: string; refreshInterval: number }
 > = {
-  "1m": { label: "1m", periods: 240, description: "4 hours of 1-minute data", refreshInterval: 60 },
+  // Intraday timeframes - enough for zooming and pivot detection
+  "1m": { label: "1m", periods: 720, description: "12 hours of 1-minute data", refreshInterval: 60 },
   "15m": {
     label: "15m",
-    periods: 192,
-    description: "2 days of 15-minute data",
+    periods: 576,
+    description: "6 days of 15-minute data",
     refreshInterval: 60,
   },
-  "1H": { label: "1H", periods: 168, description: "1 week of hourly data", refreshInterval: 300 },
-  "4H": { label: "4H", periods: 126, description: "3 weeks of 4-hour data", refreshInterval: 300 },
-  "1D": { label: "1D", periods: 90, description: "90 days of daily data", refreshInterval: 900 },
-  "1W": { label: "1W", periods: 52, description: "1 year of weekly data", refreshInterval: 3600 },
-  "1M": { label: "1M", periods: 60, description: "5 years of monthly data", refreshInterval: 3600 },
+  "1H": { label: "1H", periods: 504, description: "3 weeks of hourly data", refreshInterval: 300 },
+  "4H": { label: "4H", periods: 378, description: "9 weeks of 4-hour data", refreshInterval: 300 },
+  // Daily+ timeframes - more history for trend analysis and pivot detection
+  "1D": { label: "1D", periods: 365, description: "1 year of daily data", refreshInterval: 900 },
+  "1W": { label: "1W", periods: 156, description: "3 years of weekly data", refreshInterval: 3600 },
+  "1M": { label: "1M", periods: 120, description: "10 years of monthly data", refreshInterval: 3600 },
 };
 
 // Fibonacci level ratios - aligned with backend defaults
