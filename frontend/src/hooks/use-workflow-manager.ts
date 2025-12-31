@@ -80,10 +80,18 @@ function subscribe(callback: () => void) {
       callback();
     }
   };
+  // Listen for workflow state changes from the same tab
+  const handleStateChange = () => {
+    cachedRawValue = null;
+    cachedStore = null;
+    callback();
+  };
   window.addEventListener("storage", handleStorage);
+  window.addEventListener("workflow-state-changed", handleStateChange);
   return () => {
     listeners.delete(callback);
     window.removeEventListener("storage", handleStorage);
+    window.removeEventListener("workflow-state-changed", handleStateChange);
   };
 }
 

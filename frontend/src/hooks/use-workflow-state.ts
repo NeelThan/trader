@@ -316,6 +316,12 @@ function getServerSnapshot(): WorkflowState {
   return DEFAULT_STATE;
 }
 
+function generateWorkflowName(symbol: string, tradeDirection: string): string {
+  const direction = tradeDirection === "GO_LONG" ? "Long" : tradeDirection === "GO_SHORT" ? "Short" : "Pending";
+  const date = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${symbol} ${direction} - ${date}`;
+}
+
 function saveState(state: WorkflowState): boolean {
   try {
     // Try to save to the workflow manager store first
@@ -328,13 +334,25 @@ function saveState(state: WorkflowState): boolean {
         const workflowIndex = store.workflows.findIndex(w => w.id === store.activeWorkflowId);
         if (workflowIndex !== -1) {
           const now = new Date().toISOString();
+          const existingWorkflow = store.workflows[workflowIndex];
+
+          // Update workflow name if symbol or direction changed
+          const symbolChanged = existingWorkflow.state.symbol !== state.symbol;
+          const directionChanged = existingWorkflow.state.tradeDirection !== state.tradeDirection;
+          const newName = (symbolChanged || directionChanged)
+            ? generateWorkflowName(state.symbol, state.tradeDirection)
+            : existingWorkflow.name;
+
           store.workflows[workflowIndex] = {
-            ...store.workflows[workflowIndex],
+            ...existingWorkflow,
+            name: newName,
             state,
             updatedAt: now,
           };
           localStorage.setItem(MANAGER_STORAGE_KEY, JSON.stringify(store));
           notifyListeners();
+          // Also notify workflow manager by dispatching a custom event
+          window.dispatchEvent(new CustomEvent("workflow-state-changed"));
           return true;
         }
       }
