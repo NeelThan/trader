@@ -51,6 +51,40 @@ Technical documentation for the Next.js/TypeScript frontend.
 - Chart preferences (type, theme, colors)
 - Default symbol and timeframe
 - Fibonacci visibility toggles
+- Workflow auto-validation toggle
+
+### Trading Workflow (8-Step Process)
+
+The workflow guides traders through a complete trade setup:
+
+| Step | Name | Description |
+|------|------|-------------|
+| 1 | Market Selection | Choose symbol, timeframes, trading style |
+| 2 | Trend Alignment | Analyze higher/lower timeframe trends |
+| 3 | Fibonacci Setup | Select pivots and configure Fibonacci levels |
+| 4 | Pattern Scan | Scan for harmonic patterns and signals |
+| 5 | Entry Signal | Confirm entry with signal bar detection |
+| 6 | Position Sizing | Calculate position size and R:R ratio |
+| 7 | Pre-Trade Checklist | Final GO/NO-GO validation |
+| 8 | Trade Management | Active trade monitoring and management |
+
+Features:
+- Multi-workflow management (create, resume, complete workflows)
+- Persistent state across sessions
+- Real-time market data integration
+- Auto-validation with manual override option
+
+## Pages
+
+| Page | URL | Description |
+|------|-----|-------------|
+| Dashboard | `/dashboard` | Overview with symbol cards, market status |
+| Chart | `/chart` | Main charting with Fibonacci and pivot detection |
+| Workflow | `/workflow` | 8-step trading workflow with guided process |
+| Timeframes | `/timeframes` | Multi-timeframe viewer with trends and OHLC |
+| Trend Analysis | `/trend-analysis` | Multi-timeframe trend alignment analysis |
+| Position Sizing | `/position-sizing` | Position size and risk calculator |
+| Settings | `/settings` | User preferences and configuration |
 
 ## Architecture
 
@@ -58,19 +92,31 @@ Technical documentation for the Next.js/TypeScript frontend.
 frontend/
 ├── src/
 │   ├── app/                    # Next.js app router
-│   │   ├── api/market-data/    # Yahoo Finance API route
+│   │   ├── api/                # API routes (market-data, trader proxy)
 │   │   ├── chart/              # Main chart page
-│   │   ├── settings/           # Settings page
-│   │   └── tradingview/        # TradingView widget page
+│   │   ├── dashboard/          # Dashboard overview
+│   │   ├── workflow/           # Trading workflow page
+│   │   ├── timeframes/         # Multi-timeframe viewer
+│   │   ├── trend-analysis/     # Trend analysis page
+│   │   ├── position-sizing/    # Position sizing calculator
+│   │   └── settings/           # Settings page
 │   ├── components/
-│   │   ├── trading/            # Chart components
-│   │   │   ├── candlestick-chart.tsx
-│   │   │   └── fibonacci-levels.tsx
+│   │   ├── trading/            # Trading components
+│   │   │   ├── tools/          # Workflow step tools
+│   │   │   └── scanners/       # Pattern scanners
+│   │   ├── workflow/           # Workflow components
 │   │   └── ui/                 # shadcn/ui components
-│   ├── hooks/
-│   │   └── use-settings.ts     # Settings hook with localStorage
+│   ├── contexts/               # React contexts
+│   │   └── MarketDataContext   # Centralized market data provider
+│   ├── hooks/                  # Custom React hooks
+│   │   ├── use-settings.ts     # Settings with localStorage
+│   │   ├── use-workflow-state.ts    # Workflow state management
+│   │   ├── use-workflow-manager.ts  # Multi-workflow management
+│   │   ├── use-market-data-subscription.ts # Market data hook
+│   │   └── use-trend-analysis.ts    # Trend analysis hook
 │   └── lib/
-│       └── utils.ts            # Utility functions
+│       ├── utils.ts            # Utility functions
+│       └── chart-constants.ts  # Trading constants
 ├── public/
 ├── package.json
 └── next.config.ts
