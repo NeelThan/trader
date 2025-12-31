@@ -119,6 +119,7 @@ export default function ChartPage() {
     marketStatus,
     isRateLimited,
     isUsingSimulatedData,
+    isBackendUnavailable,
     setAutoRefreshEnabled,
     refreshNow,
     loadMoreData,
@@ -261,6 +262,7 @@ export default function ChartPage() {
                 timeframe={timeframe}
                 isRateLimited={isRateLimited}
                 isUsingSimulatedData={isUsingSimulatedData}
+                isBackendUnavailable={isBackendUnavailable}
                 onToggleAutoRefresh={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
                 onRefreshNow={refreshNow}
               />

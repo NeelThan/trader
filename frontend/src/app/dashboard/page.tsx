@@ -21,6 +21,7 @@ type MarketData = {
   low: number;
   isLoading: boolean;
   error: string | null;
+  isBackendError?: boolean; // True when error is due to backend being unavailable
 };
 
 type SignalSummary = {
@@ -90,6 +91,10 @@ async function fetchMarketData(symbol: MarketSymbol): Promise<MarketData> {
       error: null,
     };
   } catch (error) {
+    // Check if this is a connection error (backend unavailable)
+    const isBackendError = error instanceof TypeError &&
+      (error.message.includes("fetch failed") || error.message.includes("Failed to fetch"));
+
     return {
       symbol,
       price: 0,
@@ -98,7 +103,8 @@ async function fetchMarketData(symbol: MarketSymbol): Promise<MarketData> {
       high: 0,
       low: 0,
       isLoading: false,
-      error: error instanceof Error ? error.message : "Error",
+      error: isBackendError ? "Backend offline" : (error instanceof Error ? error.message : "Error"),
+      isBackendError,
     };
   }
 }
@@ -209,6 +215,9 @@ export default function DashboardPage() {
   const totalPositive = markets.filter((m) => m.change > 0 && !m.error).length;
   const totalNegative = markets.filter((m) => m.change < 0 && !m.error).length;
 
+  // Check if backend is unavailable (all markets have backend error)
+  const isBackendUnavailable = markets.every((m) => m.isBackendError) && !markets.some((m) => m.isLoading);
+
   return (
     <div className={theme === "dark" ? "dark" : ""}>
       <div className="min-h-screen bg-background text-foreground p-6">
@@ -251,6 +260,21 @@ export default function DashboardPage() {
               />
             </div>
           </div>
+
+          {/* Backend Unavailable Warning */}
+          {isBackendUnavailable && (
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-orange-500/20 border border-orange-500/30 text-orange-400">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3" />
+              </svg>
+              <div>
+                <span className="font-medium">Backend Offline</span>
+                <span className="text-orange-400/80 ml-2">
+                  Cannot load market data. Start the backend server to see live prices.
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

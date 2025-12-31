@@ -15,6 +15,7 @@ type RefreshStatusProps = {
   timeframe: Timeframe;
   isRateLimited?: boolean;
   isUsingSimulatedData?: boolean;
+  isBackendUnavailable?: boolean;
   onToggleAutoRefresh: () => void;
   onRefreshNow: () => void;
 };
@@ -28,13 +29,32 @@ export function RefreshStatus({
   timeframe,
   isRateLimited = false,
   isUsingSimulatedData = false,
+  isBackendUnavailable = false,
   onToggleAutoRefresh,
   onRefreshNow,
 }: RefreshStatusProps) {
   return (
     <div className="flex items-center gap-4 p-3 rounded-lg bg-card border flex-wrap">
+      {/* Backend Unavailable Warning */}
+      {isBackendUnavailable && (
+        <>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-orange-500/20 text-orange-400 text-sm">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3" />
+            </svg>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+              <span className="font-medium">Backend Offline</span>
+              <span className="text-orange-400/80 text-xs sm:text-sm">
+                Using simulated data • Start backend to see live data
+              </span>
+            </div>
+          </div>
+          <div className="w-px h-6 bg-border" />
+        </>
+      )}
+
       {/* Rate Limit Warning */}
-      {isRateLimited && (
+      {!isBackendUnavailable && isRateLimited && (
         <>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-amber-500/20 text-amber-400 text-sm">
             <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -54,8 +74,8 @@ export function RefreshStatus({
         </>
       )}
 
-      {/* Simulated Data Indicator (when not rate limited) */}
-      {!isRateLimited && isUsingSimulatedData && (
+      {/* Simulated Data Indicator (when not rate limited or backend unavailable) */}
+      {!isBackendUnavailable && !isRateLimited && isUsingSimulatedData && (
         <>
           <div className="flex items-center gap-2 px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-sm">
             <span>Simulated Data</span>

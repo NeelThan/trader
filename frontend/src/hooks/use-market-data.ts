@@ -50,8 +50,9 @@ export type UseMarketDataReturn = {
   marketStatus: MarketStatus | null;
   isRateLimited: boolean; // True when backend rate limited (using simulated fallback)
   isUsingSimulatedData: boolean; // True when using simulated provider
+  isBackendUnavailable: boolean; // True when backend server is not reachable
   isCached: boolean; // True when data was served from cache
-  provider: string | null; // Current data provider (yahoo, simulated)
+  provider: string | null; // Current data provider (yahoo, simulated, fallback)
   setAutoRefreshEnabled: (enabled: boolean) => void;
   refreshNow: () => void;
   loadMoreData: (oldestTime: Time) => void;
@@ -73,6 +74,7 @@ export function useMarketData(
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   const [marketStatus, setMarketStatus] = useState<MarketStatus | null>(null);
   const [isRateLimited, setIsRateLimited] = useState(false);
+  const [isBackendUnavailable, setIsBackendUnavailable] = useState(false);
   const [isCached, setIsCached] = useState(false);
   const [provider, setProvider] = useState<string | null>(null);
   const [simulatedDataVersion, setSimulatedDataVersion] = useState(0); // For manual simulated mode
@@ -139,9 +141,22 @@ export function useMarketData(
         });
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to fetch market data";
-      console.error("Failed to fetch market data:", errorMessage);
-      setFetchError(errorMessage);
+      // Check if this is a connection error (backend unavailable)
+      const isConnectionError = error instanceof TypeError &&
+        (error.message.includes("fetch failed") || error.message.includes("Failed to fetch"));
+
+      if (isConnectionError) {
+        console.warn("Backend unavailable, using simulated data as fallback");
+        setIsBackendUnavailable(true);
+        setProvider("fallback");
+        setFetchError(null); // Clear error since we have fallback
+        setLastUpdated(new Date());
+        setCountdown(TIMEFRAME_CONFIG[timeframe].refreshInterval);
+      } else {
+        const errorMessage = error instanceof Error ? error.message : "Failed to fetch market data";
+        console.error("Failed to fetch market data:", errorMessage);
+        setFetchError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -218,19 +233,19 @@ export function useMarketData(
 
   // Use appropriate data based on source
   const data = useMemo(() => {
-    // Use backend data if available (for yahoo mode)
-    if (dataSource === "yahoo" && backendData.length > 0) {
+    // Use backend data if available (for yahoo mode) and backend is reachable
+    if (dataSource === "yahoo" && backendData.length > 0 && !isBackendUnavailable) {
       return backendData;
     }
-    // Fall back to client-side simulated data
+    // Fall back to client-side simulated data (manual mode or backend unavailable)
     return simulatedData;
-  }, [dataSource, backendData, simulatedData]);
+  }, [dataSource, backendData, simulatedData, isBackendUnavailable]);
 
   // Track whether we're showing simulated data
   const isUsingSimulatedData = useMemo(() => {
-    // True if: manual simulated mode, OR backend returned simulated provider
-    return dataSource !== "yahoo" || provider === "simulated";
-  }, [dataSource, provider]);
+    // True if: manual simulated mode, backend unavailable, OR backend returned simulated provider
+    return dataSource !== "yahoo" || isBackendUnavailable || provider === "simulated" || provider === "fallback";
+  }, [dataSource, provider, isBackendUnavailable]);
 
   return {
     data,
@@ -243,6 +258,7 @@ export function useMarketData(
     marketStatus,
     isRateLimited,
     isUsingSimulatedData,
+    isBackendUnavailable,
     isCached,
     provider,
     setAutoRefreshEnabled,
