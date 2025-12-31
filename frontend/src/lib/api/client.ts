@@ -17,6 +17,12 @@ import type {
   ReversalZoneResponse,
   FibonacciLevel,
   ParsedFibonacciLevels,
+  PositionSizeRequest,
+  PositionSizeResponse,
+  RiskRewardRequest,
+  RiskRewardResponse,
+  PivotDetectRequest,
+  PivotDetectResponse,
 } from "./types";
 
 const API_BASE = "/api/trader";
@@ -152,6 +158,37 @@ export async function checkHealth(): Promise<{ status: string }> {
   return fetchAPI<{ status: string }>("/health");
 }
 
+// Position Sizing API
+
+export async function calculatePositionSize(
+  request: PositionSizeRequest
+): Promise<PositionSizeResponse> {
+  return fetchAPI<PositionSizeResponse>("/position/size", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export async function calculateRiskReward(
+  request: RiskRewardRequest
+): Promise<RiskRewardResponse> {
+  return fetchAPI<RiskRewardResponse>("/position/risk-reward", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+// Pivot Detection API
+
+export async function detectPivots(
+  request: PivotDetectRequest
+): Promise<PivotDetectResponse> {
+  return fetchAPI<PivotDetectResponse>("/pivot/detect", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
 // Export all types
 export type { Direction } from "./types";
 export type {
@@ -172,4 +209,15 @@ export type {
   ReversalZoneRequest,
   ReversalZoneData,
   ReversalZoneResponse,
+  PositionSizeRequest,
+  PositionSizeData,
+  PositionSizeResponse,
+  RiskRewardRequest,
+  RiskRewardData,
+  RiskRewardResponse,
+  TradeRecommendation,
+  OHLCBarRequest,
+  PivotDetectRequest,
+  PivotPointData,
+  PivotDetectResponse,
 } from "./types";

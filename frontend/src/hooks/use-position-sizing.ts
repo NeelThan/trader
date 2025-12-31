@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Hook for managing position sizing settings (account settings, risk preferences).
+ *
+ * NOTE: Position sizing CALCULATIONS have been moved to the backend.
+ * Use `usePositionSizingAPI` hook for actual position size calculations.
+ * This hook only manages user preferences/settings stored in localStorage.
+ */
+
 import { useCallback, useSyncExternalStore } from "react";
 
 export type PositionSizingSettings = {
@@ -17,18 +25,6 @@ export type PositionSizingSettings = {
   // Display preferences
   showRiskRewardRatio: boolean;
   showAccountImpact: boolean;
-};
-
-export type PositionSizeCalculation = {
-  positionSize: number; // Number of units/shares
-  riskAmount: number; // Total risk in currency
-  distanceToStop: number; // Price distance from entry to stop
-  riskRewardRatio: number; // R:R ratio
-  potentialProfit: number; // Profit if target hit
-  potentialLoss: number; // Loss if stop hit
-  accountRiskPercentage: number; // % of account at risk
-  isValidTrade: boolean; // Go/No-Go recommendation
-  recommendation: string; // Trade recommendation text
 };
 
 const DEFAULT_SETTINGS: PositionSizingSettings = {
@@ -95,81 +91,6 @@ function getSnapshot(): PositionSizingSettings {
 
 function getServerSnapshot(): PositionSizingSettings {
   return DEFAULT_SETTINGS;
-}
-
-/**
- * Calculate position size based on risk parameters.
- * Formula: Position Size = Risk Capital / Distance to Stop
- */
-export function calculatePositionSize(
-  entryPrice: number,
-  stopLossPrice: number,
-  targetPrice: number,
-  riskCapital: number,
-  accountBalance: number
-): PositionSizeCalculation {
-  const distanceToStop = Math.abs(entryPrice - stopLossPrice);
-  const distanceToTarget = Math.abs(targetPrice - entryPrice);
-
-  // Avoid division by zero
-  if (distanceToStop === 0) {
-    return {
-      positionSize: 0,
-      riskAmount: 0,
-      distanceToStop: 0,
-      riskRewardRatio: 0,
-      potentialProfit: 0,
-      potentialLoss: 0,
-      accountRiskPercentage: 0,
-      isValidTrade: false,
-      recommendation: "Stop loss cannot be at entry price",
-    };
-  }
-
-  const positionSize = riskCapital / distanceToStop;
-  const potentialLoss = positionSize * distanceToStop;
-  const potentialProfit = positionSize * distanceToTarget;
-  const riskRewardRatio = distanceToTarget > 0 ? distanceToTarget / distanceToStop : 0;
-  const accountRiskPercentage = accountBalance > 0 ? (riskCapital / accountBalance) * 100 : 0;
-
-  // Go/No-Go decision engine
-  let isValidTrade = true;
-  let recommendation = "";
-
-  if (riskRewardRatio < 1) {
-    isValidTrade = false;
-    recommendation = "R:R below 1:1 - Risk exceeds potential reward";
-  } else if (riskRewardRatio < 2) {
-    recommendation = "Marginal trade - Consider 2:1+ R:R";
-  } else if (riskRewardRatio >= 3) {
-    recommendation = "Excellent R:R - Strong setup";
-  } else {
-    recommendation = "Good setup - Acceptable R:R";
-  }
-
-  if (accountRiskPercentage > 5) {
-    isValidTrade = false;
-    recommendation = "Risk too high - Exceeds 5% of account";
-  } else if (accountRiskPercentage > 2) {
-    recommendation = `${recommendation} | Warning: High risk (${accountRiskPercentage.toFixed(1)}% of account)`;
-  }
-
-  if (entryPrice <= 0 || stopLossPrice <= 0) {
-    isValidTrade = false;
-    recommendation = "Invalid prices - Enter valid entry and stop";
-  }
-
-  return {
-    positionSize,
-    riskAmount: riskCapital,
-    distanceToStop,
-    riskRewardRatio,
-    potentialProfit,
-    potentialLoss,
-    accountRiskPercentage,
-    isValidTrade,
-    recommendation,
-  };
 }
 
 export function usePositionSizing() {

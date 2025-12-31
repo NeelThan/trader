@@ -24,6 +24,70 @@ We will use:
 1. **Test-Driven Development (TDD)** for all feature development
 2. **Conventional Commits** for all git commits
 3. **Small incremental steps** with commits at each logical checkpoint
+4. **Backend-first business logic** - all calculations, validations, and domain logic in Python backend
+5. **Dumb frontend client** - React frontend focuses only on presentation and user interaction
+
+---
+
+## Frontend/Backend Separation
+
+### Principle: Backend Owns Business Logic
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      BACKEND (Python)                        │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │  • Fibonacci calculations                               ││
+│  │  • Pattern detection (Gartley, Butterfly, etc.)         ││
+│  │  • Signal bar detection                                 ││
+│  │  • Position sizing calculations                         ││
+│  │  • Risk/reward calculations                             ││
+│  │  • Trend analysis                                       ││
+│  │  • Workflow validation rules                            ││
+│  │  • Trade management logic                               ││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ REST API
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    FRONTEND (React/Next.js)                  │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │  • UI components and styling                            ││
+│  │  • User input handling                                  ││
+│  │  • API calls to backend                                 ││
+│  │  • State management (UI state only)                     ││
+│  │  • Data display and formatting                          ││
+│  │  • Chart rendering                                      ││
+│  │  • Form validation (UX only, not business rules)        ││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+```
+
+### What Stays in Frontend
+- Component rendering and styling
+- User interaction handling (clicks, inputs)
+- UI state (modals open/closed, tabs selected)
+- Data fetching and caching (React Query/SWR)
+- Form UX validation (required fields, format)
+- Optimistic updates for responsiveness
+
+### What Moves to Backend
+- All mathematical calculations
+- Domain validation rules
+- Workflow step validation
+- Pattern detection algorithms
+- Position sizing formulas
+- Risk calculations
+- Any logic that could be unit tested
+
+### Migration Strategy
+1. Identify business logic in frontend
+2. Write backend tests first (TDD)
+3. Implement backend endpoint
+4. Update frontend to call API
+5. Remove frontend logic
+6. Verify with integration tests
 
 ---
 

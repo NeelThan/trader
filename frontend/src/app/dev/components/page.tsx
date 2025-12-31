@@ -31,6 +31,12 @@ import { Direction } from "@/components/trading/types";
 import { MarketStatusBadge } from "@/components/chart/MarketStatusBadge";
 import { ChartToolbar } from "@/components/chart/ChartToolbar";
 
+// Workflow Components
+import { StepIndicator } from "@/components/workflow/StepIndicator";
+import { PositionSizingTool } from "@/components/trading/tools/PositionSizingTool";
+import { FibonacciSetupTool } from "@/components/trading/tools/FibonacciSetupTool";
+import { TradeManagementPanel } from "@/components/trading/tools/TradeManagementPanel";
+
 // Only show this page in development
 if (process.env.NODE_ENV === "production") {
   notFound();
@@ -94,7 +100,7 @@ export default function ComponentsPage() {
           </div>
 
           {/* Quick Stats */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-2xl">12</CardTitle>
@@ -111,6 +117,12 @@ export default function ComponentsPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-2xl">11</CardTitle>
                 <CardDescription>Chart Components</CardDescription>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl text-primary">10</CardTitle>
+                <CardDescription>Workflow Components</CardDescription>
               </CardHeader>
             </Card>
           </div>
@@ -279,6 +291,88 @@ export default function ComponentsPage() {
             </ComponentDemo>
           </Section>
 
+          {/* Workflow Components */}
+          <Section title="Workflow Components">
+            <ComponentDemo name="StepIndicator" description="8-step workflow progress indicator">
+              <div className="w-full">
+                <StepIndicator currentStep={3} completedSteps={[1, 2]} />
+              </div>
+            </ComponentDemo>
+
+            <ComponentDemo name="StepIndicator (Further Progress)" description="Shows more completed steps">
+              <div className="w-full">
+                <StepIndicator currentStep={6} completedSteps={[1, 2, 3, 4, 5]} />
+              </div>
+            </ComponentDemo>
+
+            <ComponentDemo name="PositionSizingTool (Compact)" description="Position size calculator in compact mode">
+              <PositionSizingTool
+                symbol="SPX"
+                tradeDirection="GO_LONG"
+                selectedLevel={5000}
+                fibLevels={[]}
+                entryPrice={5000}
+                stopLoss={4950}
+                targets={[5100]}
+                positionSize={10}
+                riskRewardRatio={2.0}
+                riskAmount={500}
+                onChange={() => {}}
+                compact
+              />
+            </ComponentDemo>
+
+            <ComponentDemo name="FibonacciSetupTool (Compact)" description="Fibonacci level setup in compact mode">
+              <FibonacciSetupTool
+                symbol="SPX"
+                timeframe="1D"
+                pivots={[
+                  { index: 10, price: 5100, type: "high" },
+                  { index: 25, price: 4900, type: "low" },
+                ]}
+                fibTool="retracement"
+                fibLevels={[
+                  { ratio: 0.382, price: 4976.4, label: "38.2%" },
+                  { ratio: 0.5, price: 5000, label: "50.0%" },
+                  { ratio: 0.618, price: 5023.6, label: "61.8%" },
+                ]}
+                selectedLevelIndex={1}
+                tradeDirection="GO_LONG"
+                onChange={() => {}}
+                compact
+              />
+            </ComponentDemo>
+
+            <ComponentDemo name="TradeManagementPanel (Compact)" description="Trade management in compact mode">
+              <TradeManagementPanel
+                symbol="SPX"
+                tradeDirection="GO_LONG"
+                entryPrice={5000}
+                stopLoss={4950}
+                targets={[5100]}
+                positionSize={10}
+                tradeStatus="active"
+                currentPnL={350}
+                breakEvenPrice={5000}
+                freeTradeActive={false}
+                trailingEnabled={false}
+                trailingStopPrice={null}
+                tradeLog={[]}
+                onAddLogEntry={() => {}}
+                onChange={() => {}}
+                compact
+              />
+            </ComponentDemo>
+
+            <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
+              <p className="text-sm">
+                <strong>Full Workflow:</strong> See the complete 8-step trading workflow at{" "}
+                <Link href="/workflow" className="text-primary underline">/workflow</Link>.
+                Each tool can also be used standalone.
+              </p>
+            </div>
+          </Section>
+
           {/* Additional Info */}
           <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <p className="text-sm">
@@ -290,7 +384,7 @@ export default function ComponentsPage() {
 
           {/* Component Index */}
           <Section title="Component Index">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">UI Components</CardTitle>
@@ -345,6 +439,27 @@ export default function ComponentsPage() {
                     <li><code>PivotPointsPanel</code></li>
                     <li><code>PriceSummary</code></li>
                     <li><code>RefreshStatus</code></li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base text-primary">Workflow Components</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="text-sm space-y-1 text-muted-foreground">
+                    <li><code>WorkflowStepper</code></li>
+                    <li><code>StepIndicator</code></li>
+                    <li><code>StepNavigation</code></li>
+                    <li><code>MarketTimeframeSelector</code></li>
+                    <li><code>TrendDecisionPanel</code></li>
+                    <li><code>FibonacciSetupTool</code></li>
+                    <li><code>PatternScannerTool</code></li>
+                    <li><code>EntrySignalTool</code></li>
+                    <li><code>PositionSizingTool</code></li>
+                    <li><code>PreTradeChecklist</code></li>
+                    <li><code>TradeManagementPanel</code></li>
                   </ul>
                 </CardContent>
               </Card>

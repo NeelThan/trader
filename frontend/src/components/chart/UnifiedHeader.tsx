@@ -25,6 +25,7 @@ type UnifiedHeaderProps = {
   theme: "light" | "dark";
   dataSource: DataSource;
   useBackendAPI: boolean;
+  isUsingSimulatedData?: boolean; // True when displaying simulated data (rate limited or manual)
   onSymbolChange: (symbol: MarketSymbol) => void;
   onTimeframeChange: (timeframe: Timeframe) => void;
   onThemeToggle: () => void;
@@ -57,12 +58,15 @@ export function UnifiedHeader({
   theme,
   dataSource,
   useBackendAPI,
+  isUsingSimulatedData = false,
   onSymbolChange,
   onTimeframeChange,
   onThemeToggle,
   onDataSourceChange,
   onBackendToggle,
 }: UnifiedHeaderProps) {
+  // Show "Live" only if using Yahoo and NOT using simulated data
+  const isLive = dataSource === "yahoo" && !isUsingSimulatedData;
   return (
     <div className="flex items-center justify-between gap-4 p-4 rounded-lg bg-card border">
       {/* Left: Market & Timeframe */}
@@ -115,8 +119,8 @@ export function UnifiedHeader({
       <div className="flex items-center gap-2">
         {/* Data Source Indicator */}
         <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded bg-muted/30 text-xs">
-          <span className={dataSource === "yahoo" ? "text-green-400" : "text-amber-400"}>
-            {dataSource === "yahoo" ? "Live" : "Simulated"}
+          <span className={isLive ? "text-green-400" : "text-amber-400"}>
+            {isLive ? "Live" : "Simulated"}
           </span>
           {useBackendAPI && (
             <>
@@ -170,6 +174,11 @@ export function UnifiedHeader({
           <Link href="/dashboard">
             <Button variant="ghost" size="sm" className="h-8 text-xs">
               Dashboard
+            </Button>
+          </Link>
+          <Link href="/workflow">
+            <Button variant="ghost" size="sm" className="h-8 text-xs text-primary">
+              Workflow
             </Button>
           </Link>
           <Link href="/trend-analysis">

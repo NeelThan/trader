@@ -199,6 +199,7 @@ export default function DashboardPage() {
 
   // Initial load
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional initial data fetch
     refreshData();
   }, [refreshData]);
 
@@ -293,6 +294,34 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
+
+          {/* Trading Workflow CTA */}
+          <Card className="hover:border-primary transition-colors border-primary/50 bg-gradient-to-r from-primary/10 to-primary/5">
+            <CardContent className="p-6 flex items-center gap-6">
+              <div className="text-4xl">🚀</div>
+              <div className="flex-1">
+                <div className="text-lg font-semibold">Start Trading Workflow</div>
+                <div className="text-sm text-muted-foreground">
+                  Follow the guided 8-step process to execute trades with confidence
+                </div>
+              </div>
+              <div className="hidden sm:block">
+                <Link href="/workflow">
+                  <Button>
+                    Start Workflow
+                    <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Button>
+                </Link>
+              </div>
+              <div className="sm:hidden">
+                <Link href="/workflow">
+                  <Button size="sm">Start</Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Quick Actions */}
           <div>

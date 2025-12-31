@@ -111,3 +111,78 @@ export type FibonacciLevel = {
 export type ParsedFibonacciLevels = {
   levels: FibonacciLevel[];
 };
+
+// Position Sizing Request/Response Types
+
+export type PositionSizeRequest = {
+  entry_price: number;
+  stop_loss: number;
+  risk_capital: number;
+  account_balance?: number;
+};
+
+export type PositionSizeData = {
+  position_size: number;
+  distance_to_stop: number;
+  risk_amount: number;
+  account_risk_percentage: number;
+  is_valid: boolean;
+};
+
+export type PositionSizeResponse = {
+  result: PositionSizeData;
+};
+
+export type RiskRewardRequest = {
+  entry_price: number;
+  stop_loss: number;
+  targets: number[];
+  position_size?: number;
+};
+
+export type TradeRecommendation = "excellent" | "good" | "marginal" | "poor";
+
+export type RiskRewardData = {
+  risk_reward_ratio: number;
+  target_ratios: number[];
+  potential_profit: number;
+  potential_loss: number;
+  recommendation: TradeRecommendation;
+  is_valid: boolean;
+};
+
+export type RiskRewardResponse = {
+  result: RiskRewardData;
+};
+
+// Pivot Detection Request/Response Types
+
+export type OHLCBarRequest = {
+  time: string | number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
+export type PivotDetectRequest = {
+  data: OHLCBarRequest[];
+  lookback?: number;
+  count?: number;
+};
+
+export type PivotPointData = {
+  index: number;
+  price: number;
+  type: "high" | "low";
+  time: string | number;
+};
+
+export type PivotDetectResponse = {
+  pivots: PivotPointData[];
+  recent_pivots: PivotPointData[];
+  pivot_high: number;
+  pivot_low: number;
+  swing_high: PivotPointData | null;
+  swing_low: PivotPointData | null;
+};

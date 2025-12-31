@@ -2,6 +2,11 @@
 
 /**
  * Hook for pivot point detection and Fibonacci level calculations.
+ *
+ * IMPORTANT: When useBackendAPI is enabled, this hook uses the chart's
+ * current data as the single source of truth - sending it to the backend
+ * for pivot detection. This ensures consistency between what's displayed
+ * on the chart and what's used for calculations.
  */
 
 import { useMemo, useCallback, useState } from "react";
@@ -17,7 +22,8 @@ import {
   FIB_COLORS,
 } from "@/lib/chart-constants";
 import { detectPivotPoints } from "@/lib/market-utils";
-import type { FibonacciLevel } from "@/lib/api";
+import { useBackendPivots, type UseBackendPivotsConfig } from "./use-backend-pivots";
+import type { FibonacciLevel, PivotPointData } from "@/lib/api";
 
 export type BackendLevels = {
   retracement: FibonacciLevel[];
@@ -45,7 +51,21 @@ export type UsePivotAnalysisReturn = {
   setManualHigh: (value: string) => void;
   setManualLow: (value: string) => void;
   applyDetectedPivots: () => void;
+  // Backend status
+  isBackendPivotLoading?: boolean;
+  isBackendPivotAvailable?: boolean;
 };
+
+/**
+ * Convert backend PivotPointData to frontend PivotPoint format.
+ */
+function backendToFrontendPivot(bp: PivotPointData): PivotPoint {
+  return {
+    index: bp.index,
+    price: bp.price,
+    type: bp.type,
+  };
+}
 
 export type PivotConfig = {
   lookback: number; // Bars on each side to confirm a pivot
@@ -78,7 +98,8 @@ export function usePivotAnalysis(
   upColor: string,
   downColor: string,
   backendLevels?: BackendLevels | null,
-  pivotConfig: PivotConfig = DEFAULT_PIVOT_CONFIG
+  pivotConfig: PivotConfig = DEFAULT_PIVOT_CONFIG,
+  useBackendPivotDetection: boolean = false
 ): UsePivotAnalysisReturn {
   // Manual pivot state
   const [useManualPivots, setUseManualPivots] = useState(false);
@@ -93,11 +114,31 @@ export function usePivotAnalysis(
     return data;
   }, [data, pivotConfig.offset]);
 
-  // Detect pivot points with configurable lookback
-  const pivotPoints = useMemo(
-    () => detectPivotPoints(offsetData, pivotConfig.lookback),
-    [offsetData, pivotConfig.lookback]
-  );
+  // Backend pivot detection - uses chart data as single source of truth
+  const backendPivots = useBackendPivots(offsetData, useBackendPivotDetection, {
+    lookback: pivotConfig.lookback,
+    count: pivotConfig.count,
+  });
+
+  // Detect pivot points - use backend if available, otherwise client-side
+  const pivotPoints = useMemo(() => {
+    // If backend is enabled and available with results, use backend pivots
+    if (
+      useBackendPivotDetection &&
+      backendPivots.isBackendAvailable &&
+      backendPivots.pivots.length > 0
+    ) {
+      return backendPivots.pivots.map(backendToFrontendPivot);
+    }
+    // Fallback to client-side detection
+    return detectPivotPoints(offsetData, pivotConfig.lookback);
+  }, [
+    useBackendPivotDetection,
+    backendPivots.isBackendAvailable,
+    backendPivots.pivots,
+    offsetData,
+    pivotConfig.lookback,
+  ]);
 
   // Get the recent pivot points (configurable count) for Fibonacci calculations
   const recentPivots = useMemo(() => {
@@ -318,5 +359,7 @@ export function usePivotAnalysis(
     setManualHigh,
     setManualLow,
     applyDetectedPivots,
+    isBackendPivotLoading: backendPivots.isLoading,
+    isBackendPivotAvailable: backendPivots.isBackendAvailable,
   };
 }

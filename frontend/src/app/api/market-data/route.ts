@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Format time based on timeframe
-    const data = quotes.map((q) => {
+    const formattedData = quotes.map((q) => {
       let time: string | number;
       if (timeframe === "1D" || timeframe === "1W" || timeframe === "1M") {
         // Use date string for daily and above
@@ -208,6 +208,23 @@ export async function GET(request: NextRequest) {
         close: Number(q.close.toFixed(2)),
       };
     });
+
+    // Deduplicate by time (keep first occurrence) and ensure ascending order
+    const seenTimes = new Set<string | number>();
+    const data = formattedData
+      .filter((d) => {
+        const key = String(d.time);
+        if (seenTimes.has(key)) return false;
+        seenTimes.add(key);
+        return true;
+      })
+      .sort((a, b) => {
+        // Sort ascending by time
+        if (typeof a.time === "number" && typeof b.time === "number") {
+          return a.time - b.time;
+        }
+        return String(a.time).localeCompare(String(b.time));
+      });
 
     // Parse market state for user-friendly display
     const marketState = result.meta?.marketState || "UNKNOWN";

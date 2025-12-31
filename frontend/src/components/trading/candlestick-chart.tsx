@@ -111,6 +111,25 @@ const DARK_THEME: DeepPartial<ChartOptions> = {
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
+// Deduplicate and sort data by time (ascending) to prevent Lightweight Charts errors
+function deduplicateAndSort(data: OHLCData[]): OHLCData[] {
+  if (data.length === 0) return [];
+
+  const seen = new Set<string>();
+  return data
+    .filter((d) => {
+      const key = String(d.time);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => {
+      const timeA = typeof a.time === "number" ? a.time : new Date(a.time as string).getTime();
+      const timeB = typeof b.time === "number" ? b.time : new Date(b.time as string).getTime();
+      return timeA - timeB;
+    });
+}
+
 // Calculate Heikin Ashi values from OHLC data
 function calculateHeikinAshi(data: OHLCData[]): OHLCData[] {
   if (data.length === 0) return [];
@@ -276,10 +295,11 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
 
     // Set initial data from ref (apply Heikin Ashi transformation if needed)
     if (dataRef.current.length > 0) {
+      const cleanedData = deduplicateAndSort(dataRef.current);
       const chartData =
         chartType === "heikin-ashi"
-          ? calculateHeikinAshi(dataRef.current)
-          : dataRef.current;
+          ? calculateHeikinAshi(cleanedData)
+          : cleanedData;
       series.setData(chartData as (CandlestickData | BarData)[]);
       chart.timeScale().fitContent();
     }
@@ -361,8 +381,9 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
   // Update data when it changes
   useEffect(() => {
     if (!seriesRef.current || data.length === 0) return;
+    const cleanedData = deduplicateAndSort(data);
     const chartData =
-      chartType === "heikin-ashi" ? calculateHeikinAshi(data) : data;
+      chartType === "heikin-ashi" ? calculateHeikinAshi(cleanedData) : cleanedData;
     seriesRef.current.setData(chartData as (CandlestickData | BarData)[]);
 
     // Reset loading flag so we can load more again

@@ -273,6 +273,7 @@ export function SignalScanner({
   // Auto-scan on mount
   useEffect(() => {
     if (enabled && results.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional initial scan
       runScan();
     }
   }, [enabled, results.length, runScan]);

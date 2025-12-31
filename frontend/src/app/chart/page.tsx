@@ -117,6 +117,8 @@ export default function ChartPage() {
     countdown,
     autoRefreshEnabled,
     marketStatus,
+    isRateLimited,
+    isUsingSimulatedData,
     setAutoRefreshEnabled,
     refreshNow,
     loadMoreData,
@@ -128,7 +130,8 @@ export default function ChartPage() {
     enabled: hasMounted,
   });
 
-  // Pivot analysis (first pass)
+  // Pivot analysis (first pass) - uses chart data as single source of truth
+  // When useBackendAPI is true, sends chart data to backend for pivot detection
   const pivotAnalysis = usePivotAnalysis(
     data,
     fibVisibility,
@@ -137,7 +140,8 @@ export default function ChartPage() {
     upColor,
     downColor,
     null,
-    pivotConfig
+    pivotConfig,
+    useBackendAPI // Enable backend pivot detection when backend API is enabled
   );
 
   const {
@@ -170,7 +174,7 @@ export default function ChartPage() {
       ? { retracement, extension }
       : null;
 
-  // Pivot analysis with backend levels
+  // Pivot analysis with backend levels - uses same chart data
   const { priceLines, lineOverlays } = usePivotAnalysis(
     data,
     fibVisibility,
@@ -179,7 +183,8 @@ export default function ChartPage() {
     upColor,
     downColor,
     backendLevels,
-    pivotConfig
+    pivotConfig,
+    useBackendAPI // Enable backend pivot detection when backend API is enabled
   );
 
   // Price calculations
@@ -234,6 +239,7 @@ export default function ChartPage() {
             theme={theme}
             dataSource={dataSource}
             useBackendAPI={useBackendAPI}
+            isUsingSimulatedData={isUsingSimulatedData}
             onSymbolChange={setSymbol}
             onTimeframeChange={setTimeframe}
             onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -245,19 +251,19 @@ export default function ChartPage() {
           <div className="space-y-4">
             {/* Chart Section */}
             <div className="space-y-3">
-              {/* Refresh Status (compact) */}
-              {dataSource === "yahoo" && (
-                <RefreshStatus
-                  isLoading={isLoading}
-                  autoRefreshEnabled={autoRefreshEnabled}
-                  countdown={countdown}
-                  lastUpdated={lastUpdated}
-                  marketStatus={marketStatus}
-                  timeframe={timeframe}
-                  onToggleAutoRefresh={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
-                  onRefreshNow={refreshNow}
-                />
-              )}
+              {/* Refresh Status (compact) - shown for all data sources */}
+              <RefreshStatus
+                isLoading={isLoading}
+                autoRefreshEnabled={autoRefreshEnabled}
+                countdown={countdown}
+                lastUpdated={lastUpdated}
+                marketStatus={marketStatus}
+                timeframe={timeframe}
+                isRateLimited={isRateLimited}
+                isUsingSimulatedData={isUsingSimulatedData}
+                onToggleAutoRefresh={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+                onRefreshNow={refreshNow}
+              />
 
               {/* Price Summary */}
               <PriceSummary

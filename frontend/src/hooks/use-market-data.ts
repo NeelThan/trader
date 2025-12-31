@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * Hook for fetching and managing market data from Yahoo Finance.
- * Handles auto-refresh, countdown timer, market status, and infinite scrolling.
+ * Hook for fetching and managing market data.
+ * Supports both Yahoo Finance (live) and simulated data with auto-refresh.
+ * Handles countdown timer, market status, and infinite scrolling.
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
@@ -25,6 +26,8 @@ export type UseMarketDataReturn = {
   countdown: number;
   autoRefreshEnabled: boolean;
   marketStatus: MarketStatus | null;
+  isRateLimited: boolean; // True when using simulated data due to rate limit
+  isUsingSimulatedData: boolean; // True when displaying simulated data
   setAutoRefreshEnabled: (enabled: boolean) => void;
   refreshNow: () => void;
   loadMoreData: (oldestTime: Time) => void;
@@ -45,14 +48,18 @@ export function useMarketData(
   const [countdown, setCountdown] = useState<number>(0);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   const [marketStatus, setMarketStatus] = useState<MarketStatus | null>(null);
+  const [isRateLimited, setIsRateLimited] = useState(false);
+  const [simulatedDataVersion, setSimulatedDataVersion] = useState(0); // Increments to trigger regeneration
   const oldestLoadedTimeRef = useRef<string | null>(null);
+  const rateLimitLoggedRef = useRef(false); // Prevent console log flooding
 
-  // Generate simulated data (only after mount to avoid hydration mismatch)
+  // Generate simulated data (regenerates when version changes or symbol/timeframe changes)
   const simulatedData = useMemo(() => {
     if (!hasMounted) return [];
     const config = TIMEFRAME_CONFIG[timeframe];
     return generateMarketData(symbol, timeframe, config.periods);
-  }, [symbol, timeframe, hasMounted]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, timeframe, hasMounted, simulatedDataVersion]);
 
   // Fetch Yahoo Finance data function
   const fetchYahooData = useCallback(async () => {
@@ -70,7 +77,31 @@ export function useMarketData(
         if (result.market) {
           setMarketStatus(result.market);
         }
+
+        // Handle rate limiting gracefully - fall back to simulated data
+        if (response.status === 429 || result.code === "RATE_LIMIT") {
+          if (!rateLimitLoggedRef.current) {
+            console.warn(
+              "Yahoo Finance rate limit reached. Using simulated data. " +
+              "Live data will resume when rate limit resets."
+            );
+            rateLimitLoggedRef.current = true;
+          }
+          setIsRateLimited(true);
+          // Don't throw - just use simulated data
+          setFetchError("Rate limited - using simulated data");
+          // Set a longer countdown before retrying
+          setCountdown(Math.max(60, TIMEFRAME_CONFIG[timeframe].refreshInterval));
+          return;
+        }
+
         throw new Error(result.error || "Failed to fetch data");
+      }
+
+      // Success - clear rate limit state
+      if (isRateLimited) {
+        setIsRateLimited(false);
+        rateLimitLoggedRef.current = false;
       }
 
       const newData = result.data as OHLCData[];
@@ -87,14 +118,14 @@ export function useMarketData(
         setMarketStatus(result.market);
       }
     } catch (error) {
-      console.error("Failed to fetch market data:", error);
-      setFetchError(
-        error instanceof Error ? error.message : "Failed to fetch market data"
-      );
+      // Only log non-rate-limit errors once per error type
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch market data";
+      console.error("Failed to fetch market data:", errorMessage);
+      setFetchError(errorMessage);
     } finally {
       setIsLoading(false);
     }
-  }, [symbol, timeframe]);
+  }, [symbol, timeframe, isRateLimited]);
 
   // Load more historical data (for infinite scroll)
   const loadMoreData = useCallback(async (oldestTime: Time) => {
@@ -154,29 +185,51 @@ export function useMarketData(
     }
   }, [symbol, timeframe, dataSource, isLoadingMore]);
 
-  // Fetch Yahoo Finance data when dataSource is "yahoo"
-  useEffect(() => {
-    if (dataSource !== "yahoo") {
-      setFetchError(null);
-      setLastUpdated(null);
-      setCountdown(0);
-      setMarketStatus(null);
-      return;
-    }
+  // Refresh simulated data function
+  const refreshSimulatedData = useCallback(() => {
+    setSimulatedDataVersion((v) => v + 1);
+    setLastUpdated(new Date());
+    setCountdown(TIMEFRAME_CONFIG[timeframe].refreshInterval);
+  }, [timeframe]);
 
-    fetchYahooData();
+  // Unified refresh function that works for both data sources
+  const refreshNow = useCallback(() => {
+    if (dataSource === "yahoo" && !isRateLimited) {
+      fetchYahooData();
+    } else {
+      // Refresh simulated data (either explicit simulated source or rate-limited fallback)
+      refreshSimulatedData();
+    }
+  }, [dataSource, isRateLimited, fetchYahooData, refreshSimulatedData]);
+
+  // Initialize data and countdown when data source changes
+  useEffect(() => {
+    if (dataSource === "yahoo") {
+      fetchYahooData();
+    } else {
+      // Simulated data source - clear Yahoo state and start countdown
+      setFetchError(null);
+      setMarketStatus(null);
+      setLastUpdated(new Date());
+      setCountdown(TIMEFRAME_CONFIG[timeframe].refreshInterval);
+    }
   }, [dataSource, symbol, timeframe, fetchYahooData]);
 
-  // Auto-refresh countdown timer
+  // Auto-refresh countdown timer (works for both data sources)
   useEffect(() => {
-    if (dataSource !== "yahoo" || !autoRefreshEnabled) {
+    if (!autoRefreshEnabled) {
       return;
     }
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          fetchYahooData();
+          // Refresh based on current data source
+          if (dataSource === "yahoo" && !isRateLimited) {
+            fetchYahooData();
+          } else {
+            refreshSimulatedData();
+          }
           return TIMEFRAME_CONFIG[timeframe].refreshInterval;
         }
         return prev - 1;
@@ -184,15 +237,25 @@ export function useMarketData(
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [dataSource, autoRefreshEnabled, timeframe, fetchYahooData]);
+  }, [dataSource, autoRefreshEnabled, timeframe, isRateLimited, fetchYahooData, refreshSimulatedData]);
 
-  // Use appropriate data based on source
+  // Use appropriate data based on source and rate limit status
   const data = useMemo(() => {
+    // If rate limited, fall back to simulated data
+    if (isRateLimited) {
+      return simulatedData;
+    }
+    // Use Yahoo data if available
     if (dataSource === "yahoo" && yahooData.length > 0) {
       return yahooData;
     }
     return simulatedData;
-  }, [dataSource, yahooData, simulatedData]);
+  }, [dataSource, yahooData, simulatedData, isRateLimited]);
+
+  // Track whether we're showing simulated data
+  const isUsingSimulatedData = useMemo(() => {
+    return isRateLimited || dataSource !== "yahoo" || yahooData.length === 0;
+  }, [isRateLimited, dataSource, yahooData.length]);
 
   return {
     data,
@@ -203,8 +266,10 @@ export function useMarketData(
     countdown,
     autoRefreshEnabled,
     marketStatus,
+    isRateLimited,
+    isUsingSimulatedData,
     setAutoRefreshEnabled,
-    refreshNow: fetchYahooData,
+    refreshNow,
     loadMoreData,
   };
 }

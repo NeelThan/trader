@@ -276,3 +276,284 @@ class TestHarmonicReversalZoneEndpoint:
         assert data["reversal_zone"] is not None
         assert data["reversal_zone"]["d_level"] == pytest.approx(19.1, rel=0.01)
         assert data["reversal_zone"]["pattern_type"] == "crab"
+
+
+class TestPositionSizeEndpoint:
+    """Tests for position size calculation endpoint."""
+
+    async def test_calculate_position_size(self, client: AsyncClient) -> None:
+        """POST /position/size returns correct position size."""
+        response = await client.post(
+            "/position/size",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+                "risk_capital": 500.0,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"]["position_size"] == pytest.approx(100.0)
+        assert data["result"]["distance_to_stop"] == pytest.approx(5.0)
+        assert data["result"]["risk_amount"] == pytest.approx(500.0)
+        assert data["result"]["is_valid"] is True
+
+    async def test_position_size_with_account_balance(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /position/size calculates account risk percentage."""
+        response = await client.post(
+            "/position/size",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+                "risk_capital": 500.0,
+                "account_balance": 10000.0,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"]["account_risk_percentage"] == pytest.approx(5.0)
+        assert data["result"]["is_valid"] is True
+
+    async def test_position_size_high_risk_invalid(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /position/size marks high risk trades as invalid."""
+        response = await client.post(
+            "/position/size",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+                "risk_capital": 600.0,  # 6% of 10000
+                "account_balance": 10000.0,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"]["account_risk_percentage"] == pytest.approx(6.0)
+        assert data["result"]["is_valid"] is False
+
+    async def test_position_size_zero_distance_invalid(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /position/size returns invalid for zero stop distance."""
+        response = await client.post(
+            "/position/size",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 100.0,  # Same as entry
+                "risk_capital": 500.0,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"]["position_size"] == 0.0
+        assert data["result"]["is_valid"] is False
+
+
+class TestRiskRewardEndpoint:
+    """Tests for risk/reward calculation endpoint."""
+
+    async def test_calculate_risk_reward(self, client: AsyncClient) -> None:
+        """POST /position/risk-reward returns correct R:R ratio."""
+        response = await client.post(
+            "/position/risk-reward",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+                "targets": [110.0],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"]["risk_reward_ratio"] == pytest.approx(2.0)
+        assert data["result"]["recommendation"] == "good"
+        assert data["result"]["is_valid"] is True
+
+    async def test_risk_reward_excellent_ratio(self, client: AsyncClient) -> None:
+        """POST /position/risk-reward returns excellent for R:R >= 3."""
+        response = await client.post(
+            "/position/risk-reward",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 98.0,
+                "targets": [106.0],  # 3:1 ratio
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"]["risk_reward_ratio"] == pytest.approx(3.0)
+        assert data["result"]["recommendation"] == "excellent"
+
+    async def test_risk_reward_multiple_targets(self, client: AsyncClient) -> None:
+        """POST /position/risk-reward returns ratios for all targets."""
+        response = await client.post(
+            "/position/risk-reward",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+                "targets": [110.0, 115.0, 120.0],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["result"]["target_ratios"]) == 3
+        assert data["result"]["target_ratios"][0] == pytest.approx(2.0)
+        assert data["result"]["target_ratios"][1] == pytest.approx(3.0)
+        assert data["result"]["target_ratios"][2] == pytest.approx(4.0)
+
+    async def test_risk_reward_with_position_size(self, client: AsyncClient) -> None:
+        """POST /position/risk-reward calculates potential P&L."""
+        response = await client.post(
+            "/position/risk-reward",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+                "targets": [110.0],
+                "position_size": 10.0,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"]["potential_loss"] == pytest.approx(50.0)  # 10 * 5
+        assert data["result"]["potential_profit"] == pytest.approx(100.0)  # 10 * 10
+
+
+class TestPivotDetectEndpoint:
+    """Tests for pivot detection endpoint."""
+
+    async def test_detects_swing_highs_and_lows(self, client: AsyncClient) -> None:
+        """POST /pivot/detect returns swing highs and lows."""
+        data = [
+            {"time": "2024-01-01", "open": 10, "high": 15, "low": 5, "close": 12},
+            {"time": "2024-01-02", "open": 12, "high": 30, "low": 10, "close": 25},
+            {"time": "2024-01-03", "open": 25, "high": 28, "low": 20, "close": 22},
+            {"time": "2024-01-04", "open": 22, "high": 24, "low": 8, "close": 12},
+            {"time": "2024-01-05", "open": 12, "high": 18, "low": 10, "close": 15},
+        ]
+        response = await client.post(
+            "/pivot/detect",
+            json={"data": data, "lookback": 2},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert "pivots" in result
+        assert "pivot_high" in result
+        assert "pivot_low" in result
+
+    async def test_returns_recent_pivots_limited_by_count(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /pivot/detect limits recent pivots by count parameter."""
+        # Create data with many oscillations
+        data = []
+        for i in range(15):
+            is_high = i % 2 == 1
+            price = 100.0 + (10.0 if is_high else -10.0)
+            data.append({
+                "time": f"2024-01-{i + 1:02d}",
+                "open": price - 2,
+                "high": price + 5 if is_high else price + 2,
+                "low": price - 2 if is_high else price - 5,
+                "close": price + 2,
+            })
+
+        response = await client.post(
+            "/pivot/detect",
+            json={"data": data, "lookback": 1, "count": 3},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert len(result["recent_pivots"]) <= 3
+
+    async def test_returns_empty_for_insufficient_data(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /pivot/detect returns empty result for insufficient data."""
+        data = [
+            {"time": "2024-01-01", "open": 10, "high": 15, "low": 5, "close": 12},
+            {"time": "2024-01-02", "open": 12, "high": 20, "low": 10, "close": 18},
+        ]
+        response = await client.post(
+            "/pivot/detect",
+            json={"data": data, "lookback": 5},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert len(result["pivots"]) == 0
+        assert result["pivot_high"] == 0.0
+        assert result["pivot_low"] == 0.0
+        assert result["swing_high"] is None
+        assert result["swing_low"] is None
+
+    async def test_preserves_time_field(self, client: AsyncClient) -> None:
+        """POST /pivot/detect preserves time field in pivot response."""
+        data = [
+            {"time": "2024-01-01", "open": 10, "high": 15, "low": 5, "close": 12},
+            {"time": "2024-01-02", "open": 12, "high": 18, "low": 10, "close": 15},
+            {"time": "2024-01-03", "open": 15, "high": 50, "low": 12, "close": 45},
+            {"time": "2024-01-04", "open": 45, "high": 48, "low": 40, "close": 42},
+            {"time": "2024-01-05", "open": 42, "high": 44, "low": 38, "close": 40},
+            {"time": "2024-01-06", "open": 40, "high": 42, "low": 35, "close": 38},
+            {"time": "2024-01-07", "open": 38, "high": 40, "low": 32, "close": 35},
+        ]
+        response = await client.post(
+            "/pivot/detect",
+            json={"data": data, "lookback": 2},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        # Check that pivots have time field
+        if result["pivots"]:
+            assert "time" in result["pivots"][0]
+
+    async def test_handles_unix_timestamps(self, client: AsyncClient) -> None:
+        """POST /pivot/detect handles Unix timestamp time values."""
+        t = 1704067200  # 2024-01-01 00:00:00 UTC
+        day = 86400
+        data = [
+            {"time": t, "open": 10, "high": 15, "low": 5, "close": 12},
+            {"time": t + day, "open": 12, "high": 18, "low": 10, "close": 15},
+            {"time": t + day * 2, "open": 15, "high": 50, "low": 12, "close": 45},
+            {"time": t + day * 3, "open": 45, "high": 48, "low": 40, "close": 42},
+            {"time": t + day * 4, "open": 42, "high": 44, "low": 38, "close": 40},
+            {"time": t + day * 5, "open": 40, "high": 42, "low": 35, "close": 38},
+            {"time": t + day * 6, "open": 38, "high": 40, "low": 32, "close": 35},
+        ]
+        response = await client.post(
+            "/pivot/detect",
+            json={"data": data, "lookback": 2},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert "pivots" in result
+
+    async def test_risk_reward_no_targets_invalid(self, client: AsyncClient) -> None:
+        """POST /position/risk-reward returns invalid with no targets."""
+        response = await client.post(
+            "/position/risk-reward",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+                "targets": [],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"]["risk_reward_ratio"] == 0.0
+        assert data["result"]["is_valid"] is False

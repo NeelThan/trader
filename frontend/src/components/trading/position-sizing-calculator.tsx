@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,11 +8,8 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { PriceInput } from "./price-input";
 import { PositionSizeResult } from "./position-size-result";
 import { RiskRewardDisplay } from "./risk-reward-display";
-import {
-  usePositionSizing,
-  calculatePositionSize,
-  type PositionSizeCalculation,
-} from "@/hooks/use-position-sizing";
+import { usePositionSizing } from "@/hooks/use-position-sizing";
+import { usePositionSizingAPI, type PositionSizingResult } from "@/hooks/use-position-sizing-api";
 
 /**
  * Collapsible help guide explaining how trade parameters work.
@@ -89,13 +86,14 @@ export type PositionSizingCalculatorProps = {
   /** Currency symbol for display */
   currency?: string;
   /** Called when calculation changes */
-  onCalculationChange?: (calculation: PositionSizeCalculation | null) => void;
+  onCalculationChange?: (calculation: PositionSizingResult | null) => void;
   /** Additional class names */
   className?: string;
 };
 
 /**
  * Full position sizing calculator with account settings and trade parameters.
+ * Uses the backend API for calculations.
  * Persists settings to localStorage for reuse across sessions.
  */
 export function PositionSizingCalculator({
@@ -107,6 +105,7 @@ export function PositionSizingCalculator({
   className,
 }: PositionSizingCalculatorProps) {
   const { settings, setSettings, resetSettings, getRiskCapital } = usePositionSizing();
+  const { result: calculation, isLoading, error, isBackendAvailable, calculate } = usePositionSizingAPI();
 
   // Local state for trade inputs
   const [entryPrice, setEntryPrice] = useState("");
@@ -149,18 +148,34 @@ export function PositionSizingCalculator({
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [hasMounted, defaultEntryPrice, defaultStopLoss, defaultTarget, settings]);
 
-  // Calculate position size
-  const calculation = useMemo((): PositionSizeCalculation | null => {
+  // Calculate position size using backend API
+  const performCalculation = useCallback(async () => {
     const entry = parseFloat(entryPrice) || 0;
     const stop = parseFloat(stopLossPrice) || 0;
     const target = parseFloat(targetPrice) || 0;
     const risk = getRiskCapital();
 
     if (entry > 0 && stop > 0 && risk > 0) {
-      return calculatePositionSize(entry, stop, target, risk, settings.accountBalance);
+      await calculate({
+        entryPrice: entry,
+        stopLoss: stop,
+        targets: target > 0 ? [target] : [],
+        riskCapital: risk,
+        accountBalance: settings.accountBalance,
+      });
     }
-    return null;
-  }, [entryPrice, stopLossPrice, targetPrice, settings.accountBalance, getRiskCapital]);
+  }, [entryPrice, stopLossPrice, targetPrice, settings.accountBalance, getRiskCapital, calculate]);
+
+  // Auto-calculate when inputs change
+  useEffect(() => {
+    const entry = parseFloat(entryPrice) || 0;
+    const stop = parseFloat(stopLossPrice) || 0;
+    const risk = getRiskCapital();
+
+    if (entry > 0 && stop > 0 && risk > 0 && entry !== stop) {
+      performCalculation();
+    }
+  }, [entryPrice, stopLossPrice, targetPrice, performCalculation, getRiskCapital]);
 
   // Notify parent of calculation changes
   useEffect(() => {
@@ -202,6 +217,18 @@ export function PositionSizingCalculator({
 
   return (
     <div className={className}>
+      {/* Backend Status Warning */}
+      {!isBackendAvailable && (
+        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm mb-4">
+          <div className="flex items-center gap-2 text-amber-400">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            Backend unavailable - calculations may not work
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left Column - Inputs */}
         <div className="space-y-6">
@@ -421,8 +448,32 @@ export function PositionSizingCalculator({
 
         {/* Right Column - Results */}
         <div className="space-y-6">
+          {/* Loading State */}
+          {isLoading && (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Calculating...
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Error State */}
+          {error && !isLoading && (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <div className="text-red-400 text-sm">{error}</div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Position Size Result */}
-          {calculation ? (
+          {calculation && !isLoading ? (
             <>
               <PositionSizeResult
                 positionSize={calculation.positionSize}
@@ -435,13 +486,21 @@ export function PositionSizingCalculator({
                 riskRewardRatio={calculation.riskRewardRatio}
                 potentialProfit={calculation.potentialProfit}
                 potentialLoss={calculation.potentialLoss}
-                isValidTrade={calculation.isValidTrade}
-                recommendation={calculation.recommendation}
+                isValidTrade={calculation.isValid}
+                recommendation={
+                  calculation.recommendation === "excellent"
+                    ? "Excellent R:R - Strong setup"
+                    : calculation.recommendation === "good"
+                    ? "Good setup - Acceptable R:R"
+                    : calculation.recommendation === "marginal"
+                    ? "Marginal trade - Consider 2:1+ R:R"
+                    : "R:R below 1:1 - Risk exceeds potential reward"
+                }
                 accountRiskPercentage={calculation.accountRiskPercentage}
                 currency={currency}
               />
             </>
-          ) : (
+          ) : !isLoading && !error ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <div className="text-muted-foreground">
@@ -449,7 +508,7 @@ export function PositionSizingCalculator({
                 </div>
               </CardContent>
             </Card>
-          )}
+          ) : null}
 
           {/* Reset Button */}
           <Button

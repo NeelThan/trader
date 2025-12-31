@@ -87,6 +87,7 @@ export function detectPivotPoints(
 /**
  * Generate simulated OHLC data for different markets and timeframes.
  * Uses random walk with market-specific volatility.
+ * Ensures unique, ascending timestamps.
  */
 export function generateMarketData(
   symbol: MarketSymbol,
@@ -120,10 +121,15 @@ export function generateMarketData(
   const interval = intervalMap[timeframe];
 
   const now = new Date();
+  const seenTimes = new Set<string | number>();
+  let periodsGenerated = 0;
+  let offset = 0;
 
-  for (let i = periods - 1; i >= 0; i--) {
-    const timestamp = now.getTime() - i * interval;
+  // Generate enough periods, skipping weekends for daily data
+  while (periodsGenerated < periods && offset < periods * 2) {
+    const timestamp = now.getTime() - offset * interval;
     const date = new Date(timestamp);
+    offset++;
 
     // Skip weekends for daily data
     if (timeframe === "1D" && (date.getDay() === 0 || date.getDay() === 6)) {
@@ -146,6 +152,13 @@ export function generateMarketData(
       time = Math.floor(timestamp / 1000) as OHLCData["time"];
     }
 
+    // Skip duplicates (safety check)
+    const timeKey = String(time);
+    if (seenTimes.has(timeKey)) {
+      continue;
+    }
+    seenTimes.add(timeKey);
+
     data.push({
       time,
       open: Number(open.toFixed(2)),
@@ -155,9 +168,11 @@ export function generateMarketData(
     });
 
     basePrice = close;
+    periodsGenerated++;
   }
 
-  return data;
+  // Sort ascending by time (data is generated newest to oldest, so reverse)
+  return data.reverse();
 }
 
 /**

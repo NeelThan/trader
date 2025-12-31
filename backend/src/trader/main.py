@@ -17,6 +17,15 @@ from trader.harmonics import (
     calculate_reversal_zone,
     validate_pattern,
 )
+from trader.pivots import (
+    OHLCBar,
+    PivotPoint,
+    detect_pivots,
+)
+from trader.position_sizing import (
+    calculate_position_size,
+    calculate_risk_reward,
+)
 from trader.signals import Bar, detect_signal
 
 app = FastAPI(
@@ -143,6 +152,95 @@ class ReversalZoneResponse(BaseModel):
     """Response model for reversal zone calculation."""
 
     reversal_zone: ReversalZoneData | None
+
+
+class PositionSizeRequest(BaseModel):
+    """Request model for position size calculation."""
+
+    entry_price: float
+    stop_loss: float
+    risk_capital: float
+    account_balance: float = 0.0
+
+
+class PositionSizeData(BaseModel):
+    """Position size data in response."""
+
+    position_size: float
+    distance_to_stop: float
+    risk_amount: float
+    account_risk_percentage: float
+    is_valid: bool
+
+
+class PositionSizeResponse(BaseModel):
+    """Response model for position size calculation."""
+
+    result: PositionSizeData
+
+
+class RiskRewardRequest(BaseModel):
+    """Request model for risk/reward calculation."""
+
+    entry_price: float
+    stop_loss: float
+    targets: list[float]
+    position_size: float = 0.0
+
+
+class RiskRewardData(BaseModel):
+    """Risk/reward data in response."""
+
+    risk_reward_ratio: float
+    target_ratios: list[float]
+    potential_profit: float
+    potential_loss: float
+    recommendation: str
+    is_valid: bool
+
+
+class RiskRewardResponse(BaseModel):
+    """Response model for risk/reward calculation."""
+
+    result: RiskRewardData
+
+
+class OHLCBarModel(BaseModel):
+    """OHLC bar data for pivot detection."""
+
+    time: str | int
+    open: float
+    high: float
+    low: float
+    close: float
+
+
+class PivotDetectRequest(BaseModel):
+    """Request model for pivot detection."""
+
+    data: list[OHLCBarModel]
+    lookback: int = 5
+    count: int = 10
+
+
+class PivotPointData(BaseModel):
+    """Pivot point data in response."""
+
+    index: int
+    price: float
+    type: str
+    time: str | int
+
+
+class PivotDetectResponse(BaseModel):
+    """Response model for pivot detection."""
+
+    pivots: list[PivotPointData]
+    recent_pivots: list[PivotPointData]
+    pivot_high: float
+    pivot_low: float
+    swing_high: PivotPointData | None
+    swing_low: PivotPointData | None
 
 
 # --- Endpoints ---
@@ -283,4 +381,85 @@ async def harmonic_reversal_zone(request: ReversalZoneRequest) -> ReversalZoneRe
             direction=reversal_zone.direction,
             pattern_type=reversal_zone.pattern_type.value,
         )
+    )
+
+
+@app.post("/position/size", response_model=PositionSizeResponse)
+async def position_size(request: PositionSizeRequest) -> PositionSizeResponse:
+    """Calculate position size based on risk parameters."""
+    result = calculate_position_size(
+        entry_price=request.entry_price,
+        stop_loss=request.stop_loss,
+        risk_capital=request.risk_capital,
+        account_balance=request.account_balance,
+    )
+    return PositionSizeResponse(
+        result=PositionSizeData(
+            position_size=result.position_size,
+            distance_to_stop=result.distance_to_stop,
+            risk_amount=result.risk_amount,
+            account_risk_percentage=result.account_risk_percentage,
+            is_valid=result.is_valid,
+        )
+    )
+
+
+@app.post("/position/risk-reward", response_model=RiskRewardResponse)
+async def risk_reward(request: RiskRewardRequest) -> RiskRewardResponse:
+    """Calculate risk/reward ratio based on entry, stop, and targets."""
+    result = calculate_risk_reward(
+        entry_price=request.entry_price,
+        stop_loss=request.stop_loss,
+        targets=request.targets,
+        position_size=request.position_size,
+    )
+    return RiskRewardResponse(
+        result=RiskRewardData(
+            risk_reward_ratio=result.risk_reward_ratio,
+            target_ratios=result.target_ratios,
+            potential_profit=result.potential_profit,
+            potential_loss=result.potential_loss,
+            recommendation=result.recommendation.value,
+            is_valid=result.is_valid,
+        )
+    )
+
+
+@app.post("/pivot/detect", response_model=PivotDetectResponse)
+async def pivot_detect(request: PivotDetectRequest) -> PivotDetectResponse:
+    """Detect swing highs and lows in OHLC data."""
+    # Convert Pydantic models to dataclasses
+    ohlc_data = [
+        OHLCBar(
+            time=bar.time,
+            open=bar.open,
+            high=bar.high,
+            low=bar.low,
+            close=bar.close,
+        )
+        for bar in request.data
+    ]
+
+    result = detect_pivots(
+        data=ohlc_data,
+        lookback=request.lookback,
+        count=request.count,
+    )
+
+    # Convert dataclasses to Pydantic models
+    def pivot_to_data(pivot: PivotPoint) -> PivotPointData:
+        return PivotPointData(
+            index=pivot.index,
+            price=pivot.price,
+            type=pivot.type,
+            time=pivot.time,
+        )
+
+    return PivotDetectResponse(
+        pivots=[pivot_to_data(p) for p in result.pivots],
+        recent_pivots=[pivot_to_data(p) for p in result.recent_pivots],
+        pivot_high=result.pivot_high,
+        pivot_low=result.pivot_low,
+        swing_high=pivot_to_data(result.swing_high) if result.swing_high else None,
+        swing_low=pivot_to_data(result.swing_low) if result.swing_low else None,
     )
