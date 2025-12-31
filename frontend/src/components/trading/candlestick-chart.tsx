@@ -122,32 +122,26 @@ function timeToUnix(time: Time): number {
 }
 
 // Deduplicate and sort data by time (ascending) to prevent Lightweight Charts errors
+// Also normalizes time to Unix seconds for consistent handling
 function deduplicateAndSort(data: OHLCData[]): OHLCData[] {
   if (data.length === 0) return [];
 
   // Use Map with Unix timestamp as key to deduplicate (keeps last occurrence)
+  // Also normalize time to Unix seconds for chart consistency
   const uniqueMap = new Map<number, OHLCData>();
   for (const d of data) {
     const unixTime = timeToUnix(d.time);
-    uniqueMap.set(unixTime, d);
+    // Store with normalized Unix timestamp
+    uniqueMap.set(unixTime, {
+      ...d,
+      time: unixTime as Time,
+    });
   }
 
-  // Sort by Unix timestamp ascending
+  // Sort by time ascending (times are now all Unix seconds)
   const result = Array.from(uniqueMap.values()).sort((a, b) => {
-    return timeToUnix(a.time) - timeToUnix(b.time);
+    return (a.time as number) - (b.time as number);
   });
-
-  // Final verification - check for duplicates after dedup
-  for (let i = 1; i < result.length; i++) {
-    const prevTime = timeToUnix(result[i - 1].time);
-    const currTime = timeToUnix(result[i].time);
-    if (prevTime === currTime) {
-      console.error(`Dedup failed: index ${i} has same time as ${i-1}: ${currTime}`);
-      // Remove the duplicate
-      result.splice(i, 1);
-      i--;
-    }
-  }
 
   return result;
 }
