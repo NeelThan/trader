@@ -111,23 +111,31 @@ const DARK_THEME: DeepPartial<ChartOptions> = {
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
+// Convert time to Unix timestamp (seconds) for consistent comparison
+function timeToUnix(time: Time): number {
+  if (typeof time === "number") {
+    // Already a timestamp - if > 10^10, it's milliseconds, convert to seconds
+    return time > 10000000000 ? Math.floor(time / 1000) : time;
+  }
+  // String date like "2025-12-26" - convert to Unix seconds
+  return Math.floor(new Date(time as string).getTime() / 1000);
+}
+
 // Deduplicate and sort data by time (ascending) to prevent Lightweight Charts errors
 function deduplicateAndSort(data: OHLCData[]): OHLCData[] {
   if (data.length === 0) return [];
 
-  const seen = new Set<string>();
-  return data
-    .filter((d) => {
-      const key = String(d.time);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a, b) => {
-      const timeA = typeof a.time === "number" ? a.time : new Date(a.time as string).getTime();
-      const timeB = typeof b.time === "number" ? b.time : new Date(b.time as string).getTime();
-      return timeA - timeB;
-    });
+  // Use Map with Unix timestamp as key to deduplicate (keeps last occurrence)
+  const uniqueMap = new Map<number, OHLCData>();
+  for (const d of data) {
+    const unixTime = timeToUnix(d.time);
+    uniqueMap.set(unixTime, d);
+  }
+
+  // Sort by Unix timestamp ascending
+  return Array.from(uniqueMap.values()).sort((a, b) => {
+    return timeToUnix(a.time) - timeToUnix(b.time);
+  });
 }
 
 // Calculate Heikin Ashi values from OHLC data
