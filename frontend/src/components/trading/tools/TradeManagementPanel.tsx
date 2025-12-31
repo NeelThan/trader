@@ -273,29 +273,37 @@ export function TradeManagementPanel({
 
       {/* Trade Controls */}
       {tradeStatus !== "closed" && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="space-y-4">
           {tradeStatus === "pending" && (
-            <Button onClick={activateTrade} className="col-span-full bg-blue-600 hover:bg-blue-700">
-              Activate Trade
-            </Button>
-          )}
-
-          {tradeStatus === "active" && !freeTradeActive && (
-            <Button onClick={moveToBreakeven} variant="outline" className="text-green-400 border-green-500">
-              Move to Breakeven
-            </Button>
-          )}
-
-          {(tradeStatus === "active" || tradeStatus === "at_breakeven") && !trailingEnabled && (
-            <Button onClick={enableTrailing} variant="outline" className="text-purple-400 border-purple-500">
-              Enable Trailing Stop
-            </Button>
+            <div className="rounded-lg border-2 border-dashed border-blue-500 bg-blue-500/10 p-6 text-center">
+              <div className="text-lg font-semibold text-blue-400 mb-2">Ready to Execute</div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Click the button below to activate your trade and start tracking your position.
+              </p>
+              <Button onClick={activateTrade} size="lg" className="bg-blue-600 hover:bg-blue-700">
+                Activate Trade
+              </Button>
+            </div>
           )}
 
           {tradeStatus !== "pending" && (
-            <Button onClick={closeTrade} variant="outline" className="text-red-400 border-red-500">
-              Close Position
-            </Button>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {tradeStatus === "active" && !freeTradeActive && (
+                <Button onClick={moveToBreakeven} variant="outline" className="text-green-400 border-green-500">
+                  Move to Breakeven
+                </Button>
+              )}
+
+              {(tradeStatus === "active" || tradeStatus === "at_breakeven") && !trailingEnabled && (
+                <Button onClick={enableTrailing} variant="outline" className="text-purple-400 border-purple-500">
+                  Enable Trailing Stop
+                </Button>
+              )}
+
+              <Button onClick={closeTrade} variant="outline" className="text-red-400 border-red-500">
+                Close Position
+              </Button>
+            </div>
           )}
         </div>
       )}
