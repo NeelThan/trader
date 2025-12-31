@@ -48,7 +48,11 @@ async function proxyRequest(
   try {
     const { path } = await context.params;
     const targetPath = "/" + path.join("/");
-    const targetUrl = `${BACKEND_URL}${targetPath}`;
+
+    // Forward query parameters
+    const searchParams = request.nextUrl.searchParams.toString();
+    const queryString = searchParams ? `?${searchParams}` : "";
+    const targetUrl = `${BACKEND_URL}${targetPath}${queryString}`;
 
     // Get request body for POST/PUT requests
     let body: string | undefined;
