@@ -130,24 +130,9 @@ export default function DashboardPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/chart">
-                <Button variant="outline" size="sm">
-                  Chart
-                </Button>
-              </Link>
-              <Link href="/trend-analysis">
-                <Button variant="outline" size="sm">
-                  Trends
-                </Button>
-              </Link>
-              <Link href="/journal">
-                <Button variant="outline" size="sm">
-                  Journal
-                </Button>
-              </Link>
-              <Link href="/settings">
-                <Button variant="outline" size="sm">
-                  Settings
+              <Link href="/workflow">
+                <Button size="sm">
+                  New Trade
                 </Button>
               </Link>
               <ThemeToggle

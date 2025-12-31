@@ -127,6 +127,107 @@ function EntryRow({
   );
 }
 
+// Workflow Import Card Component
+function WorkflowImportCard({
+  workflow,
+  onImport,
+  isImported,
+}: {
+  workflow: StoredWorkflow;
+  onImport: (workflow: StoredWorkflow, exitPrice?: number) => void;
+  isImported: boolean;
+}) {
+  const [exitPrice, setExitPrice] = useState("");
+  const [showInput, setShowInput] = useState(false);
+
+  const state = workflow.state;
+  const needsExitPrice = state.tradeStatus === "closed" && (!state.tradeLog.some(e => e.action === "exit" || e.action === "target_hit"));
+  const isBuy = state.tradeDirection === "GO_LONG";
+
+  const handleImport = () => {
+    if (needsExitPrice && !showInput) {
+      setShowInput(true);
+      return;
+    }
+
+    const exit = needsExitPrice ? parseFloat(exitPrice) : undefined;
+    if (needsExitPrice && (!exit || exit <= 0)) {
+      return;
+    }
+
+    onImport(workflow, exit);
+  };
+
+  if (isImported) {
+    return (
+      <Card className="border-green-500/30 bg-green-500/5">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-medium">{workflow.name}</div>
+              <div className="text-xs text-green-400">Already imported</div>
+            </div>
+            <div className="text-green-400">✓</div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="hover:border-primary/50 transition-colors">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-medium">{workflow.name}</div>
+            <div className="text-xs text-muted-foreground">
+              {state.symbol} • {isBuy ? "LONG" : "SHORT"} • Entry: ${state.entryPrice.toFixed(2)}
+            </div>
+          </div>
+          <span className={`px-2 py-1 rounded text-xs ${
+            isBuy ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+          }`}>
+            {isBuy ? "LONG" : "SHORT"}
+          </span>
+        </div>
+
+        {showInput && needsExitPrice && (
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">
+              Exit Price (required)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={exitPrice}
+              onChange={(e) => setExitPrice(e.target.value)}
+              placeholder="Enter exit price"
+              className="w-full p-2 rounded bg-background border border-border text-foreground text-sm"
+              autoFocus
+            />
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={handleImport}
+            disabled={showInput && needsExitPrice && (!exitPrice || parseFloat(exitPrice) <= 0)}
+            className="flex-1"
+          >
+            {needsExitPrice && !showInput ? "Enter Exit Price" : "Import to Journal"}
+          </Button>
+          {showInput && (
+            <Button size="sm" variant="outline" onClick={() => setShowInput(false)}>
+              Cancel
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // Add Entry Form Component
 function AddEntryForm({
   onSubmit,
@@ -321,6 +422,7 @@ export default function JournalPage() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [showAddForm, setShowAddForm] = useState(false);
   const [symbolFilter, setSymbolFilter] = useState<string>("");
+  const [showWorkflowImport, setShowWorkflowImport] = useState(false);
 
   const {
     entries,
@@ -333,6 +435,15 @@ export default function JournalPage() {
     refresh,
   } = useJournal(symbolFilter || undefined);
 
+  // Get workflows for import
+  const { workflows, getWorkflow } = useWorkflowManager();
+
+  // Filter to importable workflows (completed with entry price)
+  const importableWorkflows = workflows
+    .filter(w => w.status === "completed" && w.entryPrice && w.entryPrice > 0)
+    .map(summary => getWorkflow(summary.id))
+    .filter((w): w is StoredWorkflow => w !== null);
+
   const handleAddEntry = async (entry: JournalEntryRequest) => {
     const result = await addEntry(entry);
     if (result) {
@@ -343,6 +454,19 @@ export default function JournalPage() {
   const handleDeleteEntry = async (id: string) => {
     if (confirm("Are you sure you want to delete this entry?")) {
       await removeEntry(id);
+    }
+  };
+
+  const handleWorkflowImport = async (workflow: StoredWorkflow, exitPriceOverride?: number) => {
+    const journalEntry = workflowToJournalEntry(workflow, exitPriceOverride);
+    if (!journalEntry) {
+      console.error("Failed to convert workflow to journal entry");
+      return;
+    }
+
+    const result = await addEntry(journalEntry);
+    if (result) {
+      setShowWorkflowImport(false);
     }
   };
 
@@ -359,14 +483,9 @@ export default function JournalPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/dashboard">
-                <Button variant="outline" size="sm">
-                  Dashboard
-                </Button>
-              </Link>
-              <Link href="/chart">
-                <Button variant="outline" size="sm">
-                  Chart
+              <Link href="/workflow">
+                <Button size="sm">
+                  New Trade
                 </Button>
               </Link>
               <ThemeToggle
@@ -463,6 +582,38 @@ export default function JournalPage() {
             </Card>
           </div>
 
+          {/* Workflow Import Section */}
+          {importableWorkflows.length > 0 && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-base">
+                  Import from Workflows
+                </CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowWorkflowImport(!showWorkflowImport)}
+                >
+                  {showWorkflowImport ? "Hide" : `Show (${importableWorkflows.length})`}
+                </Button>
+              </CardHeader>
+              {showWorkflowImport && (
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {importableWorkflows.map((workflow) => (
+                      <WorkflowImportCard
+                        key={workflow.id}
+                        workflow={workflow}
+                        onImport={handleWorkflowImport}
+                        isImported={isWorkflowImported(workflow.id, entries)}
+                      />
+                    ))}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          )}
+
           {/* Add Entry Section */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -546,54 +697,6 @@ export default function JournalPage() {
               )}
             </CardContent>
           </Card>
-
-          {/* Quick Actions */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Link href="/workflow">
-              <Card className="hover:border-primary/50 transition-colors cursor-pointer">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl mb-1">🚀</div>
-                  <div className="font-medium">New Trade</div>
-                  <div className="text-xs text-muted-foreground">
-                    Start workflow
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-            <Link href="/trend-analysis">
-              <Card className="hover:border-primary/50 transition-colors cursor-pointer">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl mb-1">📊</div>
-                  <div className="font-medium">Analysis</div>
-                  <div className="text-xs text-muted-foreground">
-                    Trend alignment
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-            <Link href="/chart">
-              <Card className="hover:border-primary/50 transition-colors cursor-pointer">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl mb-1">📈</div>
-                  <div className="font-medium">Charts</div>
-                  <div className="text-xs text-muted-foreground">
-                    Technical analysis
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-            <Link href="/position-sizing">
-              <Card className="hover:border-primary/50 transition-colors cursor-pointer">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl mb-1">🧮</div>
-                  <div className="font-medium">Position Size</div>
-                  <div className="text-xs text-muted-foreground">
-                    Risk calculator
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          </div>
 
           {/* Info */}
           <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">

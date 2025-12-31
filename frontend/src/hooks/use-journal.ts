@@ -220,12 +220,12 @@ export function formatTime(isoString: string): string {
  * Requirements:
  * - Status is "completed"
  * - Has entry price
- * - Has exit information (from trade log or manually closed)
+ * - Exit price can be provided during import if not in trade log
  */
 export function canImportWorkflow(workflow: StoredWorkflow): boolean {
   if (workflow.status !== "completed") return false;
   if (workflow.state.entryPrice <= 0) return false;
-  if (workflow.state.tradeStatus !== "closed") return false;
+  // Allow import even if tradeStatus isn't closed - user can provide exit price
   return true;
 }
 
@@ -258,12 +258,15 @@ function getExitInfoFromTradeLog(state: WorkflowState): {
 /**
  * Convert a completed workflow to a journal entry request.
  * Returns null if the workflow cannot be converted.
+ * @param exitPriceOverride - Optional exit price to use when trade log doesn't have one
  */
 export function workflowToJournalEntry(
   workflow: StoredWorkflow,
   exitPriceOverride?: number
 ): JournalEntryRequest | null {
-  if (!canImportWorkflow(workflow)) return null;
+  // Less strict check - just need completed status and entry price
+  if (workflow.status !== "completed") return null;
+  if (workflow.state.entryPrice <= 0) return null;
 
   const { state } = workflow;
 
