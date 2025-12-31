@@ -186,3 +186,70 @@ export type PivotDetectResponse = {
   swing_high: PivotPointData | null;
   swing_low: PivotPointData | null;
 };
+
+// Journal Request/Response Types
+
+export type TradeDirection = "long" | "short";
+
+export type TradeOutcome = "win" | "loss" | "breakeven";
+
+export type JournalEntryRequest = {
+  symbol: string;
+  direction: TradeDirection;
+  entry_price: number;
+  exit_price: number;
+  stop_loss: number;
+  position_size: number;
+  entry_time: string;
+  exit_time: string;
+  timeframe?: string;
+  targets?: number[];
+  exit_reason?: string;
+  notes?: string;
+  workflow_id?: string;
+};
+
+export type JournalEntryData = {
+  id: string;
+  symbol: string;
+  direction: TradeDirection;
+  entry_price: number;
+  exit_price: number;
+  stop_loss: number;
+  position_size: number;
+  entry_time: string;
+  exit_time: string;
+  pnl: number;
+  r_multiple: number;
+  outcome: TradeOutcome;
+  timeframe?: string;
+  targets: number[];
+  exit_reason?: string;
+  notes?: string;
+  workflow_id?: string;
+};
+
+export type JournalEntryResponse = {
+  entry: JournalEntryData;
+};
+
+export type JournalEntriesResponse = {
+  entries: JournalEntryData[];
+};
+
+export type JournalAnalyticsData = {
+  total_trades: number;
+  wins: number;
+  losses: number;
+  breakevens: number;
+  win_rate: number;
+  total_pnl: number;
+  average_r: number;
+  largest_win: number;
+  largest_loss: number;
+  profit_factor: number;
+};
+
+export type JournalAnalyticsResponse = {
+  analytics: JournalAnalyticsData;
+};

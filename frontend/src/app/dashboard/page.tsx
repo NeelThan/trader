@@ -140,6 +140,11 @@ export default function DashboardPage() {
                   Trends
                 </Button>
               </Link>
+              <Link href="/journal">
+                <Button variant="outline" size="sm">
+                  Journal
+                </Button>
+              </Link>
               <Link href="/settings">
                 <Button variant="outline" size="sm">
                   Settings
@@ -238,7 +243,7 @@ export default function DashboardPage() {
           {/* Quick Actions */}
           <div>
             <h2 className="text-lg font-semibold mb-3">Quick Actions</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <Link href="/trend-analysis">
                 <Card className="hover:border-primary/50 transition-colors cursor-pointer">
                   <CardContent className="p-4 text-center">
@@ -268,6 +273,17 @@ export default function DashboardPage() {
                     <div className="font-medium">Chart Analysis</div>
                     <div className="text-xs text-muted-foreground">
                       Fibonacci & patterns
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/journal">
+                <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-2xl mb-1">📔</div>
+                    <div className="font-medium">Trade Journal</div>
+                    <div className="text-xs text-muted-foreground">
+                      Track performance
                     </div>
                   </CardContent>
                 </Card>

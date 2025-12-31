@@ -64,6 +64,10 @@ Detect classic harmonic patterns using XABCD points:
 | POST | `/position/risk-reward` | Calculate risk/reward ratio |
 | GET | `/market-data` | Fetch OHLC data with caching and fallback |
 | GET | `/market-data/providers` | Get status of market data providers |
+| POST | `/journal/entry` | Record a completed trade |
+| GET | `/journal/entries` | List journal entries (optional symbol filter) |
+| GET | `/journal/analytics` | Get aggregated trade analytics |
+| DELETE | `/journal/entry/{id}` | Delete a journal entry |
 
 ## Project Structure
 
@@ -169,8 +173,8 @@ Position Size = Risk Capital / (Entry Price - Stop Loss Price)
 13. ✅ 8-step trading workflow with state management
 14. ✅ Multi-timeframe viewer with trends and OHLC
 15. ✅ Centralized market data provider with caching
-16. ⬜ Broker integration
-17. ⬜ Trade journaling and analytics
+16. 🔄 Trade journaling and analytics (backend complete)
+17. ⬜ Broker integration
 
 ## Documentation
 

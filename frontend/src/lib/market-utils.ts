@@ -203,3 +203,119 @@ export function formatRefreshInterval(seconds: number): string {
   }
   return `${seconds}s`;
 }
+
+/**
+ * Key Fibonacci retracement ratios used for signal detection.
+ */
+export const FIBONACCI_RATIOS = [0.236, 0.382, 0.5, 0.618, 0.786] as const;
+
+/**
+ * Calculate Fibonacci retracement levels from swing high and low.
+ * @param high - Swing high price
+ * @param low - Swing low price
+ * @param direction - "buy" calculates from high to low, "sell" from low to high
+ * @returns Object with each Fibonacci ratio and its corresponding price level
+ */
+export function calculateFibonacciLevels(
+  high: number,
+  low: number,
+  direction: "buy" | "sell" = "buy"
+): Record<number, number> {
+  const range = high - low;
+  const levels: Record<number, number> = {};
+
+  for (const ratio of FIBONACCI_RATIOS) {
+    if (direction === "buy") {
+      // Buy direction: retracement from high down
+      levels[ratio] = high - range * ratio;
+    } else {
+      // Sell direction: retracement from low up
+      levels[ratio] = low + range * ratio;
+    }
+  }
+
+  return levels;
+}
+
+/**
+ * Check if a price is near any Fibonacci level.
+ * @param price - Price to check
+ * @param fibLevels - Fibonacci levels from calculateFibonacciLevels
+ * @param tolerance - How close price must be to level (as percentage, e.g., 0.005 = 0.5%)
+ * @returns Object with isAtLevel, nearestLevel, and distance
+ */
+export function checkFibonacciAlignment(
+  price: number,
+  fibLevels: Record<number, number>,
+  tolerance: number = 0.005
+): { isAtLevel: boolean; nearestRatio: number | null; nearestLevel: number | null; distance: number } {
+  let nearestRatio: number | null = null;
+  let nearestLevel: number | null = null;
+  let minDistance = Infinity;
+
+  for (const [ratio, level] of Object.entries(fibLevels)) {
+    const distance = Math.abs(price - level) / price;
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearestRatio = parseFloat(ratio);
+      nearestLevel = level;
+    }
+  }
+
+  return {
+    isAtLevel: minDistance <= tolerance,
+    nearestRatio,
+    nearestLevel,
+    distance: minDistance,
+  };
+}
+
+/**
+ * Check if a pivot point aligns with a Fibonacci level.
+ * This makes the pivot a more significant signal.
+ * @param pivotPrice - The pivot point price
+ * @param swingHigh - The reference swing high
+ * @param swingLow - The reference swing low
+ * @param tolerance - Tolerance for level matching (default 0.5%)
+ * @returns Alignment result with signal boost factor
+ */
+export function checkPivotFibonacciAlignment(
+  pivotPrice: number,
+  swingHigh: number,
+  swingLow: number,
+  tolerance: number = 0.005
+): { isAligned: boolean; ratio: number | null; signalBoost: number } {
+  // Calculate levels for both directions and check alignment
+  const buyLevels = calculateFibonacciLevels(swingHigh, swingLow, "buy");
+  const sellLevels = calculateFibonacciLevels(swingHigh, swingLow, "sell");
+
+  const buyAlignment = checkFibonacciAlignment(pivotPrice, buyLevels, tolerance);
+  const sellAlignment = checkFibonacciAlignment(pivotPrice, sellLevels, tolerance);
+
+  // Use whichever is closer
+  const bestAlignment = buyAlignment.distance < sellAlignment.distance ? buyAlignment : sellAlignment;
+
+  if (!bestAlignment.isAtLevel) {
+    return { isAligned: false, ratio: null, signalBoost: 0 };
+  }
+
+  // Higher signal boost for key Fibonacci levels (61.8%, 50%, 38.2%)
+  const ratio = bestAlignment.nearestRatio;
+  let signalBoost = 0.1; // Base boost for any Fibonacci alignment
+
+  if (ratio === 0.618) {
+    signalBoost = 0.2; // Golden ratio - strongest
+  } else if (ratio === 0.5) {
+    signalBoost = 0.15; // 50% level - strong
+  } else if (ratio === 0.382) {
+    signalBoost = 0.15; // 38.2% level - strong
+  } else if (ratio === 0.786) {
+    signalBoost = 0.1; // 78.6% level - moderate
+  }
+
+  return {
+    isAligned: true,
+    ratio,
+    signalBoost,
+  };
+}

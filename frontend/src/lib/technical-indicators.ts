@@ -270,7 +270,10 @@ export type IndicatorValues = {
   smaSlow: number | null;
   maSignal: "bullish" | "bearish" | "neutral";
   rsi: number | null;
+  rsiPrevious: number | null;  // Previous RSI for momentum detection
   rsiSignal: "bullish" | "bearish" | "neutral";
+  rsiMomentum: "rising" | "falling" | "flat";  // RSI momentum direction
+  rsiCrossing50: boolean;  // True if RSI just crossed the 50 threshold
   adx: number | null;
   plusDI: number | null;
   minusDI: number | null;
@@ -280,6 +283,11 @@ export type IndicatorValues = {
 
 /**
  * Calculate all indicator values for trend analysis.
+ *
+ * RSI Logic Enhancement:
+ * - RSI crossing 50 = potential direction CHANGE signal (not absolute trend)
+ * - RSI momentum (rising/falling) indicates acceleration/deceleration
+ * - Extreme levels (>70 overbought, <30 oversold) are stronger signals
  */
 export function calculateIndicators(
   data: OHLCData[],
@@ -304,6 +312,7 @@ export function calculateIndicators(
   const smaFast = smaFastArr[smaFastArr.length - 1];
   const smaSlow = smaSlowArr[smaSlowArr.length - 1];
   const rsi = rsiArr[rsiArr.length - 1];
+  const rsiPrevious = rsiArr.length >= 2 ? rsiArr[rsiArr.length - 2] : null;
   const adx = adxArr[adxArr.length - 1];
   const plusDI = plusDIArr[plusDIArr.length - 1];
   const minusDI = minusDIArr[minusDIArr.length - 1];
@@ -318,14 +327,55 @@ export function calculateIndicators(
     }
   }
 
-  // Determine RSI signal
+  // Enhanced RSI analysis
+  // 1. RSI momentum (is it rising or falling?)
+  let rsiMomentum: "rising" | "falling" | "flat" = "flat";
+  if (rsi !== null && rsiPrevious !== null) {
+    const diff = rsi - rsiPrevious;
+    if (diff > 1) {  // Significant rise
+      rsiMomentum = "rising";
+    } else if (diff < -1) {  // Significant fall
+      rsiMomentum = "falling";
+    }
+  }
+
+  // 2. RSI crossing 50 (direction change signal)
+  let rsiCrossing50 = false;
+  if (rsi !== null && rsiPrevious !== null) {
+    const threshold = config.rsiThreshold;
+    // Crossed up through 50
+    if (rsiPrevious < threshold && rsi >= threshold) {
+      rsiCrossing50 = true;
+    }
+    // Crossed down through 50
+    if (rsiPrevious > threshold && rsi <= threshold) {
+      rsiCrossing50 = true;
+    }
+  }
+
+  // 3. RSI signal based on momentum and extreme levels, not just absolute position
+  // RSI > 50 with rising momentum = bullish
+  // RSI < 50 with falling momentum = bearish
+  // RSI crossing 50 = neutral (direction change in progress, wait for confirmation)
   let rsiSignal: "bullish" | "bearish" | "neutral" = "neutral";
   if (rsi !== null) {
-    if (rsi > config.rsiThreshold) {
+    if (rsiCrossing50) {
+      // Direction change in progress - wait for confirmation
+      rsiSignal = "neutral";
+    } else if (rsi > 70) {
+      // Overbought - strong bullish but could reverse
       rsiSignal = "bullish";
-    } else if (rsi < config.rsiThreshold) {
+    } else if (rsi < 30) {
+      // Oversold - strong bearish but could reverse
+      rsiSignal = "bearish";
+    } else if (rsi > config.rsiThreshold && rsiMomentum === "rising") {
+      // Above 50 and rising - bullish momentum
+      rsiSignal = "bullish";
+    } else if (rsi < config.rsiThreshold && rsiMomentum === "falling") {
+      // Below 50 and falling - bearish momentum
       rsiSignal = "bearish";
     }
+    // If RSI is above/below 50 but momentum is opposite, signal is neutral (conflicting)
   }
 
   // Determine ADX signal
@@ -344,7 +394,10 @@ export function calculateIndicators(
     smaSlow,
     maSignal,
     rsi,
+    rsiPrevious,
     rsiSignal,
+    rsiMomentum,
+    rsiCrossing50,
     adx,
     plusDI,
     minusDI,

@@ -23,6 +23,10 @@ import type {
   RiskRewardResponse,
   PivotDetectRequest,
   PivotDetectResponse,
+  JournalEntryRequest,
+  JournalEntryResponse,
+  JournalEntriesResponse,
+  JournalAnalyticsResponse,
 } from "./types";
 
 const API_BASE = "/api/trader";
@@ -189,6 +193,36 @@ export async function detectPivots(
   });
 }
 
+// Journal API
+
+export async function createJournalEntry(
+  request: JournalEntryRequest
+): Promise<JournalEntryResponse> {
+  return fetchAPI<JournalEntryResponse>("/journal/entry", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export async function getJournalEntries(
+  symbol?: string
+): Promise<JournalEntriesResponse> {
+  const queryParams = symbol ? `?symbol=${encodeURIComponent(symbol)}` : "";
+  return fetchAPI<JournalEntriesResponse>(`/journal/entries${queryParams}`);
+}
+
+export async function getJournalAnalytics(): Promise<JournalAnalyticsResponse> {
+  return fetchAPI<JournalAnalyticsResponse>("/journal/analytics");
+}
+
+export async function deleteJournalEntry(
+  entryId: string
+): Promise<{ status: string; id: string }> {
+  return fetchAPI<{ status: string; id: string }>(`/journal/entry/${entryId}`, {
+    method: "DELETE",
+  });
+}
+
 // Export all types
 export type { Direction } from "./types";
 export type {
@@ -220,4 +254,12 @@ export type {
   PivotDetectRequest,
   PivotPointData,
   PivotDetectResponse,
+  TradeDirection,
+  TradeOutcome,
+  JournalEntryRequest,
+  JournalEntryData,
+  JournalEntryResponse,
+  JournalEntriesResponse,
+  JournalAnalyticsData,
+  JournalAnalyticsResponse,
 } from "./types";

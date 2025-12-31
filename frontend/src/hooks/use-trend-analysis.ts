@@ -29,7 +29,7 @@ import {
   IndicatorSignal,
   TIMEFRAME_PAIR_PRESETS,
 } from "@/lib/chart-constants";
-import { detectPivotPoints } from "@/lib/market-utils";
+import { detectPivotPoints, checkPivotFibonacciAlignment } from "@/lib/market-utils";
 import { calculateIndicators, IndicatorValues } from "@/lib/technical-indicators";
 import { useSettings } from "@/hooks/use-settings";
 import { useMarketDataContext } from "@/contexts/MarketDataContext";
@@ -77,7 +77,10 @@ function createEmptyIndicators(): TrendIndicators {
     smaSlow: null,
     maSignal: "neutral",
     rsi: null,
+    rsiPrevious: null,
     rsiSignal: "neutral",
+    rsiMomentum: "flat",
+    rsiCrossing50: false,
     adx: null,
     plusDI: null,
     minusDI: null,
@@ -88,8 +91,12 @@ function createEmptyIndicators(): TrendIndicators {
 
 /**
  * Detect pivot-based trend direction from OHLC data.
- * UP: Higher highs and higher lows
- * DOWN: Lower highs and lower lows
+ *
+ * Uses CONFIRMED pivots only (n-2 and n-1), not the latest potentially
+ * unconfirmed pivot (n). The most recent pivot may still be forming.
+ *
+ * UP: Higher highs and higher lows (confirmed)
+ * DOWN: Lower highs and lower lows (confirmed)
  * NEUTRAL: Mixed or insufficient data
  */
 function detectPivotTrend(
@@ -101,11 +108,13 @@ function detectPivotTrend(
   }
 
   const pivots = detectPivotPoints(data, lookback);
-  const recentPivots = pivots.slice(-6);
+  // Get more pivots to ensure we have enough confirmed ones
+  const recentPivots = pivots.slice(-8);
 
   const highs = recentPivots.filter((p) => p.type === "high").map((p) => p.price);
   const lows = recentPivots.filter((p) => p.type === "low").map((p) => p.price);
 
+  // Need at least 3 pivots of each type to use confirmed ones
   if (highs.length < 2 || lows.length < 2) {
     return {
       direction: "NEUTRAL",
@@ -116,18 +125,27 @@ function detectPivotTrend(
     };
   }
 
-  const lastTwoHighs = highs.slice(-2);
-  const lastTwoLows = lows.slice(-2);
+  // Use CONFIRMED pivots: exclude the most recent (potentially unconfirmed) pivot
+  // Take [n-2, n-1] instead of [n-1, n]
+  // If we have 3+ pivots, skip the latest; otherwise use what we have
+  const confirmedHighs = highs.length >= 3 ? highs.slice(-3, -1) : highs.slice(-2);
+  const confirmedLows = lows.length >= 3 ? lows.slice(-3, -1) : lows.slice(-2);
 
-  const higherHighs = lastTwoHighs[1] > lastTwoHighs[0];
-  const higherLows = lastTwoLows[1] > lastTwoLows[0];
-  const lowerHighs = lastTwoHighs[1] < lastTwoHighs[0];
-  const lowerLows = lastTwoLows[1] < lastTwoLows[0];
+  // Store the latest (potentially unconfirmed) pivot for reference
+  const latestHigh = highs[highs.length - 1];
+  const latestLow = lows[lows.length - 1];
+
+  // Compare confirmed pivots
+  const higherHighs = confirmedHighs.length >= 2 && confirmedHighs[1] > confirmedHighs[0];
+  const higherLows = confirmedLows.length >= 2 && confirmedLows[1] > confirmedLows[0];
+  const lowerHighs = confirmedHighs.length >= 2 && confirmedHighs[1] < confirmedHighs[0];
+  const lowerLows = confirmedLows.length >= 2 && confirmedLows[1] < confirmedLows[0];
 
   let direction: TrendDirection = "NEUTRAL";
   let strength = 0.5;
   let signal: IndicatorSignal = "neutral";
 
+  // Strong trend: both conditions met on confirmed pivots
   if (higherHighs && higherLows) {
     direction = "UP";
     strength = 0.9;
@@ -136,9 +154,11 @@ function detectPivotTrend(
     direction = "DOWN";
     strength = 0.9;
     signal = "bearish";
-  } else if (higherHighs || higherLows) {
+  }
+  // Partial/weakening trend: only one condition met (could be tapering)
+  else if (higherHighs || higherLows) {
     direction = "UP";
-    strength = 0.6;
+    strength = 0.6;  // Lower strength indicates potential tapering
     signal = "bullish";
   } else if (lowerHighs || lowerLows) {
     direction = "DOWN";
@@ -146,24 +166,60 @@ function detectPivotTrend(
     signal = "bearish";
   }
 
-  // Price action bias
+  // Check if latest (unconfirmed) pivot contradicts the trend - potential reversal signal
   const currentPrice = data[data.length - 1].close;
-  const latestHigh = highs[highs.length - 1];
-  const latestLow = lows[lows.length - 1];
 
+  // If latest unconfirmed high is lower than previous while we're in uptrend = weakening
+  if (direction === "UP" && highs.length >= 3) {
+    const prevConfirmedHigh = confirmedHighs[confirmedHighs.length - 1];
+    if (latestHigh && prevConfirmedHigh && latestHigh < prevConfirmedHigh) {
+      strength = Math.max(strength - 0.15, 0.4);  // Reduce strength - potential reversal
+    }
+  }
+  // If latest unconfirmed low is higher than previous while we're in downtrend = weakening
+  if (direction === "DOWN" && lows.length >= 3) {
+    const prevConfirmedLow = confirmedLows[confirmedLows.length - 1];
+    if (latestLow && prevConfirmedLow && latestLow > prevConfirmedLow) {
+      strength = Math.max(strength - 0.15, 0.4);  // Reduce strength - potential reversal
+    }
+  }
+
+  // Price action near pivot levels still provides some confirmation
   if (latestHigh && currentPrice > latestHigh * 0.995) {
     if (direction === "NEUTRAL") {
       direction = "UP";
       signal = "bullish";
     }
-    strength = Math.min(strength + 0.1, 1.0);
+    strength = Math.min(strength + 0.05, 1.0);
   }
   if (latestLow && currentPrice < latestLow * 1.005) {
     if (direction === "NEUTRAL") {
       direction = "DOWN";
       signal = "bearish";
     }
-    strength = Math.min(strength + 0.1, 1.0);
+    strength = Math.min(strength + 0.05, 1.0);
+  }
+
+  // Check if current price is at a Fibonacci level relative to the swing range
+  // Pivots at Fibonacci levels are more significant signals
+  if (latestHigh && latestLow && latestHigh !== latestLow) {
+    const fibAlignment = checkPivotFibonacciAlignment(
+      currentPrice,
+      latestHigh,
+      latestLow,
+      0.005 // 0.5% tolerance
+    );
+
+    if (fibAlignment.isAligned) {
+      // Price is at a Fibonacci level - boost signal strength
+      strength = Math.min(strength + fibAlignment.signalBoost, 1.0);
+    } else if (fibAlignment.ratio === null) {
+      // Price is far from any Fibonacci level - this is less significant
+      // Only reduce if we're already in a weak signal state
+      if (strength < 0.7) {
+        strength = Math.max(strength - 0.05, 0.3);
+      }
+    }
   }
 
   return {
@@ -293,7 +349,7 @@ function detectTrendDirection(
   // Combine signals
   const combined = combineTrendSignals(pivotResult, indicatorValues, config);
 
-  // Build indicators object
+  // Build indicators object (including enhanced RSI fields)
   const indicators: TrendIndicators = {
     pivotSignal: pivotResult.signal,
     pivotHigh: pivotResult.pivotHigh,
@@ -302,7 +358,10 @@ function detectTrendDirection(
     smaSlow: indicatorValues.smaSlow,
     maSignal: indicatorValues.maSignal,
     rsi: indicatorValues.rsi,
+    rsiPrevious: indicatorValues.rsiPrevious,
     rsiSignal: indicatorValues.rsiSignal,
+    rsiMomentum: indicatorValues.rsiMomentum,
+    rsiCrossing50: indicatorValues.rsiCrossing50,
     adx: indicatorValues.adx,
     plusDI: indicatorValues.plusDI,
     minusDI: indicatorValues.minusDI,

@@ -20,6 +20,19 @@ function useCallbackRef<T extends (...args: any[]) => any>(callback: T): T {
   return useCallback(((...args) => callbackRef.current(...args)) as T, []);
 }
 
+export type TradeCloseData = {
+  symbol: MarketSymbol;
+  timeframe: Timeframe;
+  direction: "long" | "short";
+  entryPrice: number;
+  exitPrice: number;
+  stopLoss: number;
+  targets: number[];
+  positionSize: number;
+  exitReason: string;
+  finalPnL: number;
+};
+
 type TradeManagementPanelProps = {
   // Data props
   symbol: MarketSymbol;
@@ -51,6 +64,9 @@ type TradeManagementPanelProps = {
   onStartNewTrade?: () => void;
   onGoToDashboard?: () => void;
   workflowMode?: boolean;
+
+  // Journal integration - called when trade is closed
+  onTradeClose?: (data: TradeCloseData) => void;
 
   // Display customization
   compact?: boolean;
@@ -85,6 +101,7 @@ export function TradeManagementPanel({
   onStartNewTrade,
   onGoToDashboard,
   workflowMode = false,
+  onTradeClose,
   compact = false,
 }: TradeManagementPanelProps) {
   const [logNote, setLogNote] = useState("");
@@ -101,8 +118,26 @@ export function TradeManagementPanel({
   // Stabilize callbacks to prevent infinite re-renders
   const stableOnChange = useCallbackRef(onChange);
   const stableOnAddLogEntry = useCallbackRef(onAddLogEntry);
+  const stableOnTradeClose = useCallbackRef(onTradeClose ?? (() => {}));
 
   const isBuy = tradeDirection === "GO_LONG";
+  const direction = isBuy ? "long" : "short";
+
+  // Helper to fire trade close event with all data
+  const fireTradeClose = useCallback((exitPrice: number, exitReason: string, pnl: number) => {
+    stableOnTradeClose({
+      symbol,
+      timeframe,
+      direction: direction as "long" | "short",
+      entryPrice,
+      exitPrice,
+      stopLoss,
+      targets,
+      positionSize,
+      exitReason,
+      finalPnL: pnl,
+    });
+  }, [symbol, timeframe, direction, entryPrice, stopLoss, targets, positionSize, stableOnTradeClose]);
   const riskPerUnit = Math.abs(entryPrice - stopLoss);
 
   // Track previous P&L to avoid unnecessary updates
@@ -141,8 +176,13 @@ export function TradeManagementPanel({
         price: currentPrice,
         note: "Stop loss hit",
       });
+      // Auto-journal the trade
+      const exitPnL = isBuy
+        ? (currentPrice - entryPrice) * positionSize
+        : (entryPrice - currentPrice) * positionSize;
+      fireTradeClose(currentPrice, "Stop loss hit", exitPnL);
     }
-  }, [currentPrice, stopLoss, isBuy, tradeStatus, stableOnChange, stableOnAddLogEntry]);
+  }, [currentPrice, stopLoss, isBuy, tradeStatus, stableOnChange, stableOnAddLogEntry, entryPrice, positionSize, fireTradeClose]);
 
   // Check for target hits (separate effect)
   useEffect(() => {
@@ -205,13 +245,19 @@ export function TradeManagementPanel({
   // Close trade
   const closeTrade = useCallback(() => {
     stableOnChange({ tradeStatus: "closed" });
+    const exitReason = logNote || "Manual exit";
     stableOnAddLogEntry({
       action: "exit",
       price: currentPrice,
-      note: logNote || "Manual exit",
+      note: exitReason,
     });
+    // Auto-journal the trade
+    const exitPnL = isBuy
+      ? (currentPrice - entryPrice) * positionSize
+      : (entryPrice - currentPrice) * positionSize;
+    fireTradeClose(currentPrice, exitReason, exitPnL);
     setLogNote("");
-  }, [currentPrice, logNote, stableOnChange, stableOnAddLogEntry]);
+  }, [currentPrice, logNote, stableOnChange, stableOnAddLogEntry, isBuy, entryPrice, positionSize, fireTradeClose]);
 
   // Add custom log note
   const addNote = useCallback(() => {

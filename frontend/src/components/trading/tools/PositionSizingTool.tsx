@@ -447,74 +447,163 @@ export function PositionSizingTool({
         </div>
       )}
 
-      {/* Results */}
-      {positionSize > 0 && (
-        <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-4">
-          <div className="text-sm font-medium">Position Sizing Results</div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="text-center p-4 rounded-lg bg-background/50">
-              <div className="text-xs text-muted-foreground mb-1">Position Size</div>
-              <div className="text-2xl font-mono font-bold">{positionSize}</div>
-              <div className="text-xs text-muted-foreground">units</div>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-background/50">
-              <div className="text-xs text-muted-foreground mb-1">Risk:Reward</div>
-              <div
-                className={cn(
-                  "text-2xl font-mono font-bold",
-                  riskRewardRatio >= 2 ? "text-green-400" :
-                  riskRewardRatio >= 1 ? "text-amber-400" :
-                  "text-red-400"
-                )}
-              >
-                {riskRewardRatio.toFixed(1)}:1
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {riskRewardRatio >= 2 ? "Good" : riskRewardRatio >= 1 ? "Marginal" : "Poor"}
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <div className="text-muted-foreground">Risk Amount</div>
-              <div className="font-mono">${riskAmount.toFixed(2)}</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">Potential Profit (T1)</div>
-              <div className="font-mono text-green-400">
-                ${(riskAmount * riskRewardRatio).toFixed(2)}
-              </div>
-            </div>
-          </div>
-
-          {riskRewardRatio < 2 && (
-            <div className={cn(
-              "rounded-lg border p-3 text-sm",
-              riskRewardRatio < 1
-                ? "border-red-500/50 bg-red-500/10"
-                : "border-amber-500/50 bg-amber-500/10"
-            )}>
-              <div className={cn(
-                "flex items-center gap-2",
-                riskRewardRatio < 1 ? "text-red-400" : "text-amber-400"
-              )}>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {riskRewardRatio < 1
-                  ? "R:R below 1:1 is not recommended. Consider adjusting targets or stop."
-                  : "R:R of 2:1 or higher is recommended for optimal risk management."
-                }
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                You can proceed with this ratio if you accept the risk.
-              </p>
-            </div>
+      {/* Live R:R Display - Always visible with real-time updates */}
+      <div className={cn(
+        "rounded-lg border p-4 space-y-4 sticky bottom-0 bg-background/95 backdrop-blur-sm",
+        riskRewardRatio >= 3 ? "border-green-500/50" :
+        riskRewardRatio >= 2 ? "border-green-500/30" :
+        riskRewardRatio >= 1.5 ? "border-blue-500/30" :
+        riskRewardRatio >= 1 ? "border-amber-500/30" :
+        riskRewardRatio > 0 ? "border-red-500/30" :
+        "border-border"
+      )}>
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-medium">Risk:Reward Analysis</div>
+          {canCalculate && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-xs",
+                riskRewardRatio >= 3 ? "text-green-400 border-green-500" :
+                riskRewardRatio >= 2 ? "text-green-400 border-green-500" :
+                riskRewardRatio >= 1.5 ? "text-blue-400 border-blue-500" :
+                riskRewardRatio >= 1 ? "text-amber-400 border-amber-500" :
+                riskRewardRatio > 0 ? "text-red-400 border-red-500" :
+                "text-muted-foreground"
+              )}
+            >
+              {riskRewardRatio >= 3 ? "Excellent" :
+               riskRewardRatio >= 2 ? "Good" :
+               riskRewardRatio >= 1.5 ? "Acceptable" :
+               riskRewardRatio >= 1 ? "Marginal" :
+               riskRewardRatio > 0 ? "Poor" : "—"}
+            </Badge>
           )}
         </div>
-      )}
+
+        {/* Main R:R Display */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="text-center p-3 rounded-lg bg-muted/30">
+            <div className="text-xs text-muted-foreground mb-1">Risk</div>
+            <div className="text-lg font-mono font-bold text-red-400">
+              {riskAmount > 0 ? `$${riskAmount.toFixed(0)}` : "—"}
+            </div>
+          </div>
+          <div className="text-center p-3 rounded-lg bg-muted/30">
+            <div className="text-xs text-muted-foreground mb-1">R:R Ratio</div>
+            <div
+              className={cn(
+                "text-2xl font-mono font-bold",
+                riskRewardRatio >= 2 ? "text-green-400" :
+                riskRewardRatio >= 1 ? "text-amber-400" :
+                riskRewardRatio > 0 ? "text-red-400" :
+                "text-muted-foreground"
+              )}
+            >
+              {riskRewardRatio > 0 ? `${riskRewardRatio.toFixed(1)}:1` : "—"}
+            </div>
+          </div>
+          <div className="text-center p-3 rounded-lg bg-muted/30">
+            <div className="text-xs text-muted-foreground mb-1">Reward (T1)</div>
+            <div className="text-lg font-mono font-bold text-green-400">
+              {riskRewardRatio > 0 && riskAmount > 0
+                ? `$${(riskAmount * riskRewardRatio).toFixed(0)}`
+                : "—"}
+            </div>
+          </div>
+        </div>
+
+        {/* Position Size */}
+        {positionSize > 0 && (
+          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+            <span className="text-sm text-muted-foreground">Position Size</span>
+            <span className="text-lg font-mono font-bold">{positionSize} units</span>
+          </div>
+        )}
+
+        {/* R:R Quality Guide */}
+        <div className="space-y-2">
+          <div className="text-xs text-muted-foreground font-medium">What to aim for:</div>
+          <div className="grid grid-cols-4 gap-2 text-xs">
+            <div className={cn(
+              "p-2 rounded text-center",
+              riskRewardRatio >= 3 ? "bg-green-500/20 text-green-400 ring-1 ring-green-500" : "bg-muted/30 text-muted-foreground"
+            )}>
+              <div className="font-bold">3:1+</div>
+              <div>Excellent</div>
+            </div>
+            <div className={cn(
+              "p-2 rounded text-center",
+              riskRewardRatio >= 2 && riskRewardRatio < 3 ? "bg-green-500/20 text-green-400 ring-1 ring-green-500" : "bg-muted/30 text-muted-foreground"
+            )}>
+              <div className="font-bold">2:1</div>
+              <div>Good</div>
+            </div>
+            <div className={cn(
+              "p-2 rounded text-center",
+              riskRewardRatio >= 1 && riskRewardRatio < 2 ? "bg-amber-500/20 text-amber-400 ring-1 ring-amber-500" : "bg-muted/30 text-muted-foreground"
+            )}>
+              <div className="font-bold">1:1</div>
+              <div>Break-even</div>
+            </div>
+            <div className={cn(
+              "p-2 rounded text-center",
+              riskRewardRatio > 0 && riskRewardRatio < 1 ? "bg-red-500/20 text-red-400 ring-1 ring-red-500" : "bg-muted/30 text-muted-foreground"
+            )}>
+              <div className="font-bold">&lt;1:1</div>
+              <div>Avoid</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Warning/Success Messages */}
+        {riskRewardRatio > 0 && (
+          <div className={cn(
+            "rounded-lg border p-3 text-sm",
+            riskRewardRatio >= 2
+              ? "border-green-500/50 bg-green-500/10"
+              : riskRewardRatio >= 1
+              ? "border-amber-500/50 bg-amber-500/10"
+              : "border-red-500/50 bg-red-500/10"
+          )}>
+            {riskRewardRatio >= 3 ? (
+              <div className="flex items-center gap-2 text-green-400">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>Excellent setup!</strong> 3:1 or better means you only need to win 25% of trades to break even.</span>
+              </div>
+            ) : riskRewardRatio >= 2 ? (
+              <div className="flex items-center gap-2 text-green-400">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>Good setup.</strong> 2:1 is the minimum recommended for consistent profitability.</span>
+              </div>
+            ) : riskRewardRatio >= 1 ? (
+              <div className="flex items-start gap-2 text-amber-400">
+                <svg className="w-4 h-4 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <strong>Marginal setup.</strong> You need &gt;50% win rate to be profitable.
+                  <p className="text-xs text-muted-foreground mt-1">Consider widening targets or tightening stop loss. You can still proceed.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 text-red-400">
+                <svg className="w-4 h-4 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <strong>Unfavorable setup.</strong> Risking more than potential reward.
+                  <p className="text-xs text-muted-foreground mt-1">Strongly recommend adjusting entry, stop, or targets. You can still proceed if you accept this risk.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Continue */}
       {canProceed && workflowMode && onComplete && (

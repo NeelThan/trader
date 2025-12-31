@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from trader.analysis import (
@@ -22,6 +22,11 @@ from trader.harmonics import (
     calculate_reversal_zone,
     validate_pattern,
 )
+from trader.journal import (
+    JournalEntry,
+    calculate_analytics,
+    create_journal_entry,
+)
 from trader.market_data import MarketDataService
 from trader.pivots import (
     OHLCBar,
@@ -37,6 +42,9 @@ from trader.signals import Bar, detect_signal
 # Initialize singleton services
 _market_data_service = MarketDataService()
 _analysis_orchestrator = AnalysisOrchestrator(_market_data_service)
+
+# In-memory journal storage (will be replaced with database later)
+_journal_entries: list[JournalEntry] = []
 
 app = FastAPI(
     title="Trader API",
@@ -308,6 +316,79 @@ class ProviderStatusResponse(BaseModel):
     """Response model for provider status."""
 
     providers: list[ProviderStatusModel]
+
+
+class JournalEntryRequest(BaseModel):
+    """Request model for creating a journal entry."""
+
+    symbol: str
+    direction: Literal["long", "short"]
+    entry_price: float
+    exit_price: float
+    stop_loss: float
+    position_size: float
+    entry_time: str
+    exit_time: str
+    timeframe: str | None = None
+    targets: list[float] | None = None
+    exit_reason: str | None = None
+    notes: str | None = None
+    workflow_id: str | None = None
+
+
+class JournalEntryData(BaseModel):
+    """Journal entry data in response."""
+
+    id: str
+    symbol: str
+    direction: str
+    entry_price: float
+    exit_price: float
+    stop_loss: float
+    position_size: float
+    entry_time: str
+    exit_time: str
+    pnl: float
+    r_multiple: float
+    outcome: str
+    timeframe: str | None = None
+    targets: list[float] = []
+    exit_reason: str | None = None
+    notes: str | None = None
+    workflow_id: str | None = None
+
+
+class JournalEntryResponse(BaseModel):
+    """Response model for single journal entry."""
+
+    entry: JournalEntryData
+
+
+class JournalEntriesResponse(BaseModel):
+    """Response model for list of journal entries."""
+
+    entries: list[JournalEntryData]
+
+
+class JournalAnalyticsData(BaseModel):
+    """Analytics data in response."""
+
+    total_trades: int
+    wins: int
+    losses: int
+    breakevens: int
+    win_rate: float
+    total_pnl: float
+    average_r: float
+    largest_win: float
+    largest_loss: float
+    profit_factor: float
+
+
+class JournalAnalyticsResponse(BaseModel):
+    """Response model for journal analytics."""
+
+    analytics: JournalAnalyticsData
 
 
 # --- Endpoints ---
@@ -618,3 +699,105 @@ async def analyze(request: FullAnalysisRequest) -> FullAnalysisResponse:
     all analysis data in one response.
     """
     return await _analysis_orchestrator.analyze(request)
+
+
+def _entry_to_data(entry: JournalEntry) -> JournalEntryData:
+    """Convert JournalEntry to JournalEntryData for API response."""
+    return JournalEntryData(
+        id=entry.id,
+        symbol=entry.symbol,
+        direction=entry.direction,
+        entry_price=entry.entry_price,
+        exit_price=entry.exit_price,
+        stop_loss=entry.stop_loss,
+        position_size=entry.position_size,
+        entry_time=entry.entry_time,
+        exit_time=entry.exit_time,
+        pnl=entry.pnl,
+        r_multiple=entry.r_multiple,
+        outcome=entry.outcome.value,
+        timeframe=entry.timeframe,
+        targets=entry.targets,
+        exit_reason=entry.exit_reason,
+        notes=entry.notes,
+        workflow_id=entry.workflow_id,
+    )
+
+
+@app.post("/journal/entry", response_model=JournalEntryResponse, status_code=201)
+async def create_entry(request: JournalEntryRequest) -> JournalEntryResponse:
+    """Create a new journal entry for a completed trade."""
+    entry = create_journal_entry(
+        symbol=request.symbol,
+        direction=request.direction,
+        entry_price=request.entry_price,
+        exit_price=request.exit_price,
+        stop_loss=request.stop_loss,
+        position_size=request.position_size,
+        entry_time=request.entry_time,
+        exit_time=request.exit_time,
+        timeframe=request.timeframe,
+        targets=request.targets,
+        exit_reason=request.exit_reason,
+        notes=request.notes,
+        workflow_id=request.workflow_id,
+    )
+    _journal_entries.append(entry)
+    return JournalEntryResponse(entry=_entry_to_data(entry))
+
+
+@app.get("/journal/entries", response_model=JournalEntriesResponse)
+async def list_entries(symbol: str | None = None) -> JournalEntriesResponse:
+    """List all journal entries, optionally filtered by symbol."""
+    entries = _journal_entries
+    if symbol:
+        entries = [e for e in entries if e.symbol == symbol]
+    return JournalEntriesResponse(entries=[_entry_to_data(e) for e in entries])
+
+
+@app.get("/journal/analytics", response_model=JournalAnalyticsResponse)
+async def get_analytics() -> JournalAnalyticsResponse:
+    """Get aggregated analytics from all journal entries."""
+    analytics = calculate_analytics(_journal_entries)
+
+    # Handle infinity for JSON serialization
+    profit_factor = analytics.profit_factor
+    if profit_factor == float("inf"):
+        profit_factor = 999999.0
+
+    return JournalAnalyticsResponse(
+        analytics=JournalAnalyticsData(
+            total_trades=analytics.total_trades,
+            wins=analytics.wins,
+            losses=analytics.losses,
+            breakevens=analytics.breakevens,
+            win_rate=analytics.win_rate,
+            total_pnl=analytics.total_pnl,
+            average_r=analytics.average_r,
+            largest_win=analytics.largest_win,
+            largest_loss=analytics.largest_loss,
+            profit_factor=profit_factor,
+        )
+    )
+
+
+@app.delete("/journal/entry/{entry_id}")
+async def delete_entry(entry_id: str) -> dict[str, str]:
+    """Delete a journal entry by ID."""
+    global _journal_entries
+    original_count = len(_journal_entries)
+    _journal_entries = [e for e in _journal_entries if e.id != entry_id]
+
+    if len(_journal_entries) == original_count:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    return {"status": "deleted", "id": entry_id}
+
+
+@app.delete("/journal/entries")
+async def clear_entries() -> dict[str, str]:
+    """Clear all journal entries. Useful for testing."""
+    global _journal_entries
+    count = len(_journal_entries)
+    _journal_entries = []
+    return {"status": "cleared", "count": str(count)}

@@ -821,3 +821,223 @@ class TestAnalyzeEndpoint:
         )
 
         assert response.status_code == 422
+
+
+class TestJournalEndpoints:
+    """Tests for trade journal endpoints."""
+
+    async def test_create_journal_entry(self, client: AsyncClient) -> None:
+        """POST /journal/entry creates a new journal entry."""
+        response = await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "DJI",
+                "direction": "long",
+                "entry_price": 48000.0,
+                "exit_price": 48500.0,
+                "stop_loss": 47500.0,
+                "position_size": 10,
+                "entry_time": "2024-12-31T10:00:00Z",
+                "exit_time": "2024-12-31T14:00:00Z",
+            },
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["entry"]["symbol"] == "DJI"
+        assert data["entry"]["direction"] == "long"
+        assert data["entry"]["pnl"] == 5000.0
+        # R = profit/risk = 500/500 = 1.0R
+        assert data["entry"]["r_multiple"] == 1.0
+        assert data["entry"]["outcome"] == "win"
+        assert data["entry"]["id"].startswith("trade_")
+
+    async def test_create_journal_entry_with_optional_fields(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /journal/entry accepts optional fields."""
+        response = await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "SPX",
+                "direction": "short",
+                "entry_price": 6000.0,
+                "exit_price": 5900.0,
+                "stop_loss": 6100.0,
+                "position_size": 5,
+                "entry_time": "2024-12-31T10:00:00Z",
+                "exit_time": "2024-12-31T14:00:00Z",
+                "timeframe": "4H",
+                "targets": [5950.0, 5900.0],
+                "exit_reason": "target_hit",
+                "notes": "Clean signal bar",
+                "workflow_id": "wf_123",
+            },
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["entry"]["timeframe"] == "4H"
+        assert data["entry"]["targets"] == [5950.0, 5900.0]
+        assert data["entry"]["exit_reason"] == "target_hit"
+        assert data["entry"]["notes"] == "Clean signal bar"
+        assert data["entry"]["workflow_id"] == "wf_123"
+
+    async def test_create_journal_entry_invalid_direction(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /journal/entry returns 422 for invalid direction."""
+        response = await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "DJI",
+                "direction": "invalid",
+                "entry_price": 48000.0,
+                "exit_price": 48500.0,
+                "stop_loss": 47500.0,
+                "position_size": 10,
+                "entry_time": "2024-12-31T10:00:00Z",
+                "exit_time": "2024-12-31T14:00:00Z",
+            },
+        )
+
+        assert response.status_code == 422
+
+    async def test_list_journal_entries(self, client: AsyncClient) -> None:
+        """GET /journal/entries returns list of entries."""
+        # Create two entries
+        await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "DJI",
+                "direction": "long",
+                "entry_price": 48000.0,
+                "exit_price": 48500.0,
+                "stop_loss": 47500.0,
+                "position_size": 10,
+                "entry_time": "2024-12-01T10:00:00Z",
+                "exit_time": "2024-12-01T14:00:00Z",
+            },
+        )
+        await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "SPX",
+                "direction": "short",
+                "entry_price": 6000.0,
+                "exit_price": 5900.0,
+                "stop_loss": 6100.0,
+                "position_size": 5,
+                "entry_time": "2024-12-02T10:00:00Z",
+                "exit_time": "2024-12-02T14:00:00Z",
+            },
+        )
+
+        response = await client.get("/journal/entries")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "entries" in data
+        assert len(data["entries"]) >= 2
+
+    async def test_list_journal_entries_filter_by_symbol(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /journal/entries filters by symbol."""
+        # Create entries for different symbols
+        await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "BTCUSD",
+                "direction": "long",
+                "entry_price": 40000.0,
+                "exit_price": 41000.0,
+                "stop_loss": 39000.0,
+                "position_size": 1,
+                "entry_time": "2024-12-03T10:00:00Z",
+                "exit_time": "2024-12-03T14:00:00Z",
+            },
+        )
+
+        response = await client.get("/journal/entries", params={"symbol": "BTCUSD"})
+
+        assert response.status_code == 200
+        data = response.json()
+        # All entries should be for BTCUSD
+        assert all(e["symbol"] == "BTCUSD" for e in data["entries"])
+
+    async def test_get_journal_analytics(self, client: AsyncClient) -> None:
+        """GET /journal/analytics returns aggregated stats."""
+        # Create sample entries
+        await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "DJI",
+                "direction": "long",
+                "entry_price": 48000.0,
+                "exit_price": 49000.0,
+                "stop_loss": 47500.0,
+                "position_size": 10,
+                "entry_time": "2024-12-04T10:00:00Z",
+                "exit_time": "2024-12-04T14:00:00Z",
+            },
+        )
+
+        response = await client.get("/journal/analytics")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "analytics" in data
+        assert "total_trades" in data["analytics"]
+        assert "wins" in data["analytics"]
+        assert "losses" in data["analytics"]
+        assert "win_rate" in data["analytics"]
+        assert "total_pnl" in data["analytics"]
+        assert "average_r" in data["analytics"]
+        assert "profit_factor" in data["analytics"]
+
+    async def test_get_journal_analytics_empty(self, client: AsyncClient) -> None:
+        """GET /journal/analytics handles empty journal gracefully."""
+        # Clear all entries first
+        await client.delete("/journal/entries")
+
+        response = await client.get("/journal/analytics")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["analytics"]["total_trades"] == 0
+        assert data["analytics"]["win_rate"] == 0.0
+
+    async def test_delete_journal_entry(self, client: AsyncClient) -> None:
+        """DELETE /journal/entry/{id} removes the entry."""
+        # Create an entry
+        create_response = await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "GOLD",
+                "direction": "long",
+                "entry_price": 2000.0,
+                "exit_price": 2050.0,
+                "stop_loss": 1950.0,
+                "position_size": 1,
+                "entry_time": "2024-12-05T10:00:00Z",
+                "exit_time": "2024-12-05T14:00:00Z",
+            },
+        )
+        entry_id = create_response.json()["entry"]["id"]
+
+        # Delete the entry
+        delete_response = await client.delete(f"/journal/entry/{entry_id}")
+        assert delete_response.status_code == 200
+
+        # Verify it's gone
+        list_response = await client.get("/journal/entries")
+        entries = list_response.json()["entries"]
+        assert not any(e["id"] == entry_id for e in entries)
+
+    async def test_delete_nonexistent_entry_returns_404(
+        self, client: AsyncClient
+    ) -> None:
+        """DELETE /journal/entry/{id} returns 404 for nonexistent entry."""
+        response = await client.delete("/journal/entry/nonexistent_id")
+        assert response.status_code == 404

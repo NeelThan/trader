@@ -27,7 +27,8 @@ import { PatternScannerTool } from "@/components/trading/tools/PatternScannerToo
 import { EntrySignalTool } from "@/components/trading/tools/EntrySignalTool";
 import { PositionSizingTool } from "@/components/trading/tools/PositionSizingTool";
 import { PreTradeChecklist } from "@/components/trading/tools/PreTradeChecklist";
-import { TradeManagementPanel } from "@/components/trading/tools/TradeManagementPanel";
+import { TradeManagementPanel, type TradeCloseData } from "@/components/trading/tools/TradeManagementPanel";
+import { createJournalEntry, type JournalEntryRequest } from "@/lib/api";
 
 type WorkflowStepperProps = {
   showPhases?: boolean;
@@ -127,6 +128,38 @@ export function WorkflowStepper({ showPhases = false, className, onBackToDashboa
     }
     createWorkflow();
   }, [activeWorkflow, completeWorkflow, createWorkflow]);
+
+  // Handle trade close - auto-journal the trade
+  const handleTradeClose = useCallback(async (data: TradeCloseData) => {
+    // Find entry time from trade log
+    const entryLogEntry = state.tradeLog.find((e) => e.action === "entry");
+    const entryTime = entryLogEntry?.timestamp ?? new Date().toISOString();
+    const exitTime = new Date().toISOString();
+
+    const journalEntry: JournalEntryRequest = {
+      symbol: data.symbol,
+      direction: data.direction,
+      entry_price: data.entryPrice,
+      exit_price: data.exitPrice,
+      stop_loss: data.stopLoss,
+      position_size: data.positionSize,
+      entry_time: entryTime,
+      exit_time: exitTime,
+      timeframe: data.timeframe,
+      targets: data.targets,
+      exit_reason: data.exitReason,
+      notes: `Auto-journaled from workflow`,
+      workflow_id: activeWorkflow?.id,
+    };
+
+    try {
+      await createJournalEntry(journalEntry);
+      console.log("Trade automatically journaled");
+    } catch (error) {
+      console.error("Failed to auto-journal trade:", error);
+      // Don't block the workflow - journaling is a nice-to-have
+    }
+  }, [state.tradeLog, activeWorkflow]);
 
   // Render the current step's content
   const renderStepContent = () => {
@@ -269,6 +302,7 @@ export function WorkflowStepper({ showPhases = false, className, onBackToDashboa
             onChange={handleStateChange}
             onStartNewTrade={handleStartNewTrade}
             onGoToDashboard={handleGoToDashboard}
+            onTradeClose={handleTradeClose}
           />
         );
 

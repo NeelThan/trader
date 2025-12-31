@@ -176,9 +176,12 @@ export type TrendIndicators = {
   smaFast: number | null;
   smaSlow: number | null;
   maSignal: IndicatorSignal;
-  // RSI
+  // RSI (enhanced with momentum and direction change detection)
   rsi: number | null;
+  rsiPrevious: number | null;  // Previous RSI for momentum detection
   rsiSignal: IndicatorSignal;
+  rsiMomentum: "rising" | "falling" | "flat";  // RSI momentum direction
+  rsiCrossing50: boolean;  // True if RSI just crossed the 50 threshold
   // ADX
   adx: number | null;
   plusDI: number | null;
