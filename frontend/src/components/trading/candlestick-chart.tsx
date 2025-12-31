@@ -133,9 +133,23 @@ function deduplicateAndSort(data: OHLCData[]): OHLCData[] {
   }
 
   // Sort by Unix timestamp ascending
-  return Array.from(uniqueMap.values()).sort((a, b) => {
+  const result = Array.from(uniqueMap.values()).sort((a, b) => {
     return timeToUnix(a.time) - timeToUnix(b.time);
   });
+
+  // Final verification - check for duplicates after dedup
+  for (let i = 1; i < result.length; i++) {
+    const prevTime = timeToUnix(result[i - 1].time);
+    const currTime = timeToUnix(result[i].time);
+    if (prevTime === currTime) {
+      console.error(`Dedup failed: index ${i} has same time as ${i-1}: ${currTime}`);
+      // Remove the duplicate
+      result.splice(i, 1);
+      i--;
+    }
+  }
+
+  return result;
 }
 
 // Calculate Heikin Ashi values from OHLC data
