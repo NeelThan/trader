@@ -134,6 +134,7 @@ Visit http://localhost:3000/chart for the main chart view.
 
 ## Related Documentation
 
+- [Component Architecture](./component-architecture.md) - **Detailed component hierarchy and data flow diagrams**
 - [UX Best Practices](./ux-best-practices.md) - Design system guidelines
 - [Yahoo Finance ADR](../adr/20251230-yahoo-finance-market-data.md) - Data source decision
 - [Auto-Refresh ADR](../adr/20251230-auto-refresh-market-data.md) - Refresh strategy
