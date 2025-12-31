@@ -709,3 +709,115 @@ class TestProviderStatusEndpoint:
         assert "requests_made" in provider
         assert "remaining" in provider
         assert "is_rate_limited" in provider
+
+
+class TestAnalyzeEndpoint:
+    """Tests for the unified analysis endpoint."""
+
+    async def test_analyze_with_minimal_request(self, client: AsyncClient) -> None:
+        """POST /analyze returns full analysis with minimal request."""
+        response = await client.post(
+            "/analyze",
+            json={"symbol": "DJI", "timeframe": "1D"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should have success status
+        assert data["success"] is True
+
+        # Should have all expected sections
+        assert "market_data" in data
+        assert "pivots" in data
+        assert "fibonacci" in data
+        assert "signals" in data
+
+    async def test_analyze_with_custom_config(self, client: AsyncClient) -> None:
+        """POST /analyze respects custom configuration."""
+        response = await client.post(
+            "/analyze",
+            json={
+                "symbol": "SPX",
+                "timeframe": "4H",
+                "periods": 50,
+                "config": {
+                    "pivot_lookback": 3,
+                    "pivot_count": 5,
+                    "fibonacci_direction": "sell",
+                    "detect_signals": False,
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["success"] is True
+        # When signals disabled, list should be empty
+        assert data["signals"] == []
+
+    async def test_analyze_market_data_section_structure(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /analyze market_data section has correct structure."""
+        response = await client.post(
+            "/analyze",
+            json={"symbol": "DJI", "timeframe": "1D"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        market_data = data["market_data"]
+        assert "data" in market_data
+        assert "provider" in market_data
+        assert "cached" in market_data
+        assert isinstance(market_data["data"], list)
+
+    async def test_analyze_pivots_section_structure(self, client: AsyncClient) -> None:
+        """POST /analyze pivots section has correct structure."""
+        response = await client.post(
+            "/analyze",
+            json={"symbol": "DJI", "timeframe": "1D"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        pivots = data["pivots"]
+        assert "all_pivots" in pivots
+        assert "recent_pivots" in pivots
+        assert "swing_high" in pivots
+        assert "swing_low" in pivots
+
+    async def test_analyze_fibonacci_section_structure(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /analyze fibonacci section has correct structure."""
+        response = await client.post(
+            "/analyze",
+            json={"symbol": "DJI", "timeframe": "1D"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        fibonacci = data["fibonacci"]
+        assert "retracement" in fibonacci
+        assert "extension" in fibonacci
+
+    async def test_analyze_invalid_direction_returns_422(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /analyze with invalid direction returns validation error."""
+        response = await client.post(
+            "/analyze",
+            json={
+                "symbol": "DJI",
+                "timeframe": "1D",
+                "config": {"fibonacci_direction": "invalid"},
+            },
+        )
+
+        assert response.status_code == 422

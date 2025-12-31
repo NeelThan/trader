@@ -5,6 +5,11 @@ from typing import Literal
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from trader.analysis import (
+    AnalysisOrchestrator,
+    FullAnalysisRequest,
+    FullAnalysisResponse,
+)
 from trader.fibonacci import (
     calculate_expansion_levels,
     calculate_extension_levels,
@@ -29,8 +34,9 @@ from trader.position_sizing import (
 )
 from trader.signals import Bar, detect_signal
 
-# Initialize singleton market data service
+# Initialize singleton services
 _market_data_service = MarketDataService()
+_analysis_orchestrator = AnalysisOrchestrator(_market_data_service)
 
 app = FastAPI(
     title="Trader API",
@@ -599,3 +605,16 @@ async def get_provider_status() -> ProviderStatusResponse:
     ]
 
     return ProviderStatusResponse(providers=providers)
+
+
+@app.post("/analyze", response_model=FullAnalysisResponse)
+async def analyze(request: FullAnalysisRequest) -> FullAnalysisResponse:
+    """Perform full chart analysis in a single request.
+
+    Combines market data fetching, pivot detection, Fibonacci calculations,
+    and signal detection into a single unified analysis endpoint.
+
+    This reduces frontend complexity and network round-trips by providing
+    all analysis data in one response.
+    """
+    return await _analysis_orchestrator.analyze(request)
