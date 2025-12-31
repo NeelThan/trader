@@ -17,6 +17,7 @@ from trader.harmonics import (
     calculate_reversal_zone,
     validate_pattern,
 )
+from trader.market_data import MarketDataService
 from trader.pivots import (
     OHLCBar,
     PivotPoint,
@@ -27,6 +28,9 @@ from trader.position_sizing import (
     calculate_risk_reward,
 )
 from trader.signals import Bar, detect_signal
+
+# Initialize singleton market data service
+_market_data_service = MarketDataService()
 
 app = FastAPI(
     title="Trader API",
@@ -241,6 +245,63 @@ class PivotDetectResponse(BaseModel):
     pivot_low: float
     swing_high: PivotPointData | None
     swing_low: PivotPointData | None
+
+
+class MarketDataRequest(BaseModel):
+    """Request model for market data fetching."""
+
+    symbol: str
+    timeframe: str = "1D"
+    periods: int = 100
+    force_refresh: bool = False
+
+
+class MarketDataBarModel(BaseModel):
+    """OHLC bar in market data response."""
+
+    time: str | int
+    open: float
+    high: float
+    low: float
+    close: float
+
+
+class MarketStatusModel(BaseModel):
+    """Market status in response."""
+
+    state: str
+    state_display: str
+    is_open: bool
+
+
+class MarketDataResponse(BaseModel):
+    """Response model for market data."""
+
+    success: bool
+    data: list[MarketDataBarModel]
+    provider: str | None
+    cached: bool
+    cache_expires_at: str | None
+    rate_limit_remaining: int | None
+    market_status: MarketStatusModel | None
+    error: str | None = None
+
+
+class ProviderStatusModel(BaseModel):
+    """Provider status information."""
+
+    name: str
+    priority: int
+    rate_limit: float | None  # None means unlimited
+    requests_made: int
+    remaining: float | None  # None means unlimited
+    is_rate_limited: bool
+
+
+class ProviderStatusResponse(BaseModel):
+    """Response model for provider status."""
+
+    providers: list[ProviderStatusModel]
 
 
 # --- Endpoints ---
@@ -463,3 +524,78 @@ async def pivot_detect(request: PivotDetectRequest) -> PivotDetectResponse:
         swing_high=pivot_to_data(result.swing_high) if result.swing_high else None,
         swing_low=pivot_to_data(result.swing_low) if result.swing_low else None,
     )
+
+
+@app.get("/market-data", response_model=MarketDataResponse)
+async def get_market_data(
+    symbol: str,
+    timeframe: str = "1D",
+    periods: int = 100,
+    force_refresh: bool = False,
+) -> MarketDataResponse:
+    """Fetch market data from the best available provider.
+
+    Uses caching and provider fallback for reliability.
+    """
+    result = await _market_data_service.get_ohlc(
+        symbol=symbol,
+        timeframe=timeframe,
+        periods=periods,
+        force_refresh=force_refresh,
+    )
+
+    # Convert to response model
+    data = [
+        MarketDataBarModel(
+            time=bar.time,
+            open=bar.open,
+            high=bar.high,
+            low=bar.low,
+            close=bar.close,
+        )
+        for bar in result.data
+    ]
+
+    market_status = None
+    if result.market_status:
+        market_status = MarketStatusModel(
+            state=result.market_status.state,
+            state_display=result.market_status.state_display,
+            is_open=result.market_status.is_open,
+        )
+
+    return MarketDataResponse(
+        success=result.success,
+        data=data,
+        provider=result.provider,
+        cached=result.cached,
+        cache_expires_at=result.cache_expires_at,
+        rate_limit_remaining=result.rate_limit_remaining,
+        market_status=market_status,
+        error=result.error,
+    )
+
+
+def _to_json_safe(value: float) -> float | None:
+    """Convert infinity to None for JSON serialization."""
+    return None if value == float("inf") else value
+
+
+@app.get("/market-data/providers", response_model=ProviderStatusResponse)
+async def get_provider_status() -> ProviderStatusResponse:
+    """Get status of all market data providers."""
+    status = _market_data_service.get_provider_status()
+
+    providers = [
+        ProviderStatusModel(
+            name=p["name"],
+            priority=p["priority"],
+            rate_limit=_to_json_safe(p["rate_limit"]),
+            requests_made=p["requests_made"],
+            remaining=_to_json_safe(p["remaining"]),
+            is_rate_limited=p["is_rate_limited"],
+        )
+        for p in status
+    ]
+
+    return ProviderStatusResponse(providers=providers)

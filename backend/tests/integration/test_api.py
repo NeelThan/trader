@@ -557,3 +557,155 @@ class TestPivotDetectEndpoint:
         data = response.json()
         assert data["result"]["risk_reward_ratio"] == 0.0
         assert data["result"]["is_valid"] is False
+
+
+class TestMarketDataEndpoint:
+    """Tests for market data endpoint."""
+
+    async def test_fetches_market_data_for_valid_symbol(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /market-data returns data for valid symbol."""
+        response = await client.get(
+            "/market-data",
+            params={"symbol": "DJI", "timeframe": "1D", "periods": 10},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert len(data["data"]) > 0
+        assert data["provider"] in ["yahoo", "simulated"]
+
+    async def test_returns_error_for_unknown_symbol(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /market-data returns error for unknown symbol."""
+        response = await client.get(
+            "/market-data",
+            params={"symbol": "UNKNOWN_SYMBOL_XYZ", "timeframe": "1D"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        # Will fall back to simulated, which also fails for unknown symbols
+        assert data["success"] is False
+        assert data["error"] is not None
+
+    async def test_returns_ohlc_bar_structure(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /market-data returns proper OHLC structure."""
+        response = await client.get(
+            "/market-data",
+            params={"symbol": "DJI", "timeframe": "1D", "periods": 5},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+        bar = data["data"][0]
+        assert "time" in bar
+        assert "open" in bar
+        assert "high" in bar
+        assert "low" in bar
+        assert "close" in bar
+
+    async def test_caches_results(self, client: AsyncClient) -> None:
+        """GET /market-data caches results for subsequent requests."""
+        # First request
+        await client.get(
+            "/market-data",
+            params={"symbol": "DJI", "timeframe": "1D", "periods": 10},
+        )
+
+        # Second request should be cached
+        response = await client.get(
+            "/market-data",
+            params={"symbol": "DJI", "timeframe": "1D", "periods": 10},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cached"] is True
+
+    async def test_force_refresh_bypasses_cache(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /market-data with force_refresh=true bypasses cache."""
+        # First request to populate cache
+        await client.get(
+            "/market-data",
+            params={"symbol": "SPX", "timeframe": "1D", "periods": 5},
+        )
+
+        # Force refresh request
+        response = await client.get(
+            "/market-data",
+            params={
+                "symbol": "SPX",
+                "timeframe": "1D",
+                "periods": 5,
+                "force_refresh": True,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        # Fresh data should have cached=False
+        assert data["cached"] is False
+
+
+class TestProviderStatusEndpoint:
+    """Tests for provider status endpoint."""
+
+    async def test_returns_provider_list(self, client: AsyncClient) -> None:
+        """GET /market-data/providers returns list of providers."""
+        response = await client.get("/market-data/providers")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "providers" in data
+        assert len(data["providers"]) >= 2
+
+    async def test_includes_yahoo_provider(self, client: AsyncClient) -> None:
+        """GET /market-data/providers includes Yahoo provider."""
+        response = await client.get("/market-data/providers")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        yahoo = next(
+            (p for p in data["providers"] if p["name"] == "yahoo"),
+            None,
+        )
+        assert yahoo is not None
+        assert yahoo["priority"] == 1
+
+    async def test_includes_simulated_provider(self, client: AsyncClient) -> None:
+        """GET /market-data/providers includes simulated provider."""
+        response = await client.get("/market-data/providers")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        simulated = next(
+            (p for p in data["providers"] if p["name"] == "simulated"),
+            None,
+        )
+        assert simulated is not None
+        assert simulated["priority"] == 999
+
+    async def test_includes_rate_limit_info(self, client: AsyncClient) -> None:
+        """GET /market-data/providers includes rate limit information."""
+        response = await client.get("/market-data/providers")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        provider = data["providers"][0]
+        assert "rate_limit" in provider
+        assert "requests_made" in provider
+        assert "remaining" in provider
+        assert "is_rate_limited" in provider

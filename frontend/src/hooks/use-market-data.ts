@@ -2,8 +2,8 @@
 
 /**
  * Hook for fetching and managing market data.
- * Supports both Yahoo Finance (live) and simulated data with auto-refresh.
- * Handles countdown timer, market status, and infinite scrolling.
+ * Fetches from the backend multi-provider service with caching and fallback.
+ * Handles countdown timer, market status, and auto-refresh.
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
@@ -17,6 +17,28 @@ import {
 } from "@/lib/chart-constants";
 import { generateMarketData } from "@/lib/market-utils";
 
+// Backend API response types
+type BackendMarketDataResponse = {
+  success: boolean;
+  data: Array<{
+    time: string | number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+  }>;
+  provider: string | null;
+  cached: boolean;
+  cache_expires_at: string | null;
+  rate_limit_remaining: number | null;
+  market_status: {
+    state: string;
+    state_display: string;
+    is_open: boolean;
+  } | null;
+  error: string | null;
+};
+
 export type UseMarketDataReturn = {
   data: OHLCData[];
   isLoading: boolean;
@@ -26,8 +48,10 @@ export type UseMarketDataReturn = {
   countdown: number;
   autoRefreshEnabled: boolean;
   marketStatus: MarketStatus | null;
-  isRateLimited: boolean; // True when using simulated data due to rate limit
-  isUsingSimulatedData: boolean; // True when displaying simulated data
+  isRateLimited: boolean; // True when backend rate limited (using simulated fallback)
+  isUsingSimulatedData: boolean; // True when using simulated provider
+  isCached: boolean; // True when data was served from cache
+  provider: string | null; // Current data provider (yahoo, simulated)
   setAutoRefreshEnabled: (enabled: boolean) => void;
   refreshNow: () => void;
   loadMoreData: (oldestTime: Time) => void;
@@ -39,8 +63,8 @@ export function useMarketData(
   dataSource: DataSource,
   hasMounted: boolean
 ): UseMarketDataReturn {
-  // Yahoo Finance API state
-  const [yahooData, setYahooData] = useState<OHLCData[]>([]);
+  // Backend API state
+  const [backendData, setBackendData] = useState<OHLCData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -49,11 +73,12 @@ export function useMarketData(
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   const [marketStatus, setMarketStatus] = useState<MarketStatus | null>(null);
   const [isRateLimited, setIsRateLimited] = useState(false);
-  const [simulatedDataVersion, setSimulatedDataVersion] = useState(0); // Increments to trigger regeneration
+  const [isCached, setIsCached] = useState(false);
+  const [provider, setProvider] = useState<string | null>(null);
+  const [simulatedDataVersion, setSimulatedDataVersion] = useState(0); // For manual simulated mode
   const oldestLoadedTimeRef = useRef<string | null>(null);
-  const rateLimitLoggedRef = useRef(false); // Prevent console log flooding
 
-  // Generate simulated data (regenerates when version changes or symbol/timeframe changes)
+  // Generate simulated data for manual simulated mode
   const simulatedData = useMemo(() => {
     if (!hasMounted) return [];
     const config = TIMEFRAME_CONFIG[timeframe];
@@ -61,159 +86,111 @@ export function useMarketData(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, timeframe, hasMounted, simulatedDataVersion]);
 
-  // Fetch Yahoo Finance data function
-  const fetchYahooData = useCallback(async () => {
+  // Fetch data from backend (handles provider fallback automatically)
+  const fetchBackendData = useCallback(async (forceRefresh = false) => {
     setIsLoading(true);
     setFetchError(null);
 
     try {
-      const response = await fetch(
-        `/api/market-data?symbol=${symbol}&timeframe=${timeframe}`
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        if (result.market) {
-          setMarketStatus(result.market);
-        }
-
-        // Handle rate limiting gracefully - fall back to simulated data
-        if (response.status === 429 || result.code === "RATE_LIMIT") {
-          if (!rateLimitLoggedRef.current) {
-            console.warn(
-              "Yahoo Finance rate limit reached. Using simulated data. " +
-              "Live data will resume when rate limit resets."
-            );
-            rateLimitLoggedRef.current = true;
-          }
-          setIsRateLimited(true);
-          // Don't throw - just use simulated data
-          setFetchError("Rate limited - using simulated data");
-          // Set a longer countdown before retrying
-          setCountdown(Math.max(60, TIMEFRAME_CONFIG[timeframe].refreshInterval));
-          return;
-        }
-
-        throw new Error(result.error || "Failed to fetch data");
+      const params = new URLSearchParams({
+        symbol,
+        timeframe,
+        periods: String(TIMEFRAME_CONFIG[timeframe].periods),
+      });
+      if (forceRefresh) {
+        params.set("force_refresh", "true");
       }
 
-      // Success - clear rate limit state
-      if (isRateLimited) {
-        setIsRateLimited(false);
-        rateLimitLoggedRef.current = false;
+      const response = await fetch(`/api/trader/market-data?${params}`);
+      const result: BackendMarketDataResponse = await response.json();
+
+      if (!response.ok || !result.success) {
+        const errorMessage = result.error || "Failed to fetch market data";
+        setFetchError(errorMessage);
+        console.error("Backend market data error:", errorMessage);
+        return;
       }
 
+      // Update state with backend response
       const newData = result.data as OHLCData[];
-      setYahooData(newData);
+      setBackendData(newData);
       setLastUpdated(new Date());
       setCountdown(TIMEFRAME_CONFIG[timeframe].refreshInterval);
+      setIsCached(result.cached);
+      setProvider(result.provider);
+
+      // Track provider type
+      setIsRateLimited(result.provider === "simulated" && dataSource === "yahoo");
 
       // Track the oldest loaded time for preventing duplicate loads
       if (newData.length > 0) {
         oldestLoadedTimeRef.current = String(newData[0].time);
       }
 
-      if (result.market) {
-        setMarketStatus(result.market);
+      // Update market status
+      if (result.market_status) {
+        setMarketStatus({
+          state: result.market_status.state,
+          stateDisplay: result.market_status.state_display,
+          isOpen: result.market_status.is_open,
+          isPreMarket: false,
+          isAfterHours: false,
+          isClosed: !result.market_status.is_open,
+        });
       }
     } catch (error) {
-      // Only log non-rate-limit errors once per error type
       const errorMessage = error instanceof Error ? error.message : "Failed to fetch market data";
       console.error("Failed to fetch market data:", errorMessage);
       setFetchError(errorMessage);
     } finally {
       setIsLoading(false);
     }
-  }, [symbol, timeframe, isRateLimited]);
+  }, [symbol, timeframe, dataSource]);
 
-  // Load more historical data (for infinite scroll)
-  const loadMoreData = useCallback(async (oldestTime: Time) => {
+  // Load more historical data (for infinite scroll) - currently not supported by backend
+  const loadMoreData = useCallback(async (_oldestTime: Time) => {
+    // Note: Backend currently doesn't support `before` parameter for pagination
+    // This is a placeholder for future implementation
     if (dataSource !== "yahoo" || isLoadingMore) return;
 
-    // Convert time to ISO string for API
-    let beforeDate: string;
-    if (typeof oldestTime === "number") {
-      // Unix timestamp (seconds)
-      beforeDate = new Date(oldestTime * 1000).toISOString();
-    } else if (typeof oldestTime === "string") {
-      // Date string (YYYY-MM-DD)
-      beforeDate = new Date(oldestTime).toISOString();
-    } else {
-      // BusinessDay object { year, month, day }
-      beforeDate = new Date(oldestTime.year, oldestTime.month - 1, oldestTime.day).toISOString();
-    }
+    // For now, just log that pagination isn't supported yet
+    console.warn("Load more data: pagination not yet supported by backend");
+  }, [dataSource, isLoadingMore]);
 
-    // Prevent loading the same data twice
-    if (oldestLoadedTimeRef.current === String(oldestTime)) {
-      return;
-    }
-
-    setIsLoadingMore(true);
-
-    try {
-      const response = await fetch(
-        `/api/market-data?symbol=${symbol}&timeframe=${timeframe}&before=${beforeDate}`
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        console.error("Failed to load more data:", result.error);
-        return;
-      }
-
-      const olderData = result.data as OHLCData[];
-
-      if (olderData.length > 0) {
-        // Update oldest loaded time
-        oldestLoadedTimeRef.current = String(olderData[0].time);
-
-        // Prepend older data to existing data (avoid duplicates by checking time)
-        setYahooData((prev) => {
-          const existingTimes = new Set(prev.map((d) => String(d.time)));
-          const uniqueOlderData = olderData.filter(
-            (d) => !existingTimes.has(String(d.time))
-          );
-          return [...uniqueOlderData, ...prev];
-        });
-      }
-    } catch (error) {
-      console.error("Failed to load more data:", error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }, [symbol, timeframe, dataSource, isLoadingMore]);
-
-  // Refresh simulated data function
+  // Refresh simulated data function (for manual simulated mode)
   const refreshSimulatedData = useCallback(() => {
     setSimulatedDataVersion((v) => v + 1);
     setLastUpdated(new Date());
     setCountdown(TIMEFRAME_CONFIG[timeframe].refreshInterval);
+    setProvider("simulated");
+    setIsCached(false);
   }, [timeframe]);
 
   // Unified refresh function that works for both data sources
   const refreshNow = useCallback(() => {
-    if (dataSource === "yahoo" && !isRateLimited) {
-      fetchYahooData();
+    if (dataSource === "yahoo") {
+      // Use backend (which handles fallback internally)
+      fetchBackendData(true); // Force refresh to bypass cache
     } else {
-      // Refresh simulated data (either explicit simulated source or rate-limited fallback)
+      // Manual simulated mode - use client-side generation
       refreshSimulatedData();
     }
-  }, [dataSource, isRateLimited, fetchYahooData, refreshSimulatedData]);
+  }, [dataSource, fetchBackendData, refreshSimulatedData]);
 
   // Initialize data and countdown when data source changes
   useEffect(() => {
     if (dataSource === "yahoo") {
-      fetchYahooData();
+      fetchBackendData();
     } else {
-      // Simulated data source - clear Yahoo state and start countdown
+      // Manual simulated data source - use client-side generation
       setFetchError(null);
       setMarketStatus(null);
       setLastUpdated(new Date());
       setCountdown(TIMEFRAME_CONFIG[timeframe].refreshInterval);
+      setProvider("simulated");
+      setIsCached(false);
     }
-  }, [dataSource, symbol, timeframe, fetchYahooData]);
+  }, [dataSource, symbol, timeframe, fetchBackendData]);
 
   // Auto-refresh countdown timer (works for both data sources)
   useEffect(() => {
@@ -225,8 +202,8 @@ export function useMarketData(
       setCountdown((prev) => {
         if (prev <= 1) {
           // Refresh based on current data source
-          if (dataSource === "yahoo" && !isRateLimited) {
-            fetchYahooData();
+          if (dataSource === "yahoo") {
+            fetchBackendData();
           } else {
             refreshSimulatedData();
           }
@@ -237,25 +214,23 @@ export function useMarketData(
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [dataSource, autoRefreshEnabled, timeframe, isRateLimited, fetchYahooData, refreshSimulatedData]);
+  }, [dataSource, autoRefreshEnabled, timeframe, fetchBackendData, refreshSimulatedData]);
 
-  // Use appropriate data based on source and rate limit status
+  // Use appropriate data based on source
   const data = useMemo(() => {
-    // If rate limited, fall back to simulated data
-    if (isRateLimited) {
-      return simulatedData;
+    // Use backend data if available (for yahoo mode)
+    if (dataSource === "yahoo" && backendData.length > 0) {
+      return backendData;
     }
-    // Use Yahoo data if available
-    if (dataSource === "yahoo" && yahooData.length > 0) {
-      return yahooData;
-    }
+    // Fall back to client-side simulated data
     return simulatedData;
-  }, [dataSource, yahooData, simulatedData, isRateLimited]);
+  }, [dataSource, backendData, simulatedData]);
 
   // Track whether we're showing simulated data
   const isUsingSimulatedData = useMemo(() => {
-    return isRateLimited || dataSource !== "yahoo" || yahooData.length === 0;
-  }, [isRateLimited, dataSource, yahooData.length]);
+    // True if: manual simulated mode, OR backend returned simulated provider
+    return dataSource !== "yahoo" || provider === "simulated";
+  }, [dataSource, provider]);
 
   return {
     data,
@@ -268,6 +243,8 @@ export function useMarketData(
     marketStatus,
     isRateLimited,
     isUsingSimulatedData,
+    isCached,
+    provider,
     setAutoRefreshEnabled,
     refreshNow,
     loadMoreData,
