@@ -4,6 +4,19 @@ Technical documentation for the Python/FastAPI backend.
 
 ## Modules
 
+### analysis.py
+
+Unified analysis orchestration combining all analysis operations.
+
+| Component | Description |
+|-----------|-------------|
+| `AnalysisOrchestrator` | Coordinates market data, pivots, Fibonacci, and signals |
+| `FullAnalysisRequest` | Request with symbol, timeframe, periods, and config |
+| `FullAnalysisResponse` | Complete response with all analysis sections |
+| `AnalysisConfig` | Configuration for pivot lookback, Fibonacci direction, signals |
+
+**Single endpoint** reduces frontend complexity and network round-trips.
+
 ### fibonacci.py
 
 Four Fibonacci calculation tools for trading analysis.
@@ -48,6 +61,40 @@ Harmonic pattern detection using XABCD points.
 | `validate_pattern()` | Check if XABCD points form valid harmonic pattern |
 | `calculate_reversal_zone()` | Calculate potential reversal zone (D point) for pattern completion |
 
+### pivots.py
+
+Swing high/low detection for chart analysis.
+
+| Component | Description |
+|-----------|-------------|
+| `OHLCBar` | OHLC bar with time field |
+| `PivotPoint` | Detected pivot with index, price, type, time |
+| `PivotResult` | All pivots, recent pivots, swing high/low |
+| `detect_pivots()` | Detect swing points with configurable lookback |
+
+### position_sizing.py
+
+Risk management and position sizing calculations.
+
+| Function | Description |
+|----------|-------------|
+| `calculate_position_size()` | Position size from entry, stop, and risk capital |
+| `calculate_risk_reward()` | Risk/reward ratio with target analysis |
+
+### market_data/
+
+Multi-provider market data with caching and fallback.
+
+| Component | Description |
+|-----------|-------------|
+| `MarketDataService` | Orchestrates providers, caching, rate limiting |
+| `YahooProvider` | Yahoo Finance data provider (priority 1) |
+| `SimulatedProvider` | Fallback with generated data (priority 999) |
+| `MarketDataCache` | TTL-based caching for OHLC data |
+| `RateLimiter` | Per-provider rate limiting |
+
+**Features:** Provider fallback, caching, rate limiting, market status.
+
 ### main.py
 
 FastAPI application with REST endpoints.
@@ -60,15 +107,29 @@ See [API Endpoints](../../README.md#api-endpoints) in main README.
 backend/
 ├── src/trader/
 │   ├── __init__.py
-│   ├── fibonacci.py    # Fibonacci calculations
-│   ├── signals.py      # Signal bar detection
-│   ├── harmonics.py    # Harmonic pattern detection
-│   └── main.py         # FastAPI application
+│   ├── analysis.py         # Unified analysis orchestration
+│   ├── fibonacci.py        # Fibonacci calculations
+│   ├── signals.py          # Signal bar detection
+│   ├── harmonics.py        # Harmonic pattern detection
+│   ├── pivots.py           # Swing high/low detection
+│   ├── position_sizing.py  # Risk management
+│   ├── market_data/        # Market data providers
+│   │   ├── __init__.py
+│   │   ├── cache.py        # TTL caching
+│   │   ├── models.py       # Data models
+│   │   ├── rate_limiter.py # Rate limiting
+│   │   ├── service.py      # Service orchestration
+│   │   └── providers/      # Data providers
+│   │       ├── base.py     # Provider interface
+│   │       ├── yahoo.py    # Yahoo Finance
+│   │       └── simulated.py # Fallback provider
+│   └── main.py             # FastAPI application
 ├── tests/
-│   ├── unit/           # Unit tests for each module
-│   └── integration/    # API endpoint tests
-├── pyproject.toml      # Project configuration
-└── README.md           # Backend quick start
+│   ├── unit/               # Unit tests for each module
+│   │   └── market_data/    # Market data tests
+│   └── integration/        # API endpoint tests
+├── pyproject.toml          # Project configuration
+└── README.md               # Backend quick start
 ```
 
 ## Related Documentation

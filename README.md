@@ -51,6 +51,7 @@ Detect classic harmonic patterns using XABCD points:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/health` | Health check |
+| POST | `/analyze` | **Unified analysis** - market data, pivots, Fibonacci, signals |
 | POST | `/fibonacci/retracement` | Calculate retracement levels |
 | POST | `/fibonacci/extension` | Calculate extension levels |
 | POST | `/fibonacci/projection` | Calculate projection levels |
@@ -58,6 +59,11 @@ Detect classic harmonic patterns using XABCD points:
 | POST | `/signal/detect` | Detect signal at Fibonacci level |
 | POST | `/harmonic/validate` | Validate harmonic pattern from XABCD points |
 | POST | `/harmonic/reversal-zone` | Calculate potential D point for pattern |
+| POST | `/pivot/detect` | Detect swing highs and lows from OHLC data |
+| POST | `/position/size` | Calculate position size from risk parameters |
+| POST | `/position/risk-reward` | Calculate risk/reward ratio |
+| GET | `/market-data` | Fetch OHLC data with caching and fallback |
+| GET | `/market-data/providers` | Get status of market data providers |
 
 ## Project Structure
 
