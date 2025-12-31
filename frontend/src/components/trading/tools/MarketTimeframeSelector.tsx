@@ -179,6 +179,7 @@ export function MarketTimeframeSelector({
                 style={{
                   borderColor: tradingStyle === style ? config.color : undefined,
                   backgroundColor: tradingStyle === style ? `${config.color}20` : undefined,
+                  color: tradingStyle === style ? config.color : undefined,
                 }}
               >
                 <div className="text-center">
