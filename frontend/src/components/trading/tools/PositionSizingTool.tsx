@@ -267,8 +267,9 @@ export function PositionSizingTool({
     return true;
   }, [entryPrice, stopLoss, isBuy]);
 
-  // For proceeding to next step, we need valid R:R (>= 1:1)
-  const canProceed = isValid && positionSize > 0 && targets.length > 0 && riskRewardRatio >= 1;
+  // For proceeding to next step - R:R is discretionary (user decides in checklist)
+  // Only require valid entry/stop, position size calculated, and at least one target
+  const canProceed = isValid && positionSize > 0 && targets.length > 0;
 
   // For calculating, we just need entry and stop
   const canCalculate = entryPrice > 0 && stopLoss > 0 && entryPrice !== stopLoss;
@@ -488,14 +489,28 @@ export function PositionSizingTool({
             </div>
           </div>
 
-          {riskRewardRatio < 1 && (
-            <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm">
-              <div className="flex items-center gap-2 text-red-400">
+          {riskRewardRatio < 2 && (
+            <div className={cn(
+              "rounded-lg border p-3 text-sm",
+              riskRewardRatio < 1
+                ? "border-red-500/50 bg-red-500/10"
+                : "border-amber-500/50 bg-amber-500/10"
+            )}>
+              <div className={cn(
+                "flex items-center gap-2",
+                riskRewardRatio < 1 ? "text-red-400" : "text-amber-400"
+              )}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Risk:Reward below 1:1. Consider adjusting your targets or stop loss.
+                {riskRewardRatio < 1
+                  ? "R:R below 1:1 is not recommended. Consider adjusting targets or stop."
+                  : "R:R of 2:1 or higher is recommended for optimal risk management."
+                }
               </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                You can proceed with this ratio if you accept the risk.
+              </p>
             </div>
           )}
         </div>

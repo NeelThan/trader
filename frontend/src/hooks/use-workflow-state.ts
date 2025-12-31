@@ -415,12 +415,13 @@ export function validateStep(state: WorkflowState, step: number): { valid: boole
       return { valid: true };
 
     case 6:
-      // Step 6 requires valid R:R
-      if (state.riskRewardRatio < 1) {
-        return { valid: false, reason: "Risk:Reward ratio must be at least 1:1" };
-      }
+      // Step 6 requires position size calculated - R:R is discretionary
+      // User can proceed with any R:R and confirm acceptance in checklist
       if (state.positionSize <= 0) {
         return { valid: false, reason: "Position size not calculated" };
+      }
+      if (state.targets.length === 0) {
+        return { valid: false, reason: "At least one target required" };
       }
       return { valid: true };
 

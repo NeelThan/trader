@@ -228,7 +228,7 @@ export function PreTradeChecklist({
                     <Checkbox
                       checked={item.checked}
                       onCheckedChange={(checked) => onUpdateChecklist(item.id, checked as boolean)}
-                      disabled={item.autoValidated}
+                      disabled={item.autoValidated && item.checked}
                       className="mt-0.5"
                     />
                     <div className="flex-1">
