@@ -73,6 +73,7 @@ function InteractiveTradeManagement({
   return (
     <TradeManagementPanel
       symbol="SPX"
+      timeframe="1D"
       tradeDirection={direction}
       entryPrice={5000}
       stopLoss={stopLoss}
@@ -130,6 +131,7 @@ export const AtBreakeven: Story = {
   render: () => (
     <TradeManagementPanel
       symbol="SPX"
+      timeframe="1D"
       tradeDirection="GO_LONG"
       entryPrice={5000}
       stopLoss={4950}
@@ -220,6 +222,7 @@ export const TrailingStop: Story = {
   render: () => (
     <TradeManagementPanel
       symbol="SPX"
+      timeframe="1D"
       tradeDirection="GO_LONG"
       entryPrice={5000}
       stopLoss={4950}
@@ -245,6 +248,7 @@ export const ClosedTradeWin: Story = {
   render: () => (
     <TradeManagementPanel
       symbol="SPX"
+      timeframe="1D"
       tradeDirection="GO_LONG"
       entryPrice={5000}
       stopLoss={4950}
@@ -270,6 +274,7 @@ export const ClosedTradeLoss: Story = {
   render: () => (
     <TradeManagementPanel
       symbol="SPX"
+      timeframe="1D"
       tradeDirection="GO_LONG"
       entryPrice={5000}
       stopLoss={4950}
@@ -302,6 +307,7 @@ export const Compact: Story = {
   render: () => (
     <TradeManagementPanel
       symbol="SPX"
+      timeframe="1D"
       tradeDirection="GO_LONG"
       entryPrice={5000}
       stopLoss={4950}

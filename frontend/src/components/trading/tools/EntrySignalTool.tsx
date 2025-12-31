@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import type {
   DetectedSignal,
   SignalBar,
 } from "@/hooks/use-workflow-state";
+import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 
 type EntrySignalToolProps = {
   // Data props
@@ -54,16 +55,14 @@ export function EntrySignalTool({
   workflowMode = false,
   compact = false,
 }: EntrySignalToolProps) {
-  const [currentPrice, setCurrentPrice] = useState<number>(5000);
-  const [isWaiting, setIsWaiting] = useState(false);
+  // Fetch real market data for the selected symbol and timeframe
+  const { data, isLoading } = useMarketDataSubscription(symbol, timeframe, "yahoo");
 
-  // Simulate price updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentPrice((prev) => prev + (Math.random() - 0.5) * 5);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
+  // Get current price from actual market data
+  const currentPrice = useMemo(() => {
+    if (data.length === 0) return 0;
+    return data[data.length - 1].close;
+  }, [data]);
 
   // Select a level for entry
   const handleLevelSelect = useCallback(

@@ -222,6 +222,7 @@ export function WorkflowStepper({ showPhases = false, className }: WorkflowStepp
           <TradeManagementPanel
             {...commonProps}
             symbol={state.symbol}
+            timeframe={state.lowerTimeframe}
             tradeDirection={state.tradeDirection}
             entryPrice={state.entryPrice}
             stopLoss={state.stopLoss}

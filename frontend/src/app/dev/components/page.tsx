@@ -346,6 +346,7 @@ export default function ComponentsPage() {
             <ComponentDemo name="TradeManagementPanel (Compact)" description="Trade management in compact mode">
               <TradeManagementPanel
                 symbol="SPX"
+                timeframe="1D"
                 tradeDirection="GO_LONG"
                 entryPrice={5000}
                 stopLoss={4950}

@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { TradeAction } from "@/lib/chart-constants";
+import { TradeAction, MarketSymbol, Timeframe } from "@/lib/chart-constants";
 import type { TradeStatus, TradeLogEntry } from "@/hooks/use-workflow-state";
+import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 
 // Custom hook to use a ref for callbacks that shouldn't trigger re-renders
  
@@ -21,7 +22,8 @@ function useCallbackRef<T extends (...args: any[]) => any>(callback: T): T {
 
 type TradeManagementPanelProps = {
   // Data props
-  symbol: string;
+  symbol: MarketSymbol;
+  timeframe: Timeframe;
   tradeDirection: TradeAction;
   entryPrice: number;
   stopLoss: number;
@@ -62,6 +64,7 @@ const STATUS_CONFIG: Record<TradeStatus, { label: string; color: string; bgColor
 
 export function TradeManagementPanel({
   symbol,
+  timeframe,
   tradeDirection,
   entryPrice,
   stopLoss,
@@ -80,8 +83,16 @@ export function TradeManagementPanel({
   workflowMode = false,
   compact = false,
 }: TradeManagementPanelProps) {
-  const [currentPrice, setCurrentPrice] = useState(entryPrice);
   const [logNote, setLogNote] = useState("");
+
+  // Fetch real market data for the selected symbol and timeframe
+  const { data } = useMarketDataSubscription(symbol, timeframe, "yahoo");
+
+  // Get current price from actual market data
+  const currentPrice = useMemo(() => {
+    if (data.length === 0) return entryPrice; // Fallback to entry price if no data
+    return data[data.length - 1].close;
+  }, [data, entryPrice]);
 
   // Stabilize callbacks to prevent infinite re-renders
   const stableOnChange = useCallbackRef(onChange);
@@ -89,19 +100,6 @@ export function TradeManagementPanel({
 
   const isBuy = tradeDirection === "GO_LONG";
   const riskPerUnit = Math.abs(entryPrice - stopLoss);
-
-  // Simulate price updates
-  useEffect(() => {
-    if (tradeStatus === "closed" || tradeStatus === "pending") return;
-
-    const interval = setInterval(() => {
-      setCurrentPrice((prev) => {
-        const change = (Math.random() - 0.48) * 2; // Slight upward bias
-        return prev + change;
-      });
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [tradeStatus]);
 
   // Update P&L when price changes
   useEffect(() => {
