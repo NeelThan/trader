@@ -75,11 +75,13 @@ export function EntrySignalTool({
   // Confirm a signal bar
   const confirmSignalBar = useCallback(
     (signal: DetectedSignal) => {
+      // Use percentage-based offsets (0.1-0.3% of price) for realistic bar dimensions
+      const priceScale = currentPrice * 0.001; // 0.1% of price
       const bar: SignalBar = {
         time: new Date().toISOString(),
-        open: currentPrice - 5,
-        high: currentPrice + 10,
-        low: currentPrice - 15,
+        open: currentPrice - priceScale * 0.5,
+        high: currentPrice + priceScale,
+        low: currentPrice - priceScale * 1.5,
         close: currentPrice,
         signalType: signal.signalType,
         direction: signal.direction,
@@ -94,11 +96,13 @@ export function EntrySignalTool({
   const manualConfirm = useCallback(() => {
     if (selectedLevel === null) return;
 
+    // Use percentage-based offsets (0.1-0.3% of price) for realistic bar dimensions
+    const priceScale = currentPrice * 0.001; // 0.1% of price
     const bar: SignalBar = {
       time: new Date().toISOString(),
-      open: currentPrice - 5,
-      high: currentPrice + 10,
-      low: currentPrice - 15,
+      open: currentPrice - priceScale * 0.5,
+      high: currentPrice + priceScale,
+      low: currentPrice - priceScale * 1.5,
       close: currentPrice,
       signalType: "type_2",
       direction: tradeDirection === "GO_LONG" ? "buy" : "sell",

@@ -98,20 +98,25 @@ export function PatternScannerTool({
       }
 
       // Simulated pattern detection (may or may not find patterns)
-      const patterns: DetectedPattern[] = Math.random() > 0.5
-        ? [
-            {
-              type: ["gartley", "butterfly", "bat", "crab"][Math.floor(Math.random() * 4)] as DetectedPattern["type"],
-              direction: tradeDirection === "GO_LONG" ? "buy" : "sell",
-              confidence: 0.7 + Math.random() * 0.2,
-              x: fibLevels[0]?.price || 5000,
-              a: fibLevels[0]?.price ? fibLevels[0].price + 50 : 5050,
-              b: fibLevels[0]?.price ? fibLevels[0].price + 20 : 5020,
-              c: fibLevels[0]?.price ? fibLevels[0].price + 35 : 5035,
-              d: fibLevels[0]?.price ? fibLevels[0].price + 5 : 5005,
-            },
-          ]
-        : [];
+      // Only generate patterns if we have valid fib levels to base them on
+      let patterns: DetectedPattern[] = [];
+      if (fibLevels.length > 0 && Math.random() > 0.5) {
+        const basePrice = fibLevels[0].price;
+        // Use percentage-based offsets (1-2% of price) instead of fixed values
+        const priceScale = basePrice * 0.01; // 1% of price
+        patterns = [
+          {
+            type: ["gartley", "butterfly", "bat", "crab"][Math.floor(Math.random() * 4)] as DetectedPattern["type"],
+            direction: tradeDirection === "GO_LONG" ? "buy" : "sell",
+            confidence: 0.7 + Math.random() * 0.2,
+            x: basePrice,
+            a: basePrice + priceScale * 5,    // ~5% above base
+            b: basePrice + priceScale * 2,    // ~2% above base
+            c: basePrice + priceScale * 3.5,  // ~3.5% above base
+            d: basePrice + priceScale * 0.5,  // ~0.5% above base (entry zone)
+          },
+        ];
+      }
 
       onChange({
         detectedPatterns: patterns,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,8 +12,8 @@ import {
   TradeAction,
   TREND_DIRECTION_CONFIG,
   TRADE_ACTION_CONFIG,
-  TIMEFRAME_CONFIG,
 } from "@/lib/chart-constants";
+import { useTrendAnalysis } from "@/hooks/use-trend-analysis";
 
 type TrendDecisionPanelProps = {
   // Data props
@@ -59,8 +59,30 @@ export function TrendDecisionPanel({
   workflowMode = false,
   compact = false,
 }: TrendDecisionPanelProps) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [lastAnalyzed, setLastAnalyzed] = useState<string | null>(null);
+
+  // Create timeframe pair for analysis
+  const timeframePairs = useMemo(() => [{
+    id: `${higherTimeframe}-${lowerTimeframe}`,
+    name: `${higherTimeframe}/${lowerTimeframe}`,
+    higherTF: higherTimeframe,
+    lowerTF: lowerTimeframe,
+    tradingStyle: "swing" as const,
+  }], [higherTimeframe, lowerTimeframe]);
+
+  // Use real trend analysis from market data
+  const {
+    alignments,
+    isLoading: isAnalyzing,
+    refresh: refreshAnalysis,
+  } = useTrendAnalysis({
+    symbol,
+    pairs: timeframePairs,
+    enabled: true,
+  });
+
+  // Get the current alignment result
+  const currentAlignment = alignments[0];
 
   // Derive trade direction from trend alignment
   const deriveTradeDirection = useCallback(
@@ -72,33 +94,35 @@ export function TrendDecisionPanel({
     []
   );
 
-  // Analyze trends (simulated for now - would call API)
-  const analyzeTrends = useCallback(async () => {
-    setIsAnalyzing(true);
+  // Update workflow state when analysis results change
+  useEffect(() => {
+    if (currentAlignment) {
+      const newHigher = currentAlignment.higherTrend.direction;
+      const newLower = currentAlignment.lowerTrend.direction;
+      const direction = deriveTradeDirection(newHigher, newLower);
 
-    try {
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Simulated trend analysis results
-      // In real implementation, this would call the backend API
-      const simulatedHigher: TrendDirection = ["UP", "DOWN", "NEUTRAL"][Math.floor(Math.random() * 3)] as TrendDirection;
-      const simulatedLower: TrendDirection = ["UP", "DOWN", "NEUTRAL"][Math.floor(Math.random() * 3)] as TrendDirection;
-      const direction = deriveTradeDirection(simulatedHigher, simulatedLower);
-      const confidence = direction === "STAND_ASIDE" ? 0 : 0.6 + Math.random() * 0.3;
-
-      onChange({
-        higherTrend: simulatedHigher,
-        lowerTrend: simulatedLower,
-        tradeDirection: direction,
-        trendConfidence: confidence,
-      });
-
-      setLastAnalyzed(new Date().toLocaleTimeString());
-    } finally {
-      setIsAnalyzing(false);
+      // Only update if values have actually changed
+      if (
+        newHigher !== higherTrend ||
+        newLower !== lowerTrend ||
+        direction !== tradeDirection ||
+        currentAlignment.confidence !== trendConfidence
+      ) {
+        onChange({
+          higherTrend: newHigher,
+          lowerTrend: newLower,
+          tradeDirection: direction,
+          trendConfidence: currentAlignment.confidence,
+        });
+        setLastAnalyzed(new Date().toLocaleTimeString());
+      }
     }
-  }, [onChange, deriveTradeDirection]);
+  }, [currentAlignment, higherTrend, lowerTrend, tradeDirection, trendConfidence, deriveTradeDirection, onChange]);
+
+  // Refresh analysis
+  const analyzeTrends = useCallback(() => {
+    refreshAnalysis();
+  }, [refreshAnalysis]);
 
   // Manual trend override
   const handleTrendOverride = useCallback(
