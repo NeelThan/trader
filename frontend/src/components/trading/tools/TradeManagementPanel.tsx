@@ -101,21 +101,36 @@ export function TradeManagementPanel({
   const isBuy = tradeDirection === "GO_LONG";
   const riskPerUnit = Math.abs(entryPrice - stopLoss);
 
-  // Update P&L when price changes
+  // Track previous P&L to avoid unnecessary updates
+  const prevPnLRef = useRef(currentPnL);
+  const stopHitRef = useRef(false);
+  const targetsHitRef = useRef<Set<number>>(new Set());
+
+  // Calculate P&L (derived value, no state update needed in effect)
+  const calculatedPnL = useMemo(() => {
+    if (tradeStatus === "closed" || tradeStatus === "pending") return 0;
+    const pnlPerUnit = isBuy ? currentPrice - entryPrice : entryPrice - currentPrice;
+    return pnlPerUnit * positionSize;
+  }, [tradeStatus, isBuy, currentPrice, entryPrice, positionSize]);
+
+  // Update P&L only when it actually changes significantly
   useEffect(() => {
     if (tradeStatus === "closed" || tradeStatus === "pending") return;
 
-    const pnlPerUnit = isBuy ? currentPrice - entryPrice : entryPrice - currentPrice;
-    const totalPnL = pnlPerUnit * positionSize;
-    stableOnChange({ currentPnL: totalPnL });
-
-    // Check for breakeven opportunity
-    if (!freeTradeActive && Math.abs(pnlPerUnit) >= riskPerUnit) {
-      // Could trigger breakeven alert here
+    // Only update if P&L changed by more than 0.01
+    if (Math.abs(calculatedPnL - prevPnLRef.current) > 0.01) {
+      prevPnLRef.current = calculatedPnL;
+      stableOnChange({ currentPnL: calculatedPnL });
     }
+  }, [calculatedPnL, tradeStatus, stableOnChange]);
 
-    // Check for stop hit
-    if ((isBuy && currentPrice <= stopLoss) || (!isBuy && currentPrice >= stopLoss)) {
+  // Check for stop hit (separate effect to avoid loop)
+  useEffect(() => {
+    if (tradeStatus === "closed" || tradeStatus === "pending" || stopHitRef.current) return;
+
+    const stopHit = (isBuy && currentPrice <= stopLoss) || (!isBuy && currentPrice >= stopLoss);
+    if (stopHit) {
+      stopHitRef.current = true;
       stableOnChange({ tradeStatus: "closed" });
       stableOnAddLogEntry({
         action: "exit",
@@ -123,10 +138,18 @@ export function TradeManagementPanel({
         note: "Stop loss hit",
       });
     }
+  }, [currentPrice, stopLoss, isBuy, tradeStatus, stableOnChange, stableOnAddLogEntry]);
 
-    // Check for target hit
+  // Check for target hits (separate effect)
+  useEffect(() => {
+    if (tradeStatus === "closed" || tradeStatus === "pending") return;
+
     for (let i = 0; i < targets.length; i++) {
-      if ((isBuy && currentPrice >= targets[i]) || (!isBuy && currentPrice <= targets[i])) {
+      if (targetsHitRef.current.has(i)) continue;
+
+      const targetHit = (isBuy && currentPrice >= targets[i]) || (!isBuy && currentPrice <= targets[i]);
+      if (targetHit) {
+        targetsHitRef.current.add(i);
         stableOnAddLogEntry({
           action: "target_hit",
           price: targets[i],
@@ -135,7 +158,7 @@ export function TradeManagementPanel({
         break;
       }
     }
-  }, [currentPrice, entryPrice, isBuy, positionSize, stopLoss, targets, freeTradeActive, riskPerUnit, stableOnChange, stableOnAddLogEntry, tradeStatus]);
+  }, [currentPrice, targets, isBuy, tradeStatus, stableOnAddLogEntry]);
 
   // Activate trade
   const activateTrade = useCallback(() => {
