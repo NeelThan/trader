@@ -309,15 +309,17 @@ export default function ChartProPage() {
       );
       const abcLabel = matchingPivot?.abcLabel;
 
-      // Build marker text: ABC with swing type (green), or just swing type (theme colors)
+      // Build marker text: ABC with swing type (green), or just swing type
       const text = abcLabel
         ? `${abcLabel} (${marker.swingType})`
         : marker.swingType;
 
-      // ABC labels are green, non-ABC swing types use theme colors
+      // ABC = green, HH/HL (bullish) = blue, LH/LL (bearish) = red
       const markerColor = abcLabel
-        ? "#22c55e"
-        : isBullish ? chartColors.up : chartColors.down;
+        ? "#22c55e"  // Green for ABC
+        : isBullish
+          ? "#3b82f6"  // Blue for HH/HL
+          : "#ef4444"; // Red for LH/LL
 
       return {
         time: marker.time,
