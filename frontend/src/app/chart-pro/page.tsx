@@ -24,6 +24,7 @@ import {
   LevelsTable,
   SwingPivotPanel,
   TrendAlignmentPanel,
+  SignalSuggestionsPanel,
 } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useMACD } from "@/hooks/use-macd";
@@ -36,6 +37,7 @@ import { useEditablePivots } from "@/hooks/use-editable-pivots";
 import { useDataMode } from "@/hooks/use-data-mode";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
 import { useTrendAlignment } from "@/hooks/use-trend-alignment";
+import { useSignalSuggestions, type SignalFilters } from "@/hooks/use-signal-suggestions";
 import { generateSwingLineOverlays } from "@/lib/chart-pro/swing-overlays";
 import {
   Timeframe,
@@ -92,8 +94,16 @@ export default function ChartProPage() {
 
   const [showStrategyPanel, setShowStrategyPanel] = useState(true);
   const [showTrendAlignment, setShowTrendAlignment] = useState(true);
+  const [showSignalSuggestions, setShowSignalSuggestions] = useState(true);
   const [showIndicatorsPanel, setShowIndicatorsPanel] = useState(true);
   const [showLevelsTable, setShowLevelsTable] = useState(true);
+
+  // Signal filters - default to showing Long signals (most common use case)
+  const [signalFilters, setSignalFilters] = useState<SignalFilters>({
+    showLong: true,
+    showShort: true,
+    showWait: false, // Hide wait signals by default
+  });
 
   // Data mode - switch between live API and cached/simulated data
   const {
@@ -120,6 +130,19 @@ export default function ChartProPage() {
   } = useTrendAlignment({
     symbol,
     enabled: true,
+  });
+
+  // Signal suggestions based on trend alignment
+  const {
+    signals: signalSuggestions,
+    activeSignals,
+    longCount,
+    shortCount,
+    waitCount,
+  } = useSignalSuggestions({
+    trends: trendData,
+    overall: overallTrend,
+    filters: signalFilters,
   });
 
   useEffect(() => {
@@ -651,6 +674,41 @@ export default function ChartProPage() {
                   overall={overallTrend}
                   isLoading={isLoadingTrend}
                   onRefresh={refreshTrend}
+                  chartColors={chartColors}
+                />
+              </CardContent>
+            )}
+          </Card>
+
+          {/* Signal Suggestions Panel */}
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  Signal Suggestions
+                  {activeSignals.length > 0 && (
+                    <Badge variant="default" className="text-xs bg-amber-500/20 text-amber-400 border-amber-500/30">
+                      {activeSignals.length} Active
+                    </Badge>
+                  )}
+                </span>
+                <button
+                  onClick={() => setShowSignalSuggestions(!showSignalSuggestions)}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showSignalSuggestions ? "Hide" : "Show"}
+                </button>
+              </CardTitle>
+            </CardHeader>
+            {showSignalSuggestions && (
+              <CardContent className="pt-0">
+                <SignalSuggestionsPanel
+                  signals={activeSignals}
+                  filters={signalFilters}
+                  onFiltersChange={setSignalFilters}
+                  longCount={longCount}
+                  shortCount={shortCount}
+                  waitCount={waitCount}
                   chartColors={chartColors}
                 />
               </CardContent>

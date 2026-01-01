@@ -15,3 +15,5 @@ export { SwingPivotPanel } from "./SwingPivotPanel";
 export type { SwingPivotPanelProps } from "./SwingPivotPanel";
 export { TrendAlignmentPanel } from "./TrendAlignmentPanel";
 export type { TrendAlignmentPanelProps } from "./TrendAlignmentPanel";
+export { SignalSuggestionsPanel } from "./SignalSuggestionsPanel";
+export type { SignalSuggestionsPanelProps } from "./SignalSuggestionsPanel";
