@@ -33,6 +33,7 @@ import {
   MARKET_CONFIG,
 } from "@/lib/chart-constants";
 import {
+  type StrategySource,
   isLevelVisible,
   DIRECTION_COLORS,
 } from "@/lib/chart-pro/strategy-types";
@@ -131,16 +132,57 @@ export default function ChartProPage() {
   const hasErrors = Object.values(levelErrors).some(e => e !== null);
 
   // Log for debugging
-  if (enabledTimeframeCount > 0) {
+  if (enabledTimeframeCount > 0 && allLevels.length > 0) {
+    const longLevels = allLevels.filter(l => l.direction === "long");
+    const shortLevels = allLevels.filter(l => l.direction === "short");
+    const visibleLongLevels = allLevels.filter(l => l.direction === "long" && isLevelVisible(l, visibilityConfig));
+    const visibleShortLevels = allLevels.filter(l => l.direction === "short" && isLevelVisible(l, visibilityConfig));
+
     console.log("[ChartPro Debug]", {
       enabledTimeframes: enabledTimeframeCount,
       fetchedLevels: allLevels.length,
-      visibleLevels: allLevels.filter(l => isLevelVisible(l, visibilityConfig)).length,
-      levelsByTimeframe: levelsByTimeframe.map(tf => ({ tf: tf.timeframe, levels: tf.levels.length })),
-      errors: levelErrors,
-      hasErrors,
+      longLevels: longLevels.length,
+      shortLevels: shortLevels.length,
+      visibleLongLevels: visibleLongLevels.length,
+      visibleShortLevels: visibleShortLevels.length,
+      sampleLong: longLevels[0],
+      sampleShort: shortLevels[0],
     });
   }
+
+  // Handler to toggle visibility for a specific ratio in the visibility config
+  const handleToggleLevelVisibility = useCallback((level: { timeframe: string; strategy: string; direction: string; ratio: number }) => {
+    const tf = level.timeframe as Timeframe;
+    const strategy = level.strategy as StrategySource;
+    const direction = level.direction as "long" | "short";
+
+    setVisibilityConfig({
+      timeframes: visibilityConfig.timeframes.map(tfConfig => {
+        if (tfConfig.timeframe !== tf) return tfConfig;
+
+        return {
+          ...tfConfig,
+          strategies: tfConfig.strategies.map(stratConfig => {
+            if (stratConfig.strategy !== strategy) return stratConfig;
+
+            return {
+              ...stratConfig,
+              [direction]: {
+                ...stratConfig[direction],
+                ratios: stratConfig[direction].ratios.map(r => {
+                  // Use tolerance for float comparison
+                  if (Math.abs(r.ratio - level.ratio) < 0.0001) {
+                    return { ...r, visible: !r.visible };
+                  }
+                  return r;
+                }),
+              },
+            };
+          }),
+        };
+      }),
+    });
+  }, [visibilityConfig, setVisibilityConfig]);
 
   // Get visible levels based on visibility config
   const visibleLevels = useMemo(() => {
@@ -579,6 +621,7 @@ export default function ChartProPage() {
                 <LevelsTable
                   levels={allLevels}
                   visibilityConfig={visibilityConfig}
+                  onToggleLevelVisibility={handleToggleLevelVisibility}
                 />
               </CardContent>
             )}
