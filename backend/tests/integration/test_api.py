@@ -1041,3 +1041,110 @@ class TestJournalEndpoints:
         """DELETE /journal/entry/{id} returns 404 for nonexistent entry."""
         response = await client.delete("/journal/entry/nonexistent_id")
         assert response.status_code == 404
+
+
+class TestMACDEndpoint:
+    """Tests for MACD indicator endpoint."""
+
+    async def test_macd_with_ohlc_data(self, client: AsyncClient) -> None:
+        """POST /indicators/macd calculates MACD from OHLC data."""
+        # Generate 30 closing prices
+        data = [
+            {
+                "time": f"2024-01-{i+1:02d}",
+                "open": 100,
+                "high": 105,
+                "low": 95,
+                "close": 100 + i,
+            }
+            for i in range(30)
+        ]
+        response = await client.post(
+            "/indicators/macd",
+            json={"data": data},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert "macd" in result
+        assert "signal" in result
+        assert "histogram" in result
+        assert len(result["macd"]) == 30
+
+    async def test_macd_with_custom_periods(self, client: AsyncClient) -> None:
+        """POST /indicators/macd accepts custom periods."""
+        data = [
+            {
+                "time": f"2024-01-{i+1:02d}",
+                "open": 100,
+                "high": 105,
+                "low": 95,
+                "close": 100 + i,
+            }
+            for i in range(30)
+        ]
+        response = await client.post(
+            "/indicators/macd",
+            json={
+                "data": data,
+                "fast_period": 8,
+                "slow_period": 17,
+                "signal_period": 9,
+            },
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert len(result["macd"]) == 30
+
+    async def test_macd_invalid_periods(self, client: AsyncClient) -> None:
+        """POST /indicators/macd returns error for invalid periods."""
+        data = [
+            {
+                "time": f"2024-01-{i+1:02d}",
+                "open": 100,
+                "high": 105,
+                "low": 95,
+                "close": 100 + i,
+            }
+            for i in range(30)
+        ]
+        response = await client.post(
+            "/indicators/macd",
+            json={
+                "data": data,
+                "fast_period": 26,  # Fast > Slow is invalid
+                "slow_period": 12,
+            },
+        )
+
+        assert response.status_code == 400
+
+    async def test_macd_insufficient_data(self, client: AsyncClient) -> None:
+        """POST /indicators/macd returns error for insufficient data."""
+        # Only 10 bars, need 26 for default slow period
+        data = [
+            {
+                "time": f"2024-01-{i+1:02d}",
+                "open": 100,
+                "high": 105,
+                "low": 95,
+                "close": 100 + i,
+            }
+            for i in range(10)
+        ]
+        response = await client.post(
+            "/indicators/macd",
+            json={"data": data},
+        )
+
+        assert response.status_code == 400
+
+    async def test_macd_empty_data(self, client: AsyncClient) -> None:
+        """POST /indicators/macd returns error for empty data."""
+        response = await client.post(
+            "/indicators/macd",
+            json={"data": []},
+        )
+
+        assert response.status_code == 400

@@ -22,6 +22,7 @@ from trader.harmonics import (
     calculate_reversal_zone,
     validate_pattern,
 )
+from trader.indicators import calculate_macd
 from trader.journal import (
     JournalEntry,
     calculate_analytics,
@@ -389,6 +390,23 @@ class JournalAnalyticsResponse(BaseModel):
     """Response model for journal analytics."""
 
     analytics: JournalAnalyticsData
+
+
+class MACDRequest(BaseModel):
+    """Request model for MACD calculation."""
+
+    data: list[OHLCBarModel]
+    fast_period: int = 12
+    slow_period: int = 26
+    signal_period: int = 9
+
+
+class MACDResponse(BaseModel):
+    """Response model for MACD calculation."""
+
+    macd: list[float | None]
+    signal: list[float | None]
+    histogram: list[float | None]
 
 
 # --- Endpoints ---
@@ -801,3 +819,37 @@ async def clear_entries() -> dict[str, str]:
     count = len(_journal_entries)
     _journal_entries = []
     return {"status": "cleared", "count": str(count)}
+
+
+@app.post("/indicators/macd", response_model=MACDResponse)
+async def macd_indicator(request: MACDRequest) -> MACDResponse:
+    """Calculate MACD indicator from OHLC data.
+
+    MACD (Moving Average Convergence Divergence) is a trend-following
+    momentum indicator that shows the relationship between two EMAs.
+
+    - MACD Line = Fast EMA - Slow EMA
+    - Signal Line = EMA of MACD Line
+    - Histogram = MACD - Signal
+    """
+    if not request.data:
+        raise HTTPException(status_code=400, detail="No data provided")
+
+    # Extract closing prices from OHLC data
+    prices = [bar.close for bar in request.data]
+
+    try:
+        result = calculate_macd(
+            prices=prices,
+            fast_period=request.fast_period,
+            slow_period=request.slow_period,
+            signal_period=request.signal_period,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return MACDResponse(
+        macd=result.macd,
+        signal=result.signal,
+        histogram=result.histogram,
+    )
