@@ -23,6 +23,7 @@ import {
   StrategyPanel,
   LevelsTable,
   SwingPivotPanel,
+  TrendAlignmentPanel,
 } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useMACD } from "@/hooks/use-macd";
@@ -34,6 +35,7 @@ import { usePersistedSwingSettings } from "@/hooks/use-persisted-swing-settings"
 import { useEditablePivots } from "@/hooks/use-editable-pivots";
 import { useDataMode } from "@/hooks/use-data-mode";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
+import { useTrendAlignment } from "@/hooks/use-trend-alignment";
 import { generateSwingLineOverlays } from "@/lib/chart-pro/swing-overlays";
 import {
   Timeframe,
@@ -103,6 +105,17 @@ export default function ChartProPage() {
   // Global settings for chart colors
   const { settings } = useSettings();
   const chartColors = COLOR_SCHEMES[settings.colorScheme];
+
+  // Trend alignment across all timeframes
+  const {
+    trends: trendData,
+    overall: overallTrend,
+    isLoading: isLoadingTrend,
+    refresh: refreshTrend,
+  } = useTrendAlignment({
+    symbol,
+    enabled: true,
+  });
 
   useEffect(() => {
     setHasMounted(true);
@@ -519,6 +532,15 @@ export default function ChartProPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Trend Alignment Panel */}
+          <TrendAlignmentPanel
+            trends={trendData}
+            overall={overallTrend}
+            isLoading={isLoadingTrend}
+            onRefresh={refreshTrend}
+            chartColors={chartColors}
+          />
 
           {/* Main Chart */}
           <Card>

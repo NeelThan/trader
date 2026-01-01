@@ -13,3 +13,5 @@ export { PivotPointsEditor } from "./PivotPointsEditor";
 export type { PivotPointsEditorProps } from "./PivotPointsEditor";
 export { SwingPivotPanel } from "./SwingPivotPanel";
 export type { SwingPivotPanelProps } from "./SwingPivotPanel";
+export { TrendAlignmentPanel } from "./TrendAlignmentPanel";
+export type { TrendAlignmentPanelProps } from "./TrendAlignmentPanel";
