@@ -314,10 +314,15 @@ export default function ChartProPage() {
         ? `${abcLabel} (${marker.swingType})`
         : marker.swingType;
 
+      // ABC labeled markers are always green, others use theme colors
+      const markerColor = abcLabel
+        ? "#22c55e"
+        : isBullish ? chartColors.up : chartColors.down;
+
       return {
         time: marker.time,
         position: isHigh ? "aboveBar" : "belowBar",
-        color: isBullish ? chartColors.up : chartColors.down,
+        color: markerColor,
         shape: isHigh ? "arrowDown" : "arrowUp",
         text,
         size: 1,
