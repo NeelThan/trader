@@ -458,7 +458,7 @@ function PivotRow({ pivot, updatePivotPrice, resetPivot }: PivotRowProps) {
 
   const hasAbcLabel = !!pivot.abcLabel;
   const bgClass = hasAbcLabel
-    ? "bg-amber-500/10"
+    ? "bg-green-500/10"
     : pivot.isModified
       ? isHigh
         ? "bg-green-500/10"
@@ -471,7 +471,7 @@ function PivotRow({ pivot, updatePivotPrice, resetPivot }: PivotRowProps) {
         {pivot.abcLabel ? (
           <Badge
             variant="secondary"
-            className="h-4 w-4 p-0 flex items-center justify-center text-[10px] font-bold bg-amber-500/20 text-amber-400 border-amber-500/30"
+            className="h-4 w-4 p-0 flex items-center justify-center text-[10px] font-bold bg-green-500/20 text-green-400 border-green-500/30"
           >
             {pivot.abcLabel}
           </Badge>
