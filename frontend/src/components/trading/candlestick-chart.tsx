@@ -321,11 +321,15 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       rightPriceScale: {
         ...themeOptions.rightPriceScale,
         autoScale: true,
-        // Allow user to manually adjust price scale
         scaleMargins: {
           top: 0.1,
           bottom: 0.1,
         },
+      },
+      // Enable kinetic scrolling for smoother panning
+      kineticScroll: {
+        touch: true,
+        mouse: true,
       },
       handleScale: {
         // Enable scaling by dragging on price axis (vertical) and time axis (horizontal)
@@ -339,11 +343,10 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
         pinch: true,
       },
       handleScroll: {
-        // Enable scrolling by mouse drag
+        // Enable horizontal scrolling by mouse drag on chart
         pressedMouseMove: true,
-        // Enable horizontal touch drag
+        // Enable touch drag
         horzTouchDrag: true,
-        // Enable vertical touch drag
         vertTouchDrag: true,
         // Enable mouse wheel scroll
         mouseWheel: true,
