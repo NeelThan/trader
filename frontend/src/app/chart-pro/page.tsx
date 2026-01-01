@@ -41,9 +41,12 @@ import {
 const SYMBOLS: MarketSymbol[] = ["DJI", "SPX", "NDX", "BTCUSD", "EURUSD", "GOLD"];
 const TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
 
+type ChartType = "candlestick" | "bar" | "heikin-ashi";
+
 export default function ChartProPage() {
   const [symbol, setSymbol] = useState<MarketSymbol>("DJI");
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
+  const [chartType, setChartType] = useState<ChartType>("candlestick");
   const [hasMounted, setHasMounted] = useState(false);
   const chartRef = useRef<CandlestickChartHandle>(null);
 
@@ -343,6 +346,16 @@ export default function ChartProPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={chartType} onValueChange={(v) => setChartType(v as ChartType)}>
+                <SelectTrigger className="w-[130px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="candlestick">Candlestick</SelectItem>
+                  <SelectItem value="bar">Bar</SelectItem>
+                  <SelectItem value="heikin-ashi">Heikin Ashi</SelectItem>
+                </SelectContent>
+              </Select>
               <button
                 onClick={() => setShowStrategyPanel(!showStrategyPanel)}
                 className="p-2 rounded-md hover:bg-muted/50 transition-colors"
@@ -488,7 +501,7 @@ export default function ChartProPage() {
                     priceLines={strategyPriceLines}
                     upColor="#22c55e"
                     downColor="#ef4444"
-                    chartType="candlestick"
+                    chartType={chartType}
                   />
                 </div>
               ) : (
