@@ -299,10 +299,19 @@ export default function ChartProPage() {
 
   // Convert swing markers to chart markers (only when swing detection is enabled)
   // Include ABC labels when pivots are part of the Fibonacci pattern
+  // Filter markers to only include those with times that exist in market data
   const chartMarkers = useMemo<ChartMarker[]>(() => {
-    if (!swingEnabled || !swingResult?.markers) return [];
+    if (!swingEnabled || !swingResult?.markers || marketData.length === 0) return [];
 
-    return swingResult.markers.map((marker) => {
+    // Create a Set of valid times from market data for fast lookup
+    const validTimes = new Set(marketData.map((bar) => String(bar.time)));
+
+    // Filter markers to only those with valid times in current market data
+    const validMarkers = swingResult.markers.filter((marker) =>
+      validTimes.has(String(marker.time))
+    );
+
+    return validMarkers.map((marker) => {
       // Determine color and position based on swing type
       const isHigh = marker.swingType === "HH" || marker.swingType === "LH";
       const isBullish = marker.swingType === "HH" || marker.swingType === "HL";
@@ -334,7 +343,7 @@ export default function ChartProPage() {
         size: 1,
       } as ChartMarker;
     });
-  }, [swingResult, swingEnabled, editablePivots]);
+  }, [swingResult, swingEnabled, editablePivots, marketData]);
 
   // Get current OHLC values
   const currentOHLC = useMemo(() => {
