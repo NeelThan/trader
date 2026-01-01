@@ -77,6 +77,7 @@ function createTimeframeConfig(timeframe: Timeframe): TimeframeSettings {
 
 /**
  * Enable default strategies for a timeframe config
+ * Always enables both long AND short when a timeframe is turned on
  */
 function enableDefaultStrategies(tf: TimeframeSettings): TimeframeSettings {
   return {
@@ -86,10 +87,8 @@ function enableDefaultStrategies(tf: TimeframeSettings): TimeframeSettings {
       const shouldEnable = DEFAULT_ENABLED_STRATEGIES.includes(strat.strategy);
       if (!shouldEnable) return strat;
 
-      // Only enable if not already configured (preserve user's ratio choices)
-      const hasAnyEnabled = strat.long.enabled || strat.short.enabled;
-      if (hasAnyEnabled) return strat;
-
+      // Always enable BOTH long and short for default strategies
+      // (preserve ratio visibility choices, but ensure both directions are enabled)
       return {
         ...strat,
         long: { ...strat.long, enabled: true },
@@ -205,14 +204,47 @@ export function StrategyPanel({
     onVisibilityChange({ timeframes: newTimeframes });
   };
 
-  // Get level count for a timeframe
-  const getTimeframeLevelCount = (tf: Timeframe): number => {
+  // Get configured level count for a timeframe (based on enabled ratios)
+  const getTimeframeConfiguredCount = (tf: Timeframe): number => {
+    const tfConfig = visibilityConfig.timeframes.find((t) => t.timeframe === tf);
+    if (!tfConfig || !tfConfig.enabled) return 0;
+
+    let count = 0;
+    for (const strat of tfConfig.strategies) {
+      if (strat.long.enabled) {
+        count += strat.long.ratios.filter((r) => r.visible).length;
+      }
+      if (strat.short.enabled) {
+        count += strat.short.ratios.filter((r) => r.visible).length;
+      }
+    }
+    return count;
+  };
+
+  // Get fetched level count for a timeframe (actual fetched levels)
+  const getTimeframeFetchedCount = (tf: Timeframe): number => {
     const tfData = byTimeframe.find((t) => t.timeframe === tf);
     return tfData?.levels.length ?? 0;
   };
 
-  // Get level count for a strategy within a timeframe
-  const getStrategyLevelCount = (tf: Timeframe, strategy: StrategySource): number => {
+  // Get configured level count for a strategy within a timeframe
+  const getStrategyConfiguredCount = (tf: Timeframe, strategy: StrategySource): number => {
+    const tfConfig = visibilityConfig.timeframes.find((t) => t.timeframe === tf);
+    const stratConfig = tfConfig?.strategies.find((s) => s.strategy === strategy);
+    if (!stratConfig) return 0;
+
+    let count = 0;
+    if (stratConfig.long.enabled) {
+      count += stratConfig.long.ratios.filter((r) => r.visible).length;
+    }
+    if (stratConfig.short.enabled) {
+      count += stratConfig.short.ratios.filter((r) => r.visible).length;
+    }
+    return count;
+  };
+
+  // Get fetched level count for a strategy within a timeframe
+  const getStrategyFetchedCount = (tf: Timeframe, strategy: StrategySource): number => {
     const tfData = byTimeframe.find((t) => t.timeframe === tf);
     return tfData?.levels.filter((l) => l.strategy === strategy).length ?? 0;
   };
@@ -267,7 +299,8 @@ export function StrategyPanel({
         {ALL_TIMEFRAMES.map((tf) => {
           const isEnabled = isTimeframeEnabled(tf);
           const isLoading = loadingStates[tf];
-          const levelCount = getTimeframeLevelCount(tf);
+          const configuredCount = getTimeframeConfiguredCount(tf);
+          const fetchedCount = getTimeframeFetchedCount(tf);
           const isExpanded = expandedTimeframes[tf] ?? false;
           const tfConfig = visibilityConfig.timeframes.find((t) => t.timeframe === tf);
 
@@ -302,8 +335,16 @@ export function StrategyPanel({
                       {isLoading ? (
                         <Skeleton className="h-4 w-6" />
                       ) : (
-                        <Badge variant="secondary" className="text-xs h-5">
-                          {levelCount}
+                        <Badge
+                          variant={fetchedCount > 0 ? "secondary" : "outline"}
+                          className={`text-xs h-5 ${fetchedCount === 0 ? "text-muted-foreground" : ""}`}
+                          title={
+                            fetchedCount > 0
+                              ? `${fetchedCount} levels fetched, ${configuredCount} ratios configured`
+                              : `${configuredCount} ratios configured (no data fetched yet - rate limited or no cache)`
+                          }
+                        >
+                          {fetchedCount > 0 ? fetchedCount : configuredCount}
                         </Badge>
                       )}
                     </>
@@ -326,7 +367,8 @@ export function StrategyPanel({
                     {ALL_STRATEGIES.map((strategy) => {
                       const stratKey = `${tf}-${strategy}`;
                       const isStratExpanded = expandedStrategies[stratKey] ?? false;
-                      const stratLevelCount = getStrategyLevelCount(tf, strategy);
+                      const stratConfiguredCount = getStrategyConfiguredCount(tf, strategy);
+                      const stratFetchedCount = getStrategyFetchedCount(tf, strategy);
                       const stratConfig = tfConfig?.strategies.find(
                         (s) => s.strategy === strategy
                       );
@@ -353,12 +395,13 @@ export function StrategyPanel({
                             <span className="text-sm">
                               {STRATEGY_DISPLAY_NAMES[strategy]}
                             </span>
-                            {hasAnyEnabled && stratLevelCount > 0 && (
+                            {hasAnyEnabled && (
                               <Badge
                                 variant="outline"
                                 className="text-xs h-4 px-1.5"
+                                title={`${stratFetchedCount} fetched / ${stratConfiguredCount} configured`}
                               >
-                                {stratLevelCount}
+                                {stratFetchedCount}/{stratConfiguredCount}
                               </Badge>
                             )}
                             <div className="flex-1" />
