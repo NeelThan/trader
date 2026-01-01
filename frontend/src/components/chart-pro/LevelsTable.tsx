@@ -7,7 +7,7 @@
  * Syncs with StrategyPanel visibility configuration.
  */
 
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { ArrowUpDown, ArrowUp, ArrowDown, Eye, EyeOff, ChevronDown, ChevronRight, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,29 +78,131 @@ const HEAT_EXPLANATION = `Heat Score (0-100) measures confluence:
 Higher heat = more levels clustered at similar prices,
 indicating stronger support/resistance.`;
 
-// Get calculation formula based on strategy
-function getCalculationFormula(level: StrategyLevel): string {
+// Format price for display
+function formatCalcPrice(price: number | undefined): string {
+  if (price === undefined) return "N/A";
+  if (price >= 1000) {
+    return price.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  return price.toFixed(4);
+}
+
+// Get calculation details based on strategy
+function getCalculationDetails(level: StrategyLevel): {
+  formula: string;
+  inputs: { label: string; value: string }[];
+  calculation: string;
+} {
   const dir = level.direction === "long" ? "buy" : "sell";
+  const high = level.pivotHigh;
+  const low = level.pivotLow;
+  const a = level.pointA;
+  const b = level.pointB;
+  const c = level.pointC;
 
   switch (level.strategy) {
-    case "RETRACEMENT":
-      return dir === "buy"
-        ? `Price = High - (Range × ${level.ratio})`
-        : `Price = Low + (Range × ${level.ratio})`;
-    case "EXTENSION":
-      return dir === "buy"
-        ? `Price = High - (Range × ${level.ratio})`
-        : `Price = Low + (Range × ${level.ratio})`;
-    case "PROJECTION":
-      return dir === "buy"
-        ? `Price = C - (|A-B| × ${level.ratio})`
-        : `Price = C + (|A-B| × ${level.ratio})`;
-    case "EXPANSION":
-      return dir === "buy"
-        ? `Price = B - (|A-B| × ${level.ratio})`
-        : `Price = B + (|A-B| × ${level.ratio})`;
+    case "RETRACEMENT": {
+      if (high !== undefined && low !== undefined) {
+        const range = high - low;
+        return {
+          formula: dir === "buy"
+            ? `Price = High - (Range × ${level.ratio})`
+            : `Price = Low + (Range × ${level.ratio})`,
+          inputs: [
+            { label: "Pivot High", value: formatCalcPrice(high) },
+            { label: "Pivot Low", value: formatCalcPrice(low) },
+            { label: "Range", value: formatCalcPrice(range) },
+          ],
+          calculation: dir === "buy"
+            ? `${formatCalcPrice(high)} - (${formatCalcPrice(range)} × ${level.ratio}) = ${formatCalcPrice(level.price)}`
+            : `${formatCalcPrice(low)} + (${formatCalcPrice(range)} × ${level.ratio}) = ${formatCalcPrice(level.price)}`,
+        };
+      }
+      return {
+        formula: "Retracement calculation",
+        inputs: [],
+        calculation: `Result: ${formatCalcPrice(level.price)}`,
+      };
+    }
+    case "EXTENSION": {
+      if (high !== undefined && low !== undefined) {
+        const range = high - low;
+        return {
+          formula: dir === "buy"
+            ? `Price = Low - (Range × ${level.ratio})`
+            : `Price = High + (Range × ${level.ratio})`,
+          inputs: [
+            { label: "Pivot High", value: formatCalcPrice(high) },
+            { label: "Pivot Low", value: formatCalcPrice(low) },
+            { label: "Range", value: formatCalcPrice(range) },
+          ],
+          calculation: dir === "buy"
+            ? `${formatCalcPrice(low)} - (${formatCalcPrice(range)} × ${level.ratio}) = ${formatCalcPrice(level.price)}`
+            : `${formatCalcPrice(high)} + (${formatCalcPrice(range)} × ${level.ratio}) = ${formatCalcPrice(level.price)}`,
+        };
+      }
+      return {
+        formula: "Extension calculation",
+        inputs: [],
+        calculation: `Result: ${formatCalcPrice(level.price)}`,
+      };
+    }
+    case "PROJECTION": {
+      if (a !== undefined && b !== undefined && c !== undefined) {
+        const swing = Math.abs(a - b);
+        return {
+          formula: dir === "buy"
+            ? `Price = C - (|A-B| × ${level.ratio})`
+            : `Price = C + (|A-B| × ${level.ratio})`,
+          inputs: [
+            { label: "Point A", value: formatCalcPrice(a) },
+            { label: "Point B", value: formatCalcPrice(b) },
+            { label: "Point C", value: formatCalcPrice(c) },
+            { label: "|A-B|", value: formatCalcPrice(swing) },
+          ],
+          calculation: dir === "buy"
+            ? `${formatCalcPrice(c)} - (${formatCalcPrice(swing)} × ${level.ratio}) = ${formatCalcPrice(level.price)}`
+            : `${formatCalcPrice(c)} + (${formatCalcPrice(swing)} × ${level.ratio}) = ${formatCalcPrice(level.price)}`,
+        };
+      }
+      return {
+        formula: "Projection calculation",
+        inputs: [],
+        calculation: `Result: ${formatCalcPrice(level.price)}`,
+      };
+    }
+    case "EXPANSION": {
+      if (a !== undefined && b !== undefined) {
+        const swing = Math.abs(a - b);
+        return {
+          formula: dir === "buy"
+            ? `Price = B + (|A-B| × ${level.ratio})`
+            : `Price = B - (|A-B| × ${level.ratio})`,
+          inputs: [
+            { label: "Point A", value: formatCalcPrice(a) },
+            { label: "Point B", value: formatCalcPrice(b) },
+            { label: "|A-B|", value: formatCalcPrice(swing) },
+          ],
+          calculation: dir === "buy"
+            ? `${formatCalcPrice(b)} + (${formatCalcPrice(swing)} × ${level.ratio}) = ${formatCalcPrice(level.price)}`
+            : `${formatCalcPrice(b)} - (${formatCalcPrice(swing)} × ${level.ratio}) = ${formatCalcPrice(level.price)}`,
+        };
+      }
+      return {
+        formula: "Expansion calculation",
+        inputs: [],
+        calculation: `Result: ${formatCalcPrice(level.price)}`,
+      };
+    }
     default:
-      return "N/A";
+      return {
+        formula: "N/A",
+        inputs: [],
+        calculation: `Result: ${formatCalcPrice(level.price)}`,
+      };
   }
 }
 
@@ -403,9 +505,8 @@ export function LevelsTable({
               const colSpan = 6 + (onToggleLevelVisibility ? 1 : 0) + 1; // +1 for expand column
 
               return (
-                <>
+                <React.Fragment key={level.id}>
                   <TableRow
-                    key={level.id}
                     className={`cursor-pointer ${
                       onLevelClick ? "hover:bg-muted/50" : ""
                     } ${isExpanded ? "bg-muted/30" : ""}`}
@@ -511,53 +612,81 @@ export function LevelsTable({
                   </TableRow>
 
                   {/* Expanded calculation details */}
-                  {isExpanded && (
-                    <TableRow key={`${level.id}-details`} className="bg-muted/20">
-                      <TableCell colSpan={colSpan} className="py-3 px-4">
-                        <div className="space-y-2 text-xs">
-                          <div className="font-medium text-muted-foreground">Calculation Details</div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <span className="text-muted-foreground">Strategy:</span>{" "}
-                              <span className="font-mono">{STRATEGY_DISPLAY_NAMES[level.strategy]}</span>
+                  {isExpanded && (() => {
+                    const calcDetails = getCalculationDetails(level);
+                    return (
+                      <TableRow key={`${level.id}-details`} className="bg-muted/20">
+                        <TableCell colSpan={colSpan} className="py-3 px-4">
+                          <div className="space-y-3 text-xs">
+                            <div className="font-medium text-muted-foreground">Calculation Details</div>
+
+                            {/* Basic info */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                              <div>
+                                <span className="text-muted-foreground">Strategy:</span>{" "}
+                                <span className="font-mono">{STRATEGY_DISPLAY_NAMES[level.strategy]}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Direction:</span>{" "}
+                                <span className="font-mono">{level.direction === "long" ? "Buy" : "Sell"}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Ratio:</span>{" "}
+                                <span className="font-mono">{(level.ratio * 100).toFixed(1)}%</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Timeframe:</span>{" "}
+                                <span className="font-mono">{level.timeframe}</span>
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-muted-foreground">Direction:</span>{" "}
-                              <span className="font-mono">{level.direction === "long" ? "Buy" : "Sell"}</span>
+
+                            {/* Input values */}
+                            {calcDetails.inputs.length > 0 && (
+                              <div className="pt-2 border-t border-muted">
+                                <div className="text-muted-foreground mb-2">Input Values:</div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-muted/30 p-2 rounded">
+                                  {calcDetails.inputs.map((input) => (
+                                    <div key={input.label}>
+                                      <span className="text-muted-foreground">{input.label}:</span>{" "}
+                                      <span className="font-mono font-medium">{input.value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Formula */}
+                            <div className="pt-2 border-t border-muted">
+                              <span className="text-muted-foreground">Formula:</span>{" "}
+                              <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">
+                                {calcDetails.formula}
+                              </code>
                             </div>
+
+                            {/* Full calculation */}
                             <div>
-                              <span className="text-muted-foreground">Ratio:</span>{" "}
-                              <span className="font-mono">{(level.ratio * 100).toFixed(1)}%</span>
+                              <span className="text-muted-foreground">Calculation:</span>{" "}
+                              <code className="px-1.5 py-0.5 bg-blue-500/10 border border-blue-500/30 rounded text-xs font-mono text-blue-400">
+                                {calcDetails.calculation}
+                              </code>
                             </div>
-                            <div>
-                              <span className="text-muted-foreground">Timeframe:</span>{" "}
-                              <span className="font-mono">{level.timeframe}</span>
+
+                            {/* Heat score */}
+                            <div className="pt-2 border-t border-muted text-muted-foreground">
+                              <span className="font-medium">Heat Score: {level.heat}</span>
+                              {" - "}
+                              {level.heat >= 80 ? "Very High confluence zone" :
+                               level.heat >= 60 ? "High confluence zone" :
+                               level.heat >= 40 ? "Medium confluence" :
+                               level.heat >= 20 ? "Moderate clustering" :
+                               "Low confluence"}
                             </div>
                           </div>
-                          <div className="pt-2 border-t border-muted">
-                            <span className="text-muted-foreground">Formula:</span>{" "}
-                            <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">
-                              {getCalculationFormula(level)}
-                            </code>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Result:</span>{" "}
-                            <span className="font-mono font-medium">{formatPrice(level.price)}</span>
-                          </div>
-                          <div className="pt-2 text-muted-foreground">
-                            <span className="font-medium">Heat Score: {level.heat}</span>
-                            {" - "}
-                            {level.heat >= 80 ? "Very High confluence zone" :
-                             level.heat >= 60 ? "High confluence zone" :
-                             level.heat >= 40 ? "Medium confluence" :
-                             level.heat >= 20 ? "Moderate clustering" :
-                             "Low confluence"}
-                          </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })()}
+                </React.Fragment>
               );
             })}
           </TableBody>

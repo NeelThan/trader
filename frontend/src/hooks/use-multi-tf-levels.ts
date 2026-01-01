@@ -273,14 +273,41 @@ function extractABCPoints(
 }
 
 /**
+ * Options for converting Fibonacci response to levels
+ */
+type FibConversionOptions = {
+  response: FibonacciResponse;
+  timeframe: Timeframe;
+  strategy: StrategySource;
+  direction: LevelDirection;
+  /** Pivot high price used in calculation */
+  pivotHigh?: number;
+  /** Pivot low price used in calculation */
+  pivotLow?: number;
+  /** Point A price (for projection/expansion) */
+  pointA?: number;
+  /** Point B price (for projection/expansion) */
+  pointB?: number;
+  /** Point C price (for projection) */
+  pointC?: number;
+};
+
+/**
  * Convert Fibonacci API response to StrategyLevel array
  */
-function fibResponseToLevels(
-  response: FibonacciResponse,
-  timeframe: Timeframe,
-  strategy: StrategySource,
-  direction: LevelDirection
-): StrategyLevel[] {
+function fibResponseToLevels(options: FibConversionOptions): StrategyLevel[] {
+  const {
+    response,
+    timeframe,
+    strategy,
+    direction,
+    pivotHigh,
+    pivotLow,
+    pointA,
+    pointB,
+    pointC,
+  } = options;
+
   // Map strategy to level type
   const typeMap: Record<StrategySource, StrategyLevel["type"]> = {
     RETRACEMENT: "retracement",
@@ -307,6 +334,11 @@ function fibResponseToLevels(
       label: formatRatioLabel(strategy, ratio),
       visible: true,
       heat: 0, // Will be calculated after all levels are collected
+      pivotHigh,
+      pivotLow,
+      pointA,
+      pointB,
+      pointC,
     };
   });
 }
@@ -424,13 +456,27 @@ export function useMultiTFLevels({
         if (strategy === "RETRACEMENT") {
           const retracement = await fetchFibonacciLevels(high, low, "buy", "retracement");
           if (retracement) {
-            levels.push(...fibResponseToLevels(retracement, timeframe, "RETRACEMENT", "long"));
+            levels.push(...fibResponseToLevels({
+              response: retracement,
+              timeframe,
+              strategy: "RETRACEMENT",
+              direction: "long",
+              pivotHigh: high,
+              pivotLow: low,
+            }));
           }
         }
         if (strategy === "EXTENSION") {
           const extension = await fetchFibonacciLevels(high, low, "buy", "extension");
           if (extension) {
-            levels.push(...fibResponseToLevels(extension, timeframe, "EXTENSION", "long"));
+            levels.push(...fibResponseToLevels({
+              response: extension,
+              timeframe,
+              strategy: "EXTENSION",
+              direction: "long",
+              pivotHigh: high,
+              pivotLow: low,
+            }));
           }
         }
         if (strategy === "PROJECTION" && buyABC) {
@@ -441,14 +487,29 @@ export function useMultiTFLevels({
             "buy"
           );
           if (projection) {
-            levels.push(...fibResponseToLevels(projection, timeframe, "PROJECTION", "long"));
+            levels.push(...fibResponseToLevels({
+              response: projection,
+              timeframe,
+              strategy: "PROJECTION",
+              direction: "long",
+              pointA: buyABC.pointA,
+              pointB: buyABC.pointB,
+              pointC: buyABC.pointC,
+            }));
           }
         }
         if (strategy === "EXPANSION") {
           // For buy expansion: project from low to high
           const expansion = await fetchExpansionLevels(low, high, "buy");
           if (expansion) {
-            levels.push(...fibResponseToLevels(expansion, timeframe, "EXPANSION", "long"));
+            levels.push(...fibResponseToLevels({
+              response: expansion,
+              timeframe,
+              strategy: "EXPANSION",
+              direction: "long",
+              pointA: low,
+              pointB: high,
+            }));
           }
         }
       }
@@ -458,13 +519,27 @@ export function useMultiTFLevels({
         if (strategy === "RETRACEMENT") {
           const retracement = await fetchFibonacciLevels(high, low, "sell", "retracement");
           if (retracement) {
-            levels.push(...fibResponseToLevels(retracement, timeframe, "RETRACEMENT", "short"));
+            levels.push(...fibResponseToLevels({
+              response: retracement,
+              timeframe,
+              strategy: "RETRACEMENT",
+              direction: "short",
+              pivotHigh: high,
+              pivotLow: low,
+            }));
           }
         }
         if (strategy === "EXTENSION") {
           const extension = await fetchFibonacciLevels(high, low, "sell", "extension");
           if (extension) {
-            levels.push(...fibResponseToLevels(extension, timeframe, "EXTENSION", "short"));
+            levels.push(...fibResponseToLevels({
+              response: extension,
+              timeframe,
+              strategy: "EXTENSION",
+              direction: "short",
+              pivotHigh: high,
+              pivotLow: low,
+            }));
           }
         }
         if (strategy === "PROJECTION" && sellABC) {
@@ -475,14 +550,29 @@ export function useMultiTFLevels({
             "sell"
           );
           if (projection) {
-            levels.push(...fibResponseToLevels(projection, timeframe, "PROJECTION", "short"));
+            levels.push(...fibResponseToLevels({
+              response: projection,
+              timeframe,
+              strategy: "PROJECTION",
+              direction: "short",
+              pointA: sellABC.pointA,
+              pointB: sellABC.pointB,
+              pointC: sellABC.pointC,
+            }));
           }
         }
         if (strategy === "EXPANSION") {
           // For sell expansion: project from high to low
           const expansion = await fetchExpansionLevels(high, low, "sell");
           if (expansion) {
-            levels.push(...fibResponseToLevels(expansion, timeframe, "EXPANSION", "short"));
+            levels.push(...fibResponseToLevels({
+              response: expansion,
+              timeframe,
+              strategy: "EXPANSION",
+              direction: "short",
+              pointA: high,
+              pointB: low,
+            }));
           }
         }
       }

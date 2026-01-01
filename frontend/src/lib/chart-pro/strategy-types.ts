@@ -81,6 +81,16 @@ export type StrategyLevel = {
   heat: number;
   /** Time/date when pivot was detected (for display) */
   pivotTime?: Time;
+  /** Pivot high price used in calculation */
+  pivotHigh?: number;
+  /** Pivot low price used in calculation */
+  pivotLow?: number;
+  /** Point A price (for projection/expansion) */
+  pointA?: number;
+  /** Point B price (for projection/expansion) */
+  pointB?: number;
+  /** Point C price (for projection) */
+  pointC?: number;
 };
 
 /**

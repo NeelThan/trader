@@ -427,6 +427,25 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     chartRef.current = chart;
     seriesRef.current = series;
 
+    // Set up initial markers from ref (v5 API)
+    if (markersPropsRef.current.length > 0) {
+      const seriesMarkers: SeriesMarker<Time>[] = markersPropsRef.current.map((m) => ({
+        time: m.time,
+        position: m.position,
+        color: m.color,
+        shape: m.shape,
+        text: m.text ?? "",
+        size: m.size ?? 1,
+      }));
+      // Sort markers by time (required by lightweight-charts)
+      seriesMarkers.sort((a, b) => {
+        const timeA = typeof a.time === "number" ? a.time : new Date(a.time as string).getTime();
+        const timeB = typeof b.time === "number" ? b.time : new Date(b.time as string).getTime();
+        return timeA - timeB;
+      });
+      markersPluginRef.current = createSeriesMarkers(series, seriesMarkers);
+    }
+
     // Handle crosshair move (use ref to avoid recreating chart when callback changes)
     chart.subscribeCrosshairMove((param) => {
       if (!onCrosshairMoveRef.current) return;
