@@ -52,6 +52,9 @@ import {
 const SYMBOLS: MarketSymbol[] = ["DJI", "SPX", "NDX", "BTCUSD", "EURUSD", "GOLD"];
 const TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
 
+// Default chart colors (fallback when settings haven't loaded)
+const DEFAULT_CHART_COLORS = { up: "#22c55e", down: "#ef4444" } as const;
+
 type ChartType = "candlestick" | "bar" | "heikin-ashi";
 
 export default function ChartProPage() {
@@ -104,7 +107,8 @@ export default function ChartProPage() {
 
   // Global settings for chart colors
   const { settings } = useSettings();
-  const chartColors = COLOR_SCHEMES[settings.colorScheme];
+  // Ensure chartColors always has valid values (fallback to default if colorScheme is invalid)
+  const chartColors = COLOR_SCHEMES[settings.colorScheme] ?? DEFAULT_CHART_COLORS;
 
   // Trend alignment across all timeframes
   const {
@@ -330,7 +334,7 @@ export default function ChartProPage() {
         size: 1,
       } as ChartMarker;
     });
-  }, [swingResult, swingEnabled, editablePivots, chartColors]);
+  }, [swingResult, swingEnabled, editablePivots]);
 
   // Get current OHLC values
   const currentOHLC = useMemo(() => {
