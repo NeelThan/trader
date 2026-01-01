@@ -5,3 +5,5 @@
  */
 
 export { RSIPane } from "./RSIPane";
+export { StrategyPanel } from "./StrategyPanel";
+export { LevelsTable } from "./LevelsTable";

@@ -40,12 +40,17 @@ export type LevelDirection = "long" | "short";
 
 /**
  * Standard Fibonacci ratios for each strategy
+ * These MUST match the backend enums in fibonacci.py
  */
 export const FIBONACCI_RATIOS: Record<StrategySource, number[]> = {
-  RETRACEMENT: [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1],
-  EXTENSION: [1.272, 1.414, 1.618, 2.0, 2.618],
-  PROJECTION: [0.618, 1.0, 1.272, 1.618, 2.0, 2.618],
-  EXPANSION: [0.618, 1.0, 1.618, 2.0, 2.618],
+  // Backend: FibonacciLevel enum - 0.382, 0.5, 0.618, 0.786
+  RETRACEMENT: [0.382, 0.5, 0.618, 0.786],
+  // Backend: ExtensionLevel enum - 1.272, 1.618, 2.618
+  EXTENSION: [1.272, 1.618, 2.618],
+  // Backend: ProjectionLevel enum - 0.618, 0.786, 1.0, 1.272, 1.618
+  PROJECTION: [0.618, 0.786, 1.0, 1.272, 1.618],
+  // Backend: ExpansionLevel enum - 0.382, 0.5, 0.618, 1.0, 1.618
+  EXPANSION: [0.382, 0.5, 0.618, 1.0, 1.618],
   HARMONIC: [0.786, 0.886], // Common PRZ levels
   SIGNAL: [], // Signal levels don't use ratios
 };

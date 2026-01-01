@@ -146,6 +146,7 @@ export function StrategyPanel({
   };
 
   // Toggle strategy direction (immutable update)
+  // Behavior: If ANY ratio is unchecked → check ALL. If ALL are checked → uncheck ALL.
   const toggleDirection = (
     timeframe: Timeframe,
     strategy: StrategySource,
@@ -157,11 +158,21 @@ export function StrategyPanel({
       const newStrategies = tf.strategies.map((strat) => {
         if (strat.strategy !== strategy) return strat;
 
+        const currentDir = strat[direction];
+        const allRatiosVisible = currentDir.ratios.every((r) => r.visible);
+
+        // If all ratios are visible AND direction is enabled → disable all
+        // Otherwise → enable direction and make all ratios visible
+        const shouldEnableAll = !currentDir.enabled || !allRatiosVisible;
+
         return {
           ...strat,
           [direction]: {
-            ...strat[direction],
-            enabled: !strat[direction].enabled,
+            enabled: shouldEnableAll,
+            ratios: currentDir.ratios.map((r) => ({
+              ...r,
+              visible: shouldEnableAll,
+            })),
           },
         };
       });

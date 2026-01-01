@@ -17,7 +17,8 @@ import {
 
 // Version the storage key so we can invalidate old configs when structure changes
 // v3: Added PROJECTION and EXPANSION strategies
-const STORAGE_VERSION = 3;
+// v4: Fixed ratios to match backend (removed 0, 0.236, 1.0 from retracement, etc.)
+const STORAGE_VERSION = 4;
 const STORAGE_KEY = `chart-pro-visibility-config-v${STORAGE_VERSION}`;
 
 /**
