@@ -32,6 +32,7 @@ from trader.market_data import MarketDataService
 from trader.pivots import (
     OHLCBar,
     PivotPoint,
+    classify_swings,
     detect_pivots,
 )
 from trader.position_sizing import (
@@ -260,6 +261,29 @@ class PivotDetectResponse(BaseModel):
     pivot_low: float
     swing_high: PivotPointData | None
     swing_low: PivotPointData | None
+
+
+class SwingMarkerData(BaseModel):
+    """Swing marker data in response."""
+
+    index: int
+    price: float
+    time: str | int
+    swing_type: str  # "HH", "HL", "LH", "LL"
+
+
+class SwingDetectRequest(BaseModel):
+    """Request model for swing pattern detection."""
+
+    data: list[OHLCBarModel]
+    lookback: int = 5
+
+
+class SwingDetectResponse(BaseModel):
+    """Response model for swing pattern detection."""
+
+    pivots: list[PivotPointData]
+    markers: list[SwingMarkerData]
 
 
 class MarketDataRequest(BaseModel):
@@ -642,6 +666,59 @@ async def pivot_detect(request: PivotDetectRequest) -> PivotDetectResponse:
         swing_high=pivot_to_data(result.swing_high) if result.swing_high else None,
         swing_low=pivot_to_data(result.swing_low) if result.swing_low else None,
     )
+
+
+@app.post("/pivot/swings", response_model=SwingDetectResponse)
+async def pivot_swings(request: SwingDetectRequest) -> SwingDetectResponse:
+    """Detect and classify swing patterns (HH/HL/LH/LL) in OHLC data.
+
+    First detects swing highs and lows, then classifies each pivot
+    by comparing to the previous pivot of the same type:
+    - HH (Higher High): current high > previous high
+    - HL (Higher Low): current low > previous low
+    - LH (Lower High): current high < previous high
+    - LL (Lower Low): current low < previous low
+    """
+    # Convert Pydantic models to dataclasses
+    ohlc_data = [
+        OHLCBar(
+            time=bar.time,
+            open=bar.open,
+            high=bar.high,
+            low=bar.low,
+            close=bar.close,
+        )
+        for bar in request.data
+    ]
+
+    # Detect pivots
+    pivot_result = detect_pivots(data=ohlc_data, lookback=request.lookback)
+
+    # Classify swings
+    swing_markers = classify_swings(pivot_result.pivots)
+
+    # Convert to response format
+    pivots = [
+        PivotPointData(
+            index=p.index,
+            price=p.price,
+            type=p.type,
+            time=p.time,
+        )
+        for p in pivot_result.pivots
+    ]
+
+    markers = [
+        SwingMarkerData(
+            index=m.index,
+            price=m.price,
+            time=m.time,
+            swing_type=m.swing_type,
+        )
+        for m in swing_markers
+    ]
+
+    return SwingDetectResponse(pivots=pivots, markers=markers)
 
 
 @app.get("/market-data", response_model=MarketDataResponse)

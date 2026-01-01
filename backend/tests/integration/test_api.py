@@ -1248,3 +1248,90 @@ class TestRSIEndpoint:
         )
 
         assert response.status_code == 400
+
+
+class TestSwingEndpoint:
+    """Tests for swing pattern classification endpoint."""
+
+    async def test_classifies_swing_patterns(self, client: AsyncClient) -> None:
+        """POST /pivot/swings returns HH/HL/LH/LL classifications."""
+        # Create uptrend data with clear highs and lows
+        data = [
+            {"time": "2024-01-01", "open": 100, "high": 105, "low": 95, "close": 102},
+            {"time": "2024-01-02", "open": 102, "high": 115, "low": 100, "close": 112},
+            {"time": "2024-01-03", "open": 112, "high": 118, "low": 108, "close": 110},
+            {"time": "2024-01-04", "open": 110, "high": 125, "low": 107, "close": 122},
+            {"time": "2024-01-05", "open": 122, "high": 128, "low": 118, "close": 120},
+        ]
+        response = await client.post(
+            "/pivot/swings",
+            json={"data": data, "lookback": 1},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert "markers" in result
+        assert isinstance(result["markers"], list)
+
+    async def test_swing_markers_have_required_fields(
+        self, client: AsyncClient
+    ) -> None:
+        """Swing markers contain index, price, time, and swing_type."""
+        data = [
+            {"time": "2024-01-01", "open": 100, "high": 110, "low": 95, "close": 105},
+            {"time": "2024-01-02", "open": 105, "high": 115, "low": 100, "close": 112},
+            {"time": "2024-01-03", "open": 112, "high": 118, "low": 108, "close": 110},
+            {"time": "2024-01-04", "open": 110, "high": 125, "low": 105, "close": 122},
+            {"time": "2024-01-05", "open": 122, "high": 130, "low": 115, "close": 125},
+        ]
+        response = await client.post(
+            "/pivot/swings",
+            json={"data": data, "lookback": 1},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        if result["markers"]:
+            marker = result["markers"][0]
+            assert "index" in marker
+            assert "price" in marker
+            assert "time" in marker
+            assert "swing_type" in marker
+            assert marker["swing_type"] in ["HH", "HL", "LH", "LL"]
+
+    async def test_returns_empty_markers_for_insufficient_data(
+        self, client: AsyncClient
+    ) -> None:
+        """Returns empty markers when not enough data for pivot detection."""
+        data = [
+            {"time": "2024-01-01", "open": 100, "high": 105, "low": 95, "close": 102},
+        ]
+        response = await client.post(
+            "/pivot/swings",
+            json={"data": data, "lookback": 5},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result["markers"] == []
+
+    async def test_returns_pivots_with_swing_markers(
+        self, client: AsyncClient
+    ) -> None:
+        """Response includes both pivots and classified markers."""
+        data = [
+            {"time": "2024-01-01", "open": 100, "high": 110, "low": 95, "close": 105},
+            {"time": "2024-01-02", "open": 105, "high": 115, "low": 100, "close": 112},
+            {"time": "2024-01-03", "open": 112, "high": 118, "low": 108, "close": 110},
+            {"time": "2024-01-04", "open": 110, "high": 125, "low": 105, "close": 122},
+            {"time": "2024-01-05", "open": 122, "high": 130, "low": 115, "close": 125},
+        ]
+        response = await client.post(
+            "/pivot/swings",
+            json={"data": data, "lookback": 1},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert "pivots" in result
+        assert "markers" in result

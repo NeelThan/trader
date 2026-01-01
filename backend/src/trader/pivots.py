@@ -5,6 +5,7 @@ This module provides functions to identify swing highs and lows in OHLC data:
 - Swing lows: local price minima within a lookback window
 - Alternating pattern enforcement: ensures pivots alternate high-low
 - Recent pivot extraction for Fibonacci calculations
+- Swing classification: HH/HL/LH/LL pattern detection
 
 All pivot detection is performed here to ensure consistency. The frontend
 should use these endpoints rather than implementing the detection itself.
@@ -69,6 +70,23 @@ class PivotDetectionResult:
     pivot_low: float
     swing_high: PivotPoint | None
     swing_low: PivotPoint | None
+
+
+@dataclass(frozen=True)
+class SwingMarker:
+    """Classified swing point with HH/HL/LH/LL pattern type.
+
+    Attributes:
+        index: Position in the OHLC data array.
+        price: The pivot price.
+        time: Timestamp from the corresponding OHLC bar.
+        swing_type: Pattern classification (HH, HL, LH, or LL).
+    """
+
+    index: int
+    price: float
+    time: str | int
+    swing_type: Literal["HH", "HL", "LH", "LL"]
 
 
 def _is_swing_high(data: list[OHLCBar], index: int, lookback: int) -> bool:
@@ -177,3 +195,64 @@ def detect_pivots(
         swing_high=high_pivots[-1] if high_pivots else None,
         swing_low=low_pivots[-1] if low_pivots else None,
     )
+
+
+def classify_swings(pivots: list[PivotPoint]) -> list[SwingMarker]:
+    """Classify pivot points into swing patterns (HH/HL/LH/LL).
+
+    Compares consecutive pivots of the same type:
+    - HH (Higher High): current high > previous high
+    - HL (Higher Low): current low > previous low
+    - LH (Lower High): current high < previous high
+    - LL (Lower Low): current low < previous low
+
+    The first pivot of each type cannot be classified since there's
+    no previous pivot to compare against.
+
+    Args:
+        pivots: List of PivotPoint objects from detect_pivots().
+
+    Returns:
+        List of SwingMarker objects with classified swing types.
+    """
+    if len(pivots) < 2:
+        return []
+
+    markers: list[SwingMarker] = []
+    prev_high: PivotPoint | None = None
+    prev_low: PivotPoint | None = None
+
+    for pivot in pivots:
+        if pivot.type == "high":
+            if prev_high is not None:
+                swing_type: Literal["HH", "HL", "LH", "LL"]
+                if pivot.price > prev_high.price:
+                    swing_type = "HH"
+                else:
+                    swing_type = "LH"
+                markers.append(
+                    SwingMarker(
+                        index=pivot.index,
+                        price=pivot.price,
+                        time=pivot.time,
+                        swing_type=swing_type,
+                    )
+                )
+            prev_high = pivot
+        else:  # pivot.type == "low"
+            if prev_low is not None:
+                if pivot.price > prev_low.price:
+                    swing_type = "HL"
+                else:
+                    swing_type = "LL"
+                markers.append(
+                    SwingMarker(
+                        index=pivot.index,
+                        price=pivot.price,
+                        time=pivot.time,
+                        swing_type=swing_type,
+                    )
+                )
+            prev_low = pivot
+
+    return markers

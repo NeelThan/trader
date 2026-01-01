@@ -17,15 +17,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CandlestickChart, CandlestickChartHandle, ChartMarker, PriceLine } from "@/components/trading";
-import { RSIPane, StrategyPanel, LevelsTable } from "@/components/chart-pro";
+import { CandlestickChart, CandlestickChartHandle, ChartMarker, PriceLine, LineOverlay } from "@/components/trading";
+import {
+  RSIPane,
+  StrategyPanel,
+  LevelsTable,
+  SwingPivotPanel,
+} from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useMACD } from "@/hooks/use-macd";
 import { useRSI } from "@/hooks/use-rsi";
 import { useSwingMarkers } from "@/hooks/use-swing-markers";
 import { useMultiTFLevels } from "@/hooks/use-multi-tf-levels";
 import { usePersistedVisibilityConfig } from "@/hooks/use-persisted-visibility-config";
+import { usePersistedSwingSettings } from "@/hooks/use-persisted-swing-settings";
+import { useEditablePivots } from "@/hooks/use-editable-pivots";
 import { useDataMode } from "@/hooks/use-data-mode";
+import { generateSwingLineOverlays } from "@/lib/chart-pro/swing-overlays";
 import {
   Timeframe,
   MarketSymbol,
@@ -58,6 +66,24 @@ export default function ChartProPage() {
     resetToDefaults,
     isLoaded: isConfigLoaded,
   } = usePersistedVisibilityConfig();
+
+  // Swing settings (per-timeframe lookback and showLines)
+  const {
+    swingConfig,
+    getTimeframeSettings,
+    updateTimeframeLookback,
+    updateTimeframeEnabled,
+    updateTimeframeShowLines,
+    resetToDefaults: resetSwingDefaults,
+    isLoaded: isSwingConfigLoaded,
+  } = usePersistedSwingSettings();
+
+  // Get current timeframe swing settings (memoized for stable reference)
+  const currentSwingSettings = useMemo(
+    () => getTimeframeSettings(timeframe),
+    [getTimeframeSettings, timeframe]
+  );
+
   const [showStrategyPanel, setShowStrategyPanel] = useState(true);
   const [showLevelsTable, setShowLevelsTable] = useState(true);
 
@@ -104,16 +130,49 @@ export default function ChartProPage() {
     enabled: marketData.length >= 15,
   });
 
-  // Get swing markers (HH/HL/LH/LL)
+  // Extract primitive values for stable dependencies
+  const swingEnabled = currentSwingSettings.enabled;
+  const swingLookback = currentSwingSettings.settings.lookback;
+  const swingShowLines = currentSwingSettings.settings.showLines;
+  const minBarsForSwing = swingLookback * 2 + 1;
+
+  // Get swing markers (HH/HL/LH/LL) with per-timeframe settings and caching
   const {
     result: swingResult,
     isLoading: isLoadingSwings,
     error: swingError,
+    isFromCache: swingFromCache,
+    cacheTTL: swingCacheTTL,
+    forceRefresh: forceRefreshSwings,
   } = useSwingMarkers({
     data: marketData,
-    lookback: 5,
-    enabled: marketData.length >= 11, // lookback * 2 + 1
+    lookback: swingLookback,
+    enabled: swingEnabled && marketData.length >= minBarsForSwing,
+    symbol,
+    timeframe,
+    useCache: true,
   });
+
+  // Memoize pivots to avoid creating new array reference on every render
+  const apiPivots = useMemo(() => swingResult?.pivots ?? [], [swingResult?.pivots]);
+
+  // Editable pivots (allows manual adjustment of detected pivot prices)
+  const {
+    pivots: editablePivots,
+    updatePivotPrice,
+    resetPivot,
+    resetAllPivots,
+    hasModifications: hasPivotModifications,
+    modifiedCount: pivotModifiedCount,
+  } = useEditablePivots(apiPivots, timeframe);
+
+  // Generate swing line overlays from editable pivots
+  const swingLineOverlays = useMemo<LineOverlay[]>(() => {
+    if (!swingEnabled || !swingShowLines) {
+      return [];
+    }
+    return generateSwingLineOverlays(editablePivots, { lookback: swingLookback, showLines: swingShowLines });
+  }, [editablePivots, swingEnabled, swingShowLines, swingLookback]);
 
   // Get multi-TF Fibonacci levels (hook fetches its own market data per timeframe)
   const {
@@ -215,25 +274,37 @@ export default function ChartProPage() {
     [setVisibilityConfig]
   );
 
-  // Convert swing markers to chart markers
+  // Convert swing markers to chart markers (only when swing detection is enabled)
+  // Include ABC labels when pivots are part of the Fibonacci pattern
   const chartMarkers = useMemo<ChartMarker[]>(() => {
-    if (!swingResult?.markers) return [];
+    if (!swingEnabled || !swingResult?.markers) return [];
 
     return swingResult.markers.map((marker) => {
       // Determine color and position based on swing type
       const isHigh = marker.swingType === "HH" || marker.swingType === "LH";
       const isBullish = marker.swingType === "HH" || marker.swingType === "HL";
 
+      // Find matching editable pivot to get ABC label
+      const matchingPivot = editablePivots.find(
+        (p) => p.index === marker.index
+      );
+      const abcLabel = matchingPivot?.abcLabel;
+
+      // Build marker text: show ABC label if present, with swing type in parentheses
+      const text = abcLabel
+        ? `${abcLabel} (${marker.swingType})`
+        : marker.swingType;
+
       return {
         time: marker.time,
         position: isHigh ? "aboveBar" : "belowBar",
         color: isBullish ? "#22c55e" : "#ef4444",
         shape: isHigh ? "arrowDown" : "arrowUp",
-        text: marker.swingType,
+        text,
         size: 1,
       } as ChartMarker;
     });
-  }, [swingResult]);
+  }, [swingResult, swingEnabled, editablePivots]);
 
   // Get current OHLC values
   const currentOHLC = useMemo(() => {
@@ -499,6 +570,7 @@ export default function ChartProPage() {
                     data={marketData}
                     markers={chartMarkers}
                     priceLines={strategyPriceLines}
+                    lineOverlays={swingLineOverlays}
                     upColor="#22c55e"
                     downColor="#ef4444"
                     chartType={chartType}
@@ -653,6 +725,10 @@ export default function ChartProPage() {
                 <StatusItem label="Multi-TF Levels" status="done" />
                 <StatusItem label="Visibility Config" status="done" />
                 <StatusItem label="Levels Table" status="done" />
+                <StatusItem label="Swing Lines" status="done" />
+                <StatusItem label="Pivot Editor" status="done" />
+                <StatusItem label="Per-TF Settings" status="done" />
+                <StatusItem label="Pivot Caching" status="done" />
                 <StatusItem label="Confluence Heatmap" status="pending" />
                 <StatusItem label="Monitor Zones" status="pending" />
               </div>
@@ -672,8 +748,28 @@ export default function ChartProPage() {
 
         {/* Strategy Panel Sidebar */}
         {showStrategyPanel && (
-          <div className="w-72 shrink-0">
-            <Card className="sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto">
+          <div className="w-80 shrink-0 space-y-4">
+            {/* Swing & Pivot Panel - Combined settings and pivot points */}
+            <SwingPivotPanel
+              currentTimeframe={timeframe}
+              swingConfig={swingConfig}
+              getTimeframeSettings={getTimeframeSettings}
+              updateTimeframeLookback={updateTimeframeLookback}
+              updateTimeframeEnabled={updateTimeframeEnabled}
+              updateTimeframeShowLines={updateTimeframeShowLines}
+              resetToDefaults={resetSwingDefaults}
+              isLoaded={isSwingConfigLoaded}
+              pivots={editablePivots}
+              updatePivotPrice={updatePivotPrice}
+              resetPivot={resetPivot}
+              resetAllPivots={resetAllPivots}
+              hasModifications={hasPivotModifications}
+              modifiedCount={pivotModifiedCount}
+              isLoading={isLoadingSwings}
+            />
+
+            {/* Strategy Panel */}
+            <Card className="max-h-[calc(100vh-24rem)] overflow-y-auto">
               <CardContent className="pt-4">
                 <StrategyPanel
                   visibilityConfig={visibilityConfig}

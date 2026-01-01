@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from trader.pivots import OHLCBar, detect_pivots
+from trader.pivots import OHLCBar, SwingMarker, classify_swings, detect_pivots
 
 
 @dataclass(frozen=True)
@@ -416,3 +416,160 @@ class TestRealisticMarketData:
 
         # Should find multiple pivots in ranging market
         assert len(result.pivots) >= 2
+
+
+class TestSwingClassification:
+    """Tests for swing pattern classification (HH/HL/LH/LL).
+
+    Swing patterns compare consecutive pivots of the same type:
+    - HH (Higher High): current high > previous high
+    - HL (Higher Low): current low > previous low
+    - LH (Lower High): current high < previous high
+    - LL (Lower Low): current low < previous low
+    """
+
+    def test_returns_swing_markers(self) -> None:
+        """classify_swings returns list of SwingMarker objects."""
+        # Simple uptrend with HH and HL
+        highs = [100.0, 110.0, 105.0, 120.0, 115.0, 130.0, 125.0]
+        lows = [95.0, 105.0, 100.0, 115.0, 110.0, 125.0, 120.0]
+        data = make_ohlc_data(highs, lows)
+        pivots = detect_pivots(data, lookback=1)
+
+        markers = classify_swings(pivots.pivots)
+
+        assert isinstance(markers, list)
+        for marker in markers:
+            assert isinstance(marker, SwingMarker)
+
+    def test_swing_marker_has_required_fields(self) -> None:
+        """SwingMarker contains time, price, type, and index."""
+        highs = [100.0, 110.0, 105.0, 120.0, 115.0]
+        lows = [95.0, 105.0, 100.0, 115.0, 110.0]
+        data = make_ohlc_data(highs, lows)
+        pivots = detect_pivots(data, lookback=1)
+
+        markers = classify_swings(pivots.pivots)
+
+        if markers:
+            marker = markers[0]
+            assert hasattr(marker, "time")
+            assert hasattr(marker, "price")
+            assert hasattr(marker, "swing_type")
+            assert hasattr(marker, "index")
+
+    def test_detects_higher_high(self) -> None:
+        """Detects HH when swing high is higher than previous swing high."""
+        # Clear uptrend: high at 110, then higher high at 130
+        highs = [100.0, 110.0, 100.0, 130.0, 100.0]
+        lows = [95.0, 105.0, 95.0, 125.0, 95.0]
+        data = make_ohlc_data(highs, lows)
+        pivots = detect_pivots(data, lookback=1)
+
+        markers = classify_swings(pivots.pivots)
+
+        hh_markers = [m for m in markers if m.swing_type == "HH"]
+        assert len(hh_markers) >= 1
+
+    def test_detects_higher_low(self) -> None:
+        """Detects HL when swing low is higher than previous swing low."""
+        # Low at 95, then higher low at 105
+        highs = [110.0, 100.0, 120.0, 110.0, 130.0]
+        lows = [95.0, 90.0, 105.0, 100.0, 115.0]
+        data = make_ohlc_data(highs, lows)
+        pivots = detect_pivots(data, lookback=1)
+
+        markers = classify_swings(pivots.pivots)
+
+        hl_markers = [m for m in markers if m.swing_type == "HL"]
+        assert len(hl_markers) >= 1
+
+    def test_detects_lower_high(self) -> None:
+        """Detects LH when swing high is lower than previous swing high."""
+        # Zigzag down: high at 130, low, then lower high at 110, low
+        # Need clear alternating pattern for pivot detection
+        highs = [100.0, 130.0, 100.0, 110.0, 90.0]
+        lows = [95.0, 125.0, 95.0, 105.0, 85.0]
+        data = make_ohlc_data(highs, lows)
+        pivots = detect_pivots(data, lookback=1)
+
+        markers = classify_swings(pivots.pivots)
+
+        lh_markers = [m for m in markers if m.swing_type == "LH"]
+        assert len(lh_markers) >= 1
+
+    def test_detects_lower_low(self) -> None:
+        """Detects LL when swing low is lower than previous swing low."""
+        # Zigzag down: low at 95, high, then lower low at 85
+        highs = [110.0, 100.0, 120.0, 90.0, 100.0]
+        lows = [95.0, 85.0, 105.0, 75.0, 85.0]
+        data = make_ohlc_data(highs, lows)
+        pivots = detect_pivots(data, lookback=1)
+
+        markers = classify_swings(pivots.pivots)
+
+        ll_markers = [m for m in markers if m.swing_type == "LL"]
+        assert len(ll_markers) >= 1
+
+    def test_first_pivot_has_no_swing_type(self) -> None:
+        """First pivot of each type cannot be classified (no previous to compare)."""
+        highs = [100.0, 110.0, 100.0, 120.0, 100.0]
+        lows = [95.0, 105.0, 95.0, 115.0, 95.0]
+        data = make_ohlc_data(highs, lows)
+        pivots = detect_pivots(data, lookback=1)
+
+        markers = classify_swings(pivots.pivots)
+
+        # Markers should start from the second pivot of each type
+        # First high and first low have no classification
+        # Not all pivots become markers (first of each type is skipped)
+        assert len(markers) < len(pivots.pivots)
+
+    def test_empty_pivots_returns_empty_markers(self) -> None:
+        """Empty pivot list returns empty marker list."""
+        markers = classify_swings([])
+
+        assert markers == []
+
+    def test_single_pivot_returns_empty_markers(self) -> None:
+        """Single pivot cannot be classified."""
+        highs = [100.0, 110.0, 100.0]
+        lows = [95.0, 105.0, 95.0]
+        data = make_ohlc_data(highs, lows)
+        pivots = detect_pivots(data, lookback=1)
+
+        # Even if we have one pivot, we can't classify it
+        if len(pivots.pivots) == 1:
+            markers = classify_swings(pivots.pivots)
+            assert markers == []
+
+    def test_uptrend_pattern_hh_hl(self) -> None:
+        """Uptrend shows HH and HL pattern."""
+        # Clear uptrend with multiple swings
+        highs = [100.0, 110.0, 105.0, 120.0, 115.0, 130.0, 125.0, 140.0, 135.0]
+        lows = [95.0, 105.0, 100.0, 115.0, 110.0, 125.0, 120.0, 135.0, 130.0]
+        data = make_ohlc_data(highs, lows)
+        pivots = detect_pivots(data, lookback=1)
+
+        markers = classify_swings(pivots.pivots)
+
+        # Should have mostly HH and HL in uptrend
+        swing_types = [m.swing_type for m in markers]
+        hh_hl_count = sum(1 for t in swing_types if t in ("HH", "HL"))
+        # Most swings should be HH or HL
+        assert hh_hl_count >= len(markers) // 2
+
+    def test_downtrend_pattern_lh_ll(self) -> None:
+        """Downtrend shows LH and LL pattern."""
+        # Clear downtrend with multiple swings
+        highs = [140.0, 135.0, 130.0, 125.0, 120.0, 115.0, 110.0, 105.0, 100.0]
+        lows = [135.0, 130.0, 125.0, 120.0, 115.0, 110.0, 105.0, 100.0, 95.0]
+        data = make_ohlc_data(highs, lows)
+        pivots = detect_pivots(data, lookback=1)
+
+        markers = classify_swings(pivots.pivots)
+
+        # Should have mostly LH and LL in downtrend
+        swing_types = [m.swing_type for m in markers]
+        lh_ll_count = sum(1 for t in swing_types if t in ("LH", "LL"))
+        assert lh_ll_count >= len(markers) // 2

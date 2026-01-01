@@ -117,14 +117,20 @@ export function SideNav() {
   const router = useRouter();
   const { startNewTrade } = useWorkflowManager();
 
-  // Use lazy initialization to read from localStorage on first render
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    if (typeof window === "undefined") return true;
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored !== null ? stored === "true" : true;
-  });
+  // Start with default collapsed state, will sync from localStorage after mount
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
-  const [isHydrated] = useState(() => typeof window !== "undefined");
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Hydrate from localStorage after mount to avoid SSR mismatch
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored !== null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: hydrating from localStorage on mount
+      setIsCollapsed(stored === "true");
+    }
+    setIsHydrated(true);
+  }, []);
 
   // Save collapsed state to localStorage
   const toggleCollapsed = useCallback(() => {
@@ -299,15 +305,19 @@ export function SideNav() {
 
 // Layout wrapper that adds padding for the sidebar
 export function SideNavLayout({ children }: { children: React.ReactNode }) {
-  // Use lazy initialization to read from localStorage on first render
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    if (typeof window === "undefined") return true;
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored !== null ? stored === "true" : true;
-  });
-  const [isHydrated, setIsHydrated] = useState(() => typeof window !== "undefined");
+  // Start with default collapsed state, will sync from localStorage after mount
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
+    // Initial hydration from localStorage
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored !== null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: hydrating from localStorage on mount
+      setIsCollapsed(stored === "true");
+    }
+    setIsHydrated(true);
+
     // Listen for storage changes from other tabs
     const handleStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue !== null) {

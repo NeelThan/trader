@@ -90,10 +90,20 @@ function formatCalcPrice(price: number | undefined): string {
   return price.toFixed(4);
 }
 
+// ABC label type for correlation with chart
+type ABCLabel = "A" | "B" | "C";
+
+// Input with optional ABC label
+type CalcInput = {
+  label: string;
+  value: string;
+  abcLabel?: ABCLabel;
+};
+
 // Get calculation details based on strategy
 function getCalculationDetails(level: StrategyLevel): {
   formula: string;
-  inputs: { label: string; value: string }[];
+  inputs: CalcInput[];
   calculation: string;
 } {
   const dir = level.direction === "long" ? "buy" : "sell";
@@ -158,9 +168,9 @@ function getCalculationDetails(level: StrategyLevel): {
             ? `Price = C - (|A-B| × ${level.ratio})`
             : `Price = C + (|A-B| × ${level.ratio})`,
           inputs: [
-            { label: "Point A", value: formatCalcPrice(a) },
-            { label: "Point B", value: formatCalcPrice(b) },
-            { label: "Point C", value: formatCalcPrice(c) },
+            { label: "Point A", value: formatCalcPrice(a), abcLabel: "A" as const },
+            { label: "Point B", value: formatCalcPrice(b), abcLabel: "B" as const },
+            { label: "Point C", value: formatCalcPrice(c), abcLabel: "C" as const },
             { label: "|A-B|", value: formatCalcPrice(swing) },
           ],
           calculation: dir === "buy"
@@ -182,8 +192,8 @@ function getCalculationDetails(level: StrategyLevel): {
             ? `Price = B + (|A-B| × ${level.ratio})`
             : `Price = B - (|A-B| × ${level.ratio})`,
           inputs: [
-            { label: "Point A", value: formatCalcPrice(a) },
-            { label: "Point B", value: formatCalcPrice(b) },
+            { label: "Point A", value: formatCalcPrice(a), abcLabel: "A" as const },
+            { label: "Point B", value: formatCalcPrice(b), abcLabel: "B" as const },
             { label: "|A-B|", value: formatCalcPrice(swing) },
           ],
           calculation: dir === "buy"
@@ -496,7 +506,8 @@ export function LevelsTable({
                 </TooltipProvider>
               </TableHead>
               {onToggleLevelVisibility && <TableHead className="w-10" />}
-              <TableHead className="w-8" /> {/* Expand column */}
+              {/* Expand column */}
+              <TableHead className="w-8" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -646,7 +657,15 @@ export function LevelsTable({
                                 <div className="text-muted-foreground mb-2">Input Values:</div>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-muted/30 p-2 rounded">
                                   {calcDetails.inputs.map((input) => (
-                                    <div key={input.label}>
+                                    <div key={input.label} className="flex items-center gap-1.5">
+                                      {input.abcLabel && (
+                                        <Badge
+                                          variant="secondary"
+                                          className="h-5 w-5 p-0 flex items-center justify-center text-xs font-bold bg-amber-500/20 text-amber-400 border-amber-500/30"
+                                        >
+                                          {input.abcLabel}
+                                        </Badge>
+                                      )}
                                       <span className="text-muted-foreground">{input.label}:</span>{" "}
                                       <span className="font-mono font-medium">{input.value}</span>
                                     </div>
