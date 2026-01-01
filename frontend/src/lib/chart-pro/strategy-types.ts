@@ -296,6 +296,46 @@ export function countVisibleLevels(
 }
 
 /**
+ * Toggle visibility for a specific ratio in the visibility config
+ * Returns a new VisibilityConfig with the toggled ratio
+ */
+export function toggleRatioVisibility(
+  config: VisibilityConfig,
+  timeframe: Timeframe,
+  strategy: StrategySource,
+  direction: "long" | "short",
+  ratio: number
+): VisibilityConfig {
+  const EPSILON = 0.0001;
+
+  return {
+    timeframes: config.timeframes.map((tfConfig) => {
+      if (tfConfig.timeframe !== timeframe) return tfConfig;
+
+      return {
+        ...tfConfig,
+        strategies: tfConfig.strategies.map((stratConfig) => {
+          if (stratConfig.strategy !== strategy) return stratConfig;
+
+          return {
+            ...stratConfig,
+            [direction]: {
+              ...stratConfig[direction],
+              ratios: stratConfig[direction].ratios.map((r) => {
+                if (Math.abs(r.ratio - ratio) < EPSILON) {
+                  return { ...r, visible: !r.visible };
+                }
+                return r;
+              }),
+            },
+          };
+        }),
+      };
+    }),
+  };
+}
+
+/**
  * Default enabled strategies
  */
 export const DEFAULT_ENABLED_STRATEGIES: StrategySource[] = [

@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/table";
 import type { Timeframe } from "@/lib/chart-constants";
 import { TIMEFRAME_COLORS, ALL_TIMEFRAMES } from "@/lib/chart-pro/strategy-types";
+import { getTimestamp, formatTime, formatPrice } from "@/lib/format-utils";
 import type {
   SwingSettingsConfig,
   PerTimeframeSwingSettings,
@@ -77,39 +78,6 @@ export type SwingPivotPanelProps = {
   /** Whether swing detection is loading */
   isLoading?: boolean;
 };
-
-/**
- * Get numeric timestamp from pivot time
- */
-function getTimestamp(time: string | number): number {
-  return typeof time === "string" ? new Date(time).getTime() : time;
-}
-
-/**
- * Format time for display
- */
-function formatTime(time: string | number): string {
-  if (typeof time === "number") {
-    return new Date(time * 1000).toLocaleDateString();
-  }
-  if (time.includes("T")) {
-    return new Date(time).toLocaleDateString();
-  }
-  return time;
-}
-
-/**
- * Format price for display
- */
-function formatPrice(price: number): string {
-  if (price >= 1000) {
-    return price.toFixed(2);
-  }
-  if (price >= 1) {
-    return price.toFixed(4);
-  }
-  return price.toFixed(6);
-}
 
 export function SwingPivotPanel({
   currentTimeframe,

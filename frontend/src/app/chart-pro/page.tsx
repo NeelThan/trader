@@ -25,6 +25,8 @@ import {
   SwingPivotPanel,
   TrendAlignmentPanel,
   SignalSuggestionsPanel,
+  MACDChart,
+  StatusItem,
 } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useMACD } from "@/hooks/use-macd";
@@ -34,6 +36,7 @@ import { useMultiTFLevels } from "@/hooks/use-multi-tf-levels";
 import { usePersistedVisibilityConfig } from "@/hooks/use-persisted-visibility-config";
 import { usePersistedSwingSettings } from "@/hooks/use-persisted-swing-settings";
 import { useEditablePivots } from "@/hooks/use-editable-pivots";
+import { useChartMarkers } from "@/hooks/use-chart-markers";
 import { useDataMode } from "@/hooks/use-data-mode";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
 import { useTrendAlignment } from "@/hooks/use-trend-alignment";
@@ -48,6 +51,7 @@ import {
 import {
   type StrategySource,
   isLevelVisible,
+  toggleRatioVisibility,
   DIRECTION_COLORS,
 } from "@/lib/chart-pro/strategy-types";
 
@@ -240,58 +244,20 @@ export default function ChartProPage() {
   const enabledTimeframeCount = visibilityConfig.timeframes.filter(tf => tf.enabled).length;
   const hasErrors = Object.values(levelErrors).some(e => e !== null);
 
-  // Log for debugging
-  if (enabledTimeframeCount > 0 && allLevels.length > 0) {
-    const longLevels = allLevels.filter(l => l.direction === "long");
-    const shortLevels = allLevels.filter(l => l.direction === "short");
-    const visibleLongLevels = allLevels.filter(l => l.direction === "long" && isLevelVisible(l, visibilityConfig));
-    const visibleShortLevels = allLevels.filter(l => l.direction === "short" && isLevelVisible(l, visibilityConfig));
-
-    console.log("[ChartPro Debug]", {
-      enabledTimeframes: enabledTimeframeCount,
-      fetchedLevels: allLevels.length,
-      longLevels: longLevels.length,
-      shortLevels: shortLevels.length,
-      visibleLongLevels: visibleLongLevels.length,
-      visibleShortLevels: visibleShortLevels.length,
-      sampleLong: longLevels[0],
-      sampleShort: shortLevels[0],
-    });
-  }
-
   // Handler to toggle visibility for a specific ratio in the visibility config
-  const handleToggleLevelVisibility = useCallback((level: { timeframe: string; strategy: string; direction: string; ratio: number }) => {
-    const tf = level.timeframe as Timeframe;
-    const strategy = level.strategy as StrategySource;
-    const direction = level.direction as "long" | "short";
-
-    setVisibilityConfig({
-      timeframes: visibilityConfig.timeframes.map(tfConfig => {
-        if (tfConfig.timeframe !== tf) return tfConfig;
-
-        return {
-          ...tfConfig,
-          strategies: tfConfig.strategies.map(stratConfig => {
-            if (stratConfig.strategy !== strategy) return stratConfig;
-
-            return {
-              ...stratConfig,
-              [direction]: {
-                ...stratConfig[direction],
-                ratios: stratConfig[direction].ratios.map(r => {
-                  // Use tolerance for float comparison
-                  if (Math.abs(r.ratio - level.ratio) < 0.0001) {
-                    return { ...r, visible: !r.visible };
-                  }
-                  return r;
-                }),
-              },
-            };
-          }),
-        };
-      }),
-    });
-  }, [visibilityConfig, setVisibilityConfig]);
+  const handleToggleLevelVisibility = useCallback(
+    (level: { timeframe: string; strategy: string; direction: string; ratio: number }) => {
+      const newConfig = toggleRatioVisibility(
+        visibilityConfig,
+        level.timeframe as Timeframe,
+        level.strategy as StrategySource,
+        level.direction as "long" | "short",
+        level.ratio
+      );
+      setVisibilityConfig(newConfig);
+    },
+    [visibilityConfig, setVisibilityConfig]
+  );
 
   // Get visible levels based on visibility config
   const visibleLevels = useMemo(() => {
@@ -321,53 +287,13 @@ export default function ChartProPage() {
     [setVisibilityConfig]
   );
 
-  // Convert swing markers to chart markers (only when swing detection is enabled)
-  // Include ABC labels when pivots are part of the Fibonacci pattern
-  // Filter markers to only include those with times that exist in market data
-  const chartMarkers = useMemo<ChartMarker[]>(() => {
-    if (!swingEnabled || !swingResult?.markers || marketData.length === 0) return [];
-
-    // Create a Set of valid times from market data for fast lookup
-    const validTimes = new Set(marketData.map((bar) => String(bar.time)));
-
-    // Filter markers to only those with valid times in current market data
-    const validMarkers = swingResult.markers.filter((marker) =>
-      validTimes.has(String(marker.time))
-    );
-
-    return validMarkers.map((marker) => {
-      // Determine color and position based on swing type
-      const isHigh = marker.swingType === "HH" || marker.swingType === "LH";
-      const isBullish = marker.swingType === "HH" || marker.swingType === "HL";
-
-      // Find matching editable pivot to get ABC label
-      const matchingPivot = editablePivots.find(
-        (p) => p.index === marker.index
-      );
-      const abcLabel = matchingPivot?.abcLabel;
-
-      // Build marker text: ABC with swing type (green), or just swing type
-      const text = abcLabel
-        ? `${abcLabel} (${marker.swingType})`
-        : marker.swingType;
-
-      // ABC = green, HH/HL (bullish) = blue, LH/LL (bearish) = red
-      const markerColor = abcLabel
-        ? "#22c55e"  // Green for ABC
-        : isBullish
-          ? "#3b82f6"  // Blue for HH/HL
-          : "#ef4444"; // Red for LH/LL
-
-      return {
-        time: marker.time,
-        position: isHigh ? "aboveBar" : "belowBar",
-        color: markerColor,
-        shape: isHigh ? "arrowDown" : "arrowUp",
-        text,
-        size: 1,
-      } as ChartMarker;
-    });
-  }, [swingResult, swingEnabled, editablePivots, marketData]);
+  // Convert swing markers to chart markers (extracted to hook)
+  const chartMarkers = useChartMarkers({
+    swingEnabled,
+    markers: swingResult?.markers,
+    marketData,
+    editablePivots,
+  });
 
   // Get current OHLC values
   const currentOHLC = useMemo(() => {
@@ -931,90 +857,6 @@ export default function ChartProPage() {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-/**
- * Simple MACD histogram chart using SVG
- */
-function MACDChart({ macdData, chartColors }: { macdData: { histogram: (number | null)[] } | null; chartColors: { up: string; down: string } }) {
-  if (!macdData || !macdData.histogram) return null;
-
-  // Get last 50 histogram values
-  const histogramValues = macdData.histogram
-    .slice(-50)
-    .map((v) => v ?? 0);
-
-  if (histogramValues.length === 0) return null;
-
-  const maxAbs = Math.max(...histogramValues.map(Math.abs), 0.0001);
-  const height = 100;
-  const width = 100;
-  const barWidth = width / histogramValues.length;
-
-  return (
-    <div className="mt-4">
-      <div className="text-xs text-muted-foreground mb-2">MACD Histogram (last 50 bars)</div>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-[100px] border border-border rounded"
-        preserveAspectRatio="none"
-      >
-        {/* Zero line */}
-        <line
-          x1="0"
-          y1={height / 2}
-          x2={width}
-          y2={height / 2}
-          stroke="currentColor"
-          strokeOpacity="0.3"
-          strokeWidth="0.5"
-        />
-
-        {/* Histogram bars */}
-        {histogramValues.map((value, i) => {
-          const normalizedValue = (value / maxAbs) * (height / 2 - 5);
-          const barHeight = Math.abs(normalizedValue);
-          const y = value >= 0 ? height / 2 - barHeight : height / 2;
-
-          return (
-            <rect
-              key={i}
-              x={i * barWidth}
-              y={y}
-              width={barWidth - 0.5}
-              height={barHeight}
-              fill={value >= 0 ? chartColors.up : chartColors.down}
-              opacity={0.8}
-            />
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-function StatusItem({ label, status }: { label: string; status: "done" | "pending" | "in-progress" }) {
-  return (
-    <div className="flex items-center gap-2">
-      {status === "done" && (
-        <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-      )}
-      {status === "pending" && (
-        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="10" strokeWidth={2} />
-        </svg>
-      )}
-      {status === "in-progress" && (
-        <svg className="w-4 h-4 text-amber-400 animate-spin" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-        </svg>
-      )}
-      <span className="text-sm">{label}</span>
     </div>
   );
 }

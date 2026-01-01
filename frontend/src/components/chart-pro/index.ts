@@ -17,3 +17,7 @@ export { TrendAlignmentPanel } from "./TrendAlignmentPanel";
 export type { TrendAlignmentPanelProps } from "./TrendAlignmentPanel";
 export { SignalSuggestionsPanel } from "./SignalSuggestionsPanel";
 export type { SignalSuggestionsPanelProps } from "./SignalSuggestionsPanel";
+export { MACDChart } from "./MACDChart";
+export type { MACDChartProps } from "./MACDChart";
+export { StatusItem } from "./StatusItem";
+export type { StatusItemProps } from "./StatusItem";

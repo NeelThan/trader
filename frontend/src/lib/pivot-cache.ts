@@ -157,12 +157,8 @@ export function cachePivots(
 
     metadata.lastUpdated = now;
     savePivotCacheMetadata(metadata);
-
-    console.log(
-      `[PivotCache] Cached ${pivots.length} pivots, ${markers.length} markers for ${symbol} ${timeframe} (lookback=${lookback})`
-    );
-  } catch (error) {
-    console.warn("[PivotCache] Failed to cache data:", error);
+  } catch {
+    // Ignore cache storage errors (e.g., quota exceeded)
   }
 }
 
@@ -193,9 +189,6 @@ export function getCachedPivots(
     const now = Date.now();
     if (now > cached.expiresAt) {
       // Expired - remove from cache
-      console.log(
-        `[PivotCache] Expired cache for ${symbol} ${timeframe} (lookback=${lookback})`
-      );
       clearCachedPivots(symbol, timeframe, lookback);
       return null;
     }
@@ -318,10 +311,6 @@ export function clearCachedPivotsForTimeframe(
     );
     metadata.lastUpdated = Date.now();
     savePivotCacheMetadata(metadata);
-
-    console.log(
-      `[PivotCache] Cleared ${toRemove.length} cache entries for ${symbol} ${timeframe}`
-    );
   } catch {
     // Ignore errors
   }
@@ -344,8 +333,6 @@ export function clearAllCachedPivots(): void {
 
     // Clear metadata
     localStorage.removeItem(METADATA_KEY);
-
-    console.log("[PivotCache] Cleared all cached pivot data");
   } catch {
     // Ignore errors
   }
@@ -374,8 +361,6 @@ export function clearExpiredPivotCache(): number {
       metadata.entries = metadata.entries.filter((e) => now <= e.expiresAt);
       metadata.lastUpdated = now;
       savePivotCacheMetadata(metadata);
-
-      console.log(`[PivotCache] Cleared ${clearedCount} expired cache entries`);
     }
 
     return clearedCount;
@@ -417,12 +402,9 @@ export function getPivotCacheSize(): number {
 
 /**
  * Format cache size for display
+ * @deprecated Use formatBytes from @/lib/format-utils instead
  */
-export function formatPivotCacheSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
+export { formatBytes as formatPivotCacheSize } from "@/lib/format-utils";
 
 /**
  * Get available cached pivots info
@@ -450,19 +432,6 @@ export function getAvailableCachedPivots(): Array<{
 
 /**
  * Format TTL for display
+ * @deprecated Use formatDuration from @/lib/format-utils instead
  */
-export function formatTTL(ms: number): string {
-  if (ms <= 0) return "expired";
-
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ${minutes % 60}m`;
-
-  const days = Math.floor(hours / 24);
-  return `${days}d ${hours % 24}h`;
-}
+export { formatDuration as formatTTL } from "@/lib/format-utils";

@@ -9,18 +9,12 @@ import type { Time } from "lightweight-charts";
 import type { LineOverlay } from "@/components/trading";
 import type { EditablePivot } from "@/hooks/use-editable-pivots";
 import type { SwingSettings } from "@/hooks/use-persisted-swing-settings";
+import { getTimestamp } from "@/lib/format-utils";
 
 /**
  * Color for the swing line
  */
 export const SWING_LINE_COLOR = "#eab308"; // Yellow - for swing structure visibility
-
-/**
- * Get numeric timestamp from pivot time
- */
-function getTimestamp(time: string | number): number {
-  return typeof time === "string" ? new Date(time).getTime() : time;
-}
 
 /**
  * Sort pivots by time and index for line drawing
