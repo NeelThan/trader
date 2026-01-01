@@ -33,6 +33,7 @@ import { usePersistedVisibilityConfig } from "@/hooks/use-persisted-visibility-c
 import { usePersistedSwingSettings } from "@/hooks/use-persisted-swing-settings";
 import { useEditablePivots } from "@/hooks/use-editable-pivots";
 import { useDataMode } from "@/hooks/use-data-mode";
+import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
 import { generateSwingLineOverlays } from "@/lib/chart-pro/swing-overlays";
 import {
   Timeframe,
@@ -97,6 +98,10 @@ export default function ChartProPage() {
     clearCache,
     refreshCacheInfo,
   } = useDataMode();
+
+  // Global settings for chart colors
+  const { settings } = useSettings();
+  const chartColors = COLOR_SCHEMES[settings.colorScheme];
 
   useEffect(() => {
     setHasMounted(true);
@@ -571,8 +576,8 @@ export default function ChartProPage() {
                     markers={chartMarkers}
                     priceLines={strategyPriceLines}
                     lineOverlays={swingLineOverlays}
-                    upColor="#22c55e"
-                    downColor="#ef4444"
+                    upColor={chartColors.up}
+                    downColor={chartColors.down}
                     chartType={chartType}
                   />
                 </div>
