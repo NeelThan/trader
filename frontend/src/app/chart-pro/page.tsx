@@ -55,7 +55,7 @@ type ChartType = "candlestick" | "bar" | "heikin-ashi";
 export default function ChartProPage() {
   const [symbol, setSymbol] = useState<MarketSymbol>("DJI");
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
-  const [chartType, setChartType] = useState<ChartType>("candlestick");
+  const [chartType, setChartType] = useState<ChartType>("bar");
   const [hasMounted, setHasMounted] = useState(false);
   const chartRef = useRef<CandlestickChartHandle>(null);
 
@@ -502,15 +502,15 @@ export default function ChartProPage() {
                     </div>
                     <div>
                       <span className="text-muted-foreground mr-1">H:</span>
-                      <span className="text-green-400">{formatPrice(currentOHLC.high)}</span>
+                      <span style={{ color: chartColors.up }}>{formatPrice(currentOHLC.high)}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground mr-1">L:</span>
-                      <span className="text-red-400">{formatPrice(currentOHLC.low)}</span>
+                      <span style={{ color: chartColors.down }}>{formatPrice(currentOHLC.low)}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground mr-1">C:</span>
-                      <span className={currentOHLC.close >= currentOHLC.open ? "text-green-400" : "text-red-400"}>
+                      <span style={{ color: currentOHLC.close >= currentOHLC.open ? chartColors.up : chartColors.down }}>
                         {formatPrice(currentOHLC.close)}
                       </span>
                     </div>
