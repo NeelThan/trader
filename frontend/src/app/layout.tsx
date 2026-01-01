@@ -1,18 +1,20 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Nunito, Fira_Code } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MarketDataProvider } from "@/contexts/MarketDataContext";
 import { SideNavLayout } from "@/components/layout";
 import "./globals.css";
 
-const inter = Inter({
+const nunito = Nunito({
   variable: "--font-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const firaCode = Fira_Code({
   variable: "--font-mono",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -27,7 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
+      <body className={`${nunito.variable} ${firaCode.variable} antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
