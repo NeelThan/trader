@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import type { Timeframe, MarketSymbol } from "@/lib/chart-constants";
+import { TIMEFRAME_CONFIG, type Timeframe, type MarketSymbol } from "@/lib/chart-constants";
 import type { OHLCData } from "@/components/trading";
 import {
   type StrategyLevel,
@@ -90,8 +90,9 @@ async function fetchMarketData(
     return [];
   }
 
-  // Live mode - fetch from API
-  const url = `${API_BASE}/market-data?symbol=${symbol}&timeframe=${timeframe}&periods=100`;
+  // Live mode - fetch from API with timeframe-appropriate periods
+  const periods = TIMEFRAME_CONFIG[timeframe].periods;
+  const url = `${API_BASE}/market-data?symbol=${symbol}&timeframe=${timeframe}&periods=${periods}`;
 
   try {
     const response = await fetch(url);

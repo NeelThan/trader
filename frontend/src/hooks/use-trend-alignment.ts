@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import type { Timeframe, MarketSymbol } from "@/lib/chart-constants";
+import { TIMEFRAME_CONFIG, type Timeframe, type MarketSymbol } from "@/lib/chart-constants";
 
 export type TrendDirection = "bullish" | "bearish" | "ranging";
 
@@ -265,10 +265,11 @@ export function useTrendAlignment({
     async function fetchTrendForTimeframe(tf: Timeframe): Promise<TimeframeTrend> {
       try {
         // Fetch market data using query params format
+        // Use TIMEFRAME_CONFIG periods for appropriate detail per timeframe
         const params = new URLSearchParams({
           symbol,
           timeframe: tf,
-          periods: "100",
+          periods: String(TIMEFRAME_CONFIG[tf].periods),
         });
         const marketRes = await fetch(
           `${API_BASE}/market-data?${params}`,
