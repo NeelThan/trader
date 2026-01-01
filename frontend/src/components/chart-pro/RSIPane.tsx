@@ -14,6 +14,8 @@ type RSIPaneProps = {
   barsToShow?: number;
   overbought?: number;
   oversold?: number;
+  /** Chart colors from global settings */
+  chartColors?: { up: string; down: string };
 };
 
 // Chart dimensions - constants
@@ -27,11 +29,20 @@ function priceToY(value: number): number {
   return PADDING.top + CHART_HEIGHT - (value / 100) * CHART_HEIGHT;
 }
 
+// Helper to convert hex to rgba
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export function RSIPane({
   rsiData,
   barsToShow = 50,
   overbought = 70,
   oversold = 30,
+  chartColors = { up: "#22c55e", down: "#ef4444" },
 }: RSIPaneProps) {
   // Get current RSI value for display
   const currentRSI = useMemo(() => {
@@ -71,11 +82,11 @@ export function RSIPane({
   const rsiCondition = useMemo(() => {
     if (currentRSI === null) return null;
     if (currentRSI >= overbought)
-      return { label: "Overbought", color: "text-red-400" };
+      return { label: "Overbought", color: chartColors.down };
     if (currentRSI <= oversold)
-      return { label: "Oversold", color: "text-green-400" };
-    return { label: "Neutral", color: "text-gray-400" };
-  }, [currentRSI, overbought, oversold]);
+      return { label: "Oversold", color: chartColors.up };
+    return { label: "Neutral", color: undefined };
+  }, [currentRSI, overbought, oversold, chartColors]);
 
   // Early return after all hooks
   if (!rsiData || rsiValues.length === 0) {
@@ -94,26 +105,30 @@ export function RSIPane({
           <span className="text-xs text-muted-foreground">RSI(14)</span>
           {currentRSI !== null && (
             <span
-              className={`text-lg font-mono font-semibold ${
-                currentRSI >= overbought
-                  ? "text-red-400"
+              className="text-lg font-mono font-semibold"
+              style={{
+                color: currentRSI >= overbought
+                  ? chartColors.down
                   : currentRSI <= oversold
-                    ? "text-green-400"
-                    : "text-foreground"
-              }`}
+                    ? chartColors.up
+                    : undefined
+              }}
             >
               {currentRSI.toFixed(2)}
             </span>
           )}
           {rsiCondition && (
-            <span className={`text-xs ${rsiCondition.color}`}>
+            <span
+              className={`text-xs ${!rsiCondition.color ? "text-gray-400" : ""}`}
+              style={{ color: rsiCondition.color }}
+            >
               {rsiCondition.label}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="text-red-400/70">OB: {overbought}</span>
-          <span className="text-green-400/70">OS: {oversold}</span>
+        <div className="flex items-center gap-2 text-xs">
+          <span style={{ color: hexToRgba(chartColors.down, 0.7) }}>OB: {overbought}</span>
+          <span style={{ color: hexToRgba(chartColors.up, 0.7) }}>OS: {oversold}</span>
         </div>
       </div>
 
@@ -129,7 +144,7 @@ export function RSIPane({
           y={priceToY(100)}
           width={WIDTH}
           height={priceToY(overbought) - priceToY(100)}
-          fill="rgba(239, 68, 68, 0.1)"
+          fill={hexToRgba(chartColors.down, 0.1)}
         />
 
         {/* Background fill for oversold zone */}
@@ -138,7 +153,7 @@ export function RSIPane({
           y={priceToY(oversold)}
           width={WIDTH}
           height={priceToY(0) - priceToY(oversold)}
-          fill="rgba(34, 197, 94, 0.1)"
+          fill={hexToRgba(chartColors.up, 0.1)}
         />
 
         {/* Overbought line (70) */}
@@ -147,7 +162,7 @@ export function RSIPane({
           y1={priceToY(overbought)}
           x2={WIDTH}
           y2={priceToY(overbought)}
-          stroke="rgba(239, 68, 68, 0.5)"
+          stroke={hexToRgba(chartColors.down, 0.5)}
           strokeWidth="0.5"
           strokeDasharray="2,2"
         />
@@ -169,7 +184,7 @@ export function RSIPane({
           y1={priceToY(oversold)}
           x2={WIDTH}
           y2={priceToY(oversold)}
-          stroke="rgba(34, 197, 94, 0.5)"
+          stroke={hexToRgba(chartColors.up, 0.5)}
           strokeWidth="0.5"
           strokeDasharray="2,2"
         />

@@ -86,6 +86,7 @@ export default function ChartProPage() {
   );
 
   const [showStrategyPanel, setShowStrategyPanel] = useState(true);
+  const [showIndicatorsPanel, setShowIndicatorsPanel] = useState(true);
   const [showLevelsTable, setShowLevelsTable] = useState(true);
 
   // Data mode - switch between live API and cached/simulated data
@@ -344,12 +345,12 @@ export default function ChartProPage() {
     if (!currentMACD) return null;
 
     if (currentMACD.histogram > 0) {
-      return { direction: "bullish", label: "Bullish", color: "text-green-400" };
+      return { direction: "bullish", label: "Bullish", color: chartColors.up };
     } else if (currentMACD.histogram < 0) {
-      return { direction: "bearish", label: "Bearish", color: "text-red-400" };
+      return { direction: "bearish", label: "Bearish", color: chartColors.down };
     }
-    return { direction: "neutral", label: "Neutral", color: "text-gray-400" };
-  }, [currentMACD]);
+    return { direction: "neutral", label: "Neutral", color: undefined };
+  }, [currentMACD, chartColors]);
 
   // Format price based on symbol
   const formatPrice = (price: number) => {
@@ -589,102 +590,119 @@ export default function ChartProPage() {
             </CardContent>
           </Card>
 
-          {/* Indicators Grid - RSI and MACD side by side */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* RSI Indicator Panel */}
-            <Card>
-              <CardHeader className="py-3">
-                <CardTitle className="text-base flex items-center justify-between">
-                  <span>RSI (14)</span>
-                  {rsiError && (
-                    <Badge variant="destructive" className="text-xs">
-                      Error
+          {/* Indicators Panel */}
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  Indicators
+                  {(isLoadingRSI || isLoadingMACD) && (
+                    <Badge variant="secondary" className="text-xs">
+                      Loading...
                     </Badge>
                   )}
-                </CardTitle>
-              </CardHeader>
+                </span>
+                <button
+                  onClick={() => setShowIndicatorsPanel(!showIndicatorsPanel)}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showIndicatorsPanel ? "Hide" : "Show"}
+                </button>
+              </CardTitle>
+            </CardHeader>
+            {showIndicatorsPanel && (
               <CardContent>
-                {isLoadingRSI ? (
-                  <Skeleton className="h-[120px] w-full" />
-                ) : rsiError ? (
-                  <div className="text-red-400 text-sm">{rsiError}</div>
-                ) : (
-                  <RSIPane rsiData={rsiData} />
-                )}
-              </CardContent>
-            </Card>
-
-            {/* MACD Indicator Panel */}
-            <Card>
-              <CardHeader className="py-3">
-                <CardTitle className="text-base flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    MACD (12, 26, 9)
-                    {macdSignal && (
-                      <Badge variant="outline" className={macdSignal.color}>
-                        {macdSignal.label}
-                      </Badge>
-                    )}
-                  </span>
-                  {macdError && (
-                    <Badge variant="destructive" className="text-xs">
-                      Error
-                    </Badge>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoadingMACD ? (
-                  <Skeleton className="h-[150px] w-full" />
-                ) : macdError ? (
-                  <div className="text-red-400 text-sm">{macdError}</div>
-                ) : currentMACD ? (
-                  <div className="space-y-4">
-                    {/* MACD Values */}
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="p-3 rounded-lg bg-muted/30">
-                        <div className="text-xs text-muted-foreground mb-1">MACD Line</div>
-                        <div
-                          className={`text-xl font-mono font-semibold ${
-                            currentMACD.macd >= 0 ? "text-green-400" : "text-red-400"
-                          }`}
-                        >
-                          {currentMACD.macd.toFixed(4)}
-                        </div>
-                      </div>
-                      <div className="p-3 rounded-lg bg-muted/30">
-                        <div className="text-xs text-muted-foreground mb-1">Signal Line</div>
-                        <div
-                          className={`text-xl font-mono font-semibold ${
-                            currentMACD.signal >= 0 ? "text-green-400" : "text-red-400"
-                          }`}
-                        >
-                          {currentMACD.signal.toFixed(4)}
-                        </div>
-                      </div>
-                      <div className="p-3 rounded-lg bg-muted/30">
-                        <div className="text-xs text-muted-foreground mb-1">Histogram</div>
-                        <div
-                          className={`text-xl font-mono font-semibold ${
-                            currentMACD.histogram >= 0 ? "text-green-400" : "text-red-400"
-                          }`}
-                        >
-                          {currentMACD.histogram.toFixed(4)}
-                        </div>
-                      </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* RSI Indicator */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">RSI (14)</span>
+                      {rsiError && (
+                        <Badge variant="destructive" className="text-xs">
+                          Error
+                        </Badge>
+                      )}
                     </div>
+                    {isLoadingRSI ? (
+                      <Skeleton className="h-[120px] w-full" />
+                    ) : rsiError ? (
+                      <div className="text-red-400 text-sm">{rsiError}</div>
+                    ) : (
+                      <RSIPane rsiData={rsiData} chartColors={chartColors} />
+                    )}
+                  </div>
 
-                    {/* Simple MACD Visualization */}
-                    <MACDChart macdData={macdData} chartColors={chartColors} />
+                  {/* MACD Indicator */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium flex items-center gap-2">
+                        MACD (12, 26, 9)
+                        {macdSignal && (
+                          <Badge
+                            variant="outline"
+                            className={!macdSignal.color ? "text-gray-400" : ""}
+                            style={{ color: macdSignal.color, borderColor: macdSignal.color }}
+                          >
+                            {macdSignal.label}
+                          </Badge>
+                        )}
+                      </span>
+                      {macdError && (
+                        <Badge variant="destructive" className="text-xs">
+                          Error
+                        </Badge>
+                      )}
+                    </div>
+                    {isLoadingMACD ? (
+                      <Skeleton className="h-[150px] w-full" />
+                    ) : macdError ? (
+                      <div className="text-red-400 text-sm">{macdError}</div>
+                    ) : currentMACD ? (
+                      <div className="space-y-4">
+                        {/* MACD Values */}
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="p-3 rounded-lg bg-muted/30">
+                            <div className="text-xs text-muted-foreground mb-1">MACD Line</div>
+                            <div
+                              className="text-xl font-mono font-semibold"
+                              style={{ color: currentMACD.macd >= 0 ? chartColors.up : chartColors.down }}
+                            >
+                              {currentMACD.macd.toFixed(4)}
+                            </div>
+                          </div>
+                          <div className="p-3 rounded-lg bg-muted/30">
+                            <div className="text-xs text-muted-foreground mb-1">Signal Line</div>
+                            <div
+                              className="text-xl font-mono font-semibold"
+                              style={{ color: currentMACD.signal >= 0 ? chartColors.up : chartColors.down }}
+                            >
+                              {currentMACD.signal.toFixed(4)}
+                            </div>
+                          </div>
+                          <div className="p-3 rounded-lg bg-muted/30">
+                            <div className="text-xs text-muted-foreground mb-1">Histogram</div>
+                            <div
+                              className="text-xl font-mono font-semibold"
+                              style={{ color: currentMACD.histogram >= 0 ? chartColors.up : chartColors.down }}
+                            >
+                              {currentMACD.histogram.toFixed(4)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Simple MACD Visualization */}
+                        <MACDChart macdData={macdData} chartColors={chartColors} />
+                      </div>
+                    ) : (
+                      <div className="text-muted-foreground">
+                        Need at least 26 bars to calculate MACD
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-muted-foreground">
-                    Need at least 26 bars to calculate MACD
-                  </div>
-                )}
+                </div>
               </CardContent>
-            </Card>
-          </div>
+            )}
+          </Card>
 
           {/* Levels Table */}
           <Card>
