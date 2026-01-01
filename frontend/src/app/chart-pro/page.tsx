@@ -303,13 +303,13 @@ export default function ChartProPage() {
       return {
         time: marker.time,
         position: isHigh ? "aboveBar" : "belowBar",
-        color: isBullish ? "#22c55e" : "#ef4444",
+        color: isBullish ? chartColors.up : chartColors.down,
         shape: isHigh ? "arrowDown" : "arrowUp",
         text,
         size: 1,
       } as ChartMarker;
     });
-  }, [swingResult, swingEnabled, editablePivots]);
+  }, [swingResult, swingEnabled, editablePivots, chartColors]);
 
   // Get current OHLC values
   const currentOHLC = useMemo(() => {
@@ -675,7 +675,7 @@ export default function ChartProPage() {
                     </div>
 
                     {/* Simple MACD Visualization */}
-                    <MACDChart macdData={macdData} />
+                    <MACDChart macdData={macdData} chartColors={chartColors} />
                   </div>
                 ) : (
                   <div className="text-muted-foreground">
@@ -795,7 +795,7 @@ export default function ChartProPage() {
 /**
  * Simple MACD histogram chart using SVG
  */
-function MACDChart({ macdData }: { macdData: { histogram: (number | null)[] } | null }) {
+function MACDChart({ macdData, chartColors }: { macdData: { histogram: (number | null)[] } | null; chartColors: { up: string; down: string } }) {
   if (!macdData || !macdData.histogram) return null;
 
   // Get last 50 histogram values
@@ -842,7 +842,7 @@ function MACDChart({ macdData }: { macdData: { histogram: (number | null)[] } | 
               y={y}
               width={barWidth - 0.5}
               height={barHeight}
-              fill={value >= 0 ? "#22c55e" : "#ef4444"}
+              fill={value >= 0 ? chartColors.up : chartColors.down}
               opacity={0.8}
             />
           );
