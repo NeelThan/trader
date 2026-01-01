@@ -482,6 +482,52 @@ export function useWorkflowManager() {
     return saveStore(getDefaultStore());
   }, []);
 
+  // Start a new trade - puts current active workflow to pending if in progress
+  const startNewTrade = useCallback((initialState?: Partial<WorkflowState>): string => {
+    const currentStore = getSnapshot();
+    const now = new Date().toISOString();
+    let workflows = [...currentStore.workflows];
+
+    // If there's an active workflow that's in progress, set it to pending
+    if (currentStore.activeWorkflowId) {
+      const activeIndex = workflows.findIndex((w) => w.id === currentStore.activeWorkflowId);
+      if (activeIndex !== -1) {
+        const activeWorkflow = workflows[activeIndex];
+        // Only change status if it's "active" (in progress) - not completed or cancelled
+        if (activeWorkflow.status === "active") {
+          workflows[activeIndex] = {
+            ...activeWorkflow,
+            status: "pending",
+            updatedAt: now,
+          };
+        }
+      }
+    }
+
+    // Create new workflow
+    const state: WorkflowState = { ...DEFAULT_WORKFLOW_STATE, ...initialState, lastUpdated: now };
+    const id = generateId();
+
+    const newWorkflow: StoredWorkflow = {
+      id,
+      name: generateName(state.symbol, state.tradeDirection),
+      status: "pending",
+      state,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    workflows = [...workflows, newWorkflow];
+
+    saveStore({
+      ...currentStore,
+      workflows,
+      activeWorkflowId: id,
+    });
+
+    return id;
+  }, []);
+
   return {
     // Data
     workflows,
@@ -493,6 +539,7 @@ export function useWorkflowManager() {
 
     // CRUD Operations
     createWorkflow,
+    startNewTrade,
     setActiveWorkflow,
     updateActiveWorkflow,
     deleteWorkflow,

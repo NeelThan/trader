@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useWorkflowManager } from "@/hooks/use-workflow-manager";
 
 type NavItem = {
   label: string;
   href: string;
   icon: React.ReactNode;
   description?: string;
+  action?: "new-trade"; // Special action for items that need custom behavior
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -33,6 +35,7 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
     description: "Trading workflow",
+    action: "new-trade",
   },
   {
     label: "Chart",
@@ -101,18 +104,17 @@ const STORAGE_KEY = "trader-sidenav-collapsed";
 
 export function SideNav() {
   const pathname = usePathname();
-  const [isCollapsed, setIsCollapsed] = useState(true);
-  const [isOpen, setIsOpen] = useState(false);
-  const [isHydrated, setIsHydrated] = useState(false);
+  const router = useRouter();
+  const { startNewTrade } = useWorkflowManager();
 
-  // Load collapsed state from localStorage
-  useEffect(() => {
+  // Use lazy initialization to read from localStorage on first render
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === "undefined") return true;
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored !== null) {
-      setIsCollapsed(stored === "true");
-    }
-    setIsHydrated(true);
-  }, []);
+    return stored !== null ? stored === "true" : true;
+  });
+  const [isOpen, setIsOpen] = useState(false);
+  const [isHydrated] = useState(() => typeof window !== "undefined");
 
   // Save collapsed state to localStorage
   const toggleCollapsed = useCallback(() => {
@@ -126,10 +128,17 @@ export function SideNav() {
     setIsOpen((prev) => !prev);
   }, []);
 
-  // Close mobile menu on navigation
-  useEffect(() => {
+  // Close mobile menu (called on navigation)
+  const closeMobileMenu = useCallback(() => {
     setIsOpen(false);
-  }, [pathname]);
+  }, []);
+
+  // Handle new trade action
+  const handleNewTrade = useCallback(() => {
+    closeMobileMenu();
+    startNewTrade();
+    router.push("/workflow");
+  }, [closeMobileMenu, startNewTrade, router]);
 
   // Prevent hydration mismatch
   if (!isHydrated) {
@@ -218,24 +227,14 @@ export function SideNav() {
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground",
-                  isActive && "bg-primary/10 text-primary",
-                  isCollapsed && "lg:justify-center lg:px-2"
-                )}
-                title={isCollapsed ? item.label : undefined}
-              >
+            const itemContent = (
+              <>
                 <span className={cn(isActive && "text-primary")}>
                   {item.icon}
                 </span>
                 <span
                   className={cn(
-                    "flex-1 transition-opacity",
+                    "flex-1 transition-opacity text-left",
                     isCollapsed && "lg:hidden"
                   )}
                 >
@@ -246,6 +245,39 @@ export function SideNav() {
                     </span>
                   )}
                 </span>
+              </>
+            );
+
+            const itemClassName = cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors w-full",
+              "hover:bg-accent hover:text-accent-foreground",
+              isActive && "bg-primary/10 text-primary",
+              isCollapsed && "lg:justify-center lg:px-2"
+            );
+
+            // Use button for items with special actions
+            if (item.action === "new-trade") {
+              return (
+                <button
+                  key={item.href}
+                  onClick={handleNewTrade}
+                  className={itemClassName}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  {itemContent}
+                </button>
+              );
+            }
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={itemClassName}
+                title={isCollapsed ? item.label : undefined}
+                onClick={closeMobileMenu}
+              >
+                {itemContent}
               </Link>
             );
           })}
@@ -257,37 +289,38 @@ export function SideNav() {
 
 // Layout wrapper that adds padding for the sidebar
 export function SideNavLayout({ children }: { children: React.ReactNode }) {
-  const [isCollapsed, setIsCollapsed] = useState(true);
-  const [isHydrated, setIsHydrated] = useState(false);
+  // Use lazy initialization to read from localStorage on first render
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored !== null ? stored === "true" : true;
+  });
+  const [isHydrated, setIsHydrated] = useState(() => typeof window !== "undefined");
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored !== null) {
-      setIsCollapsed(stored === "true");
-    }
-    setIsHydrated(true);
-
-    // Listen for storage changes
-    const handleStorage = () => {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored !== null) {
-        setIsCollapsed(stored === "true");
+    // Listen for storage changes from other tabs
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY && e.newValue !== null) {
+        setIsCollapsed(e.newValue === "true");
       }
     };
 
     window.addEventListener("storage", handleStorage);
 
-    // Also listen for same-tab updates
-    const observer = new MutationObserver(() => {
+    // Poll for same-tab updates (since storage event doesn't fire for same tab)
+    const intervalId = setInterval(() => {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored !== null) {
-        setIsCollapsed(stored === "true");
+        setIsCollapsed((prev) => {
+          const newValue = stored === "true";
+          return prev !== newValue ? newValue : prev;
+        });
       }
-    });
+    }, 100);
 
     return () => {
       window.removeEventListener("storage", handleStorage);
-      observer.disconnect();
+      clearInterval(intervalId);
     };
   }, []);
 

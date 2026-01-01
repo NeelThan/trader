@@ -98,7 +98,7 @@ export function PreTradeChecklist({
       allChecked: allChecked.length,
       percentage: required.length > 0 ? (requiredChecked.length / required.length) * 100 : 0,
     };
-  }, [checklistItems]);
+  }, [effectiveItems]);
 
   const canProceed = goNoGo === "GO";
 

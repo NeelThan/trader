@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { NewTradeButton } from "@/components/layout";
 import {
   useJournal,
   formatCurrency,
@@ -483,11 +484,7 @@ export default function JournalPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/workflow">
-                <Button size="sm">
-                  New Trade
-                </Button>
-              </Link>
+              <NewTradeButton />
               <ThemeToggle
                 theme={theme}
                 onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}

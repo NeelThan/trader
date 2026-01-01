@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { NewTradeButton } from "@/components/layout";
 import {
   MarketSymbol,
   MARKET_CONFIG,
@@ -130,11 +131,7 @@ export default function DashboardPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/workflow">
-                <Button size="sm">
-                  New Trade
-                </Button>
-              </Link>
+              <NewTradeButton />
               <ThemeToggle
                 theme={theme}
                 onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -208,19 +205,15 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="hidden sm:block">
-                <Link href="/workflow">
-                  <Button>
-                    Start Workflow
-                    <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </Button>
-                </Link>
+                <NewTradeButton size="default">
+                  Start Workflow
+                  <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </NewTradeButton>
               </div>
               <div className="sm:hidden">
-                <Link href="/workflow">
-                  <Button size="sm">Start</Button>
-                </Link>
+                <NewTradeButton size="sm">Start</NewTradeButton>
               </div>
             </CardContent>
           </Card>

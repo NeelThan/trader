@@ -94,7 +94,24 @@ export function TrendDecisionPanel({
     []
   );
 
+  // Handler to update analysis results - called from effect subscription
+  const handleAnalysisUpdate = useCallback((
+    newHigher: TrendDirection,
+    newLower: TrendDirection,
+    direction: TradeAction,
+    confidence: number
+  ) => {
+    onChange({
+      higherTrend: newHigher,
+      lowerTrend: newLower,
+      tradeDirection: direction,
+      trendConfidence: confidence,
+    });
+    setLastAnalyzed(new Date().toLocaleTimeString());
+  }, [onChange]);
+
   // Update workflow state when analysis results change
+  // This effect syncs component state with external data from useTrendAnalysis hook
   useEffect(() => {
     if (currentAlignment) {
       const newHigher = currentAlignment.higherTrend.direction;
@@ -108,16 +125,11 @@ export function TrendDecisionPanel({
         direction !== tradeDirection ||
         currentAlignment.confidence !== trendConfidence
       ) {
-        onChange({
-          higherTrend: newHigher,
-          lowerTrend: newLower,
-          tradeDirection: direction,
-          trendConfidence: currentAlignment.confidence,
-        });
-        setLastAnalyzed(new Date().toLocaleTimeString());
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Valid sync with external hook data
+        handleAnalysisUpdate(newHigher, newLower, direction, currentAlignment.confidence);
       }
     }
-  }, [currentAlignment, higherTrend, lowerTrend, tradeDirection, trendConfidence, deriveTradeDirection, onChange]);
+  }, [currentAlignment, higherTrend, lowerTrend, tradeDirection, trendConfidence, deriveTradeDirection, handleAnalysisUpdate]);
 
   // Refresh analysis
   const analyzeTrends = useCallback(() => {
