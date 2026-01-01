@@ -6,8 +6,10 @@ import pytest
 
 from trader.indicators import (
     MACDResult,
+    RSIResult,
     calculate_ema,
     calculate_macd,
+    calculate_rsi,
 )
 
 
@@ -201,3 +203,109 @@ class TestMACD:
         has_positive = any(v > 0 for v in valid_histogram)
         has_negative = any(v < 0 for v in valid_histogram)
         assert has_positive and has_negative
+
+
+class TestRSI:
+    """Tests for Relative Strength Index calculation.
+
+    RSI = 100 - (100 / (1 + RS))
+    RS = Average Gain / Average Loss (over period)
+    """
+
+    @pytest.fixture
+    def sample_prices(self) -> list[float]:
+        """Sample price data for RSI testing (20 prices)."""
+        return [
+            44.34, 44.09, 44.15, 43.61, 44.33, 44.83, 45.10, 45.42, 45.84, 46.08,
+            45.89, 46.03, 45.61, 46.28, 46.28, 46.00, 46.03, 46.41, 46.22, 45.64,
+        ]
+
+    def test_rsi_returns_correct_structure(self, sample_prices: list[float]) -> None:
+        """RSI should return RSIResult with rsi array."""
+        result = calculate_rsi(sample_prices)
+
+        assert isinstance(result, RSIResult)
+        assert hasattr(result, "rsi")
+
+    def test_rsi_array_length(self, sample_prices: list[float]) -> None:
+        """RSI array should have same length as input."""
+        result = calculate_rsi(sample_prices)
+
+        assert len(result.rsi) == len(sample_prices)
+
+    def test_rsi_values_in_valid_range(self, sample_prices: list[float]) -> None:
+        """RSI values should be between 0 and 100."""
+        result = calculate_rsi(sample_prices)
+
+        for value in result.rsi:
+            if value is not None:
+                assert 0 <= value <= 100
+
+    def test_rsi_default_period_is_14(self, sample_prices: list[float]) -> None:
+        """Default RSI period should be 14."""
+        result = calculate_rsi(sample_prices)
+
+        # First 14 values should be None (warmup period)
+        assert all(v is None for v in result.rsi[:14])
+        # After warmup, should have values
+        valid_values = [v for v in result.rsi[14:] if v is not None]
+        assert len(valid_values) > 0
+
+    def test_rsi_custom_period(self, sample_prices: list[float]) -> None:
+        """RSI should accept custom period."""
+        result = calculate_rsi(sample_prices, period=7)
+
+        # First 7 values should be None
+        assert all(v is None for v in result.rsi[:7])
+        # After warmup, should have values
+        valid_values = [v for v in result.rsi[7:] if v is not None]
+        assert len(valid_values) > 0
+
+    def test_rsi_requires_minimum_data(self) -> None:
+        """RSI needs at least period + 1 data points."""
+        short_data = [1.0] * 10
+
+        with pytest.raises(ValueError, match="at least"):
+            calculate_rsi(short_data, period=14)
+
+    def test_rsi_period_must_be_positive(self) -> None:
+        """RSI period must be positive."""
+        data = [1.0] * 20
+
+        with pytest.raises(ValueError, match="positive"):
+            calculate_rsi(data, period=0)
+
+    def test_rsi_high_in_strong_uptrend(self) -> None:
+        """RSI should be high (>70) in a strong uptrend."""
+        # Create a strong uptrend
+        uptrend = [float(i) for i in range(100, 130)]
+
+        result = calculate_rsi(uptrend, period=14)
+
+        # Last RSI value should be high (overbought territory)
+        valid_rsi = [v for v in result.rsi if v is not None]
+        assert valid_rsi[-1] > 70
+
+    def test_rsi_low_in_strong_downtrend(self) -> None:
+        """RSI should be low (<30) in a strong downtrend."""
+        # Create a strong downtrend
+        downtrend = [float(i) for i in range(130, 100, -1)]
+
+        result = calculate_rsi(downtrend, period=14)
+
+        # Last RSI value should be low (oversold territory)
+        valid_rsi = [v for v in result.rsi if v is not None]
+        assert valid_rsi[-1] < 30
+
+    def test_rsi_near_50_in_sideways_market(self) -> None:
+        """RSI should be around 50 in a flat/sideways market."""
+        # Create sideways price action (oscillating around a mean)
+        sideways = [100.0, 101.0, 99.0, 100.5, 99.5, 100.0, 100.5, 99.0,
+                    101.0, 100.0, 99.5, 100.5, 100.0, 99.0, 101.0, 100.0,
+                    100.5, 99.5, 100.0, 100.5]
+
+        result = calculate_rsi(sideways, period=14)
+
+        valid_rsi = [v for v in result.rsi if v is not None]
+        # Should be roughly in the middle range
+        assert 30 < valid_rsi[-1] < 70

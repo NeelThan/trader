@@ -6,14 +6,26 @@ All calculations are performed server-side per the thin client architecture.
 Indicators implemented:
 - EMA (Exponential Moving Average)
 - MACD (Moving Average Convergence Divergence)
+- RSI (Relative Strength Index)
 
 Future indicators (per ADR-20260101):
 - SMA (Simple Moving Average)
-- RSI (Relative Strength Index)
 - ADX (Average Directional Index)
 """
 
 from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class RSIResult:
+    """Result of RSI calculation.
+
+    Attributes:
+        rsi: RSI values (0-100 scale).
+             None for periods before warmup is complete.
+    """
+
+    rsi: list[float | None]
 
 
 @dataclass(frozen=True)
@@ -184,3 +196,64 @@ def calculate_macd(
     histogram = _calculate_histogram(macd_line, signal_line)
 
     return MACDResult(macd=macd_line, signal=signal_line, histogram=histogram)
+
+
+def calculate_rsi(prices: list[float], period: int = 14) -> RSIResult:
+    """Calculate RSI (Relative Strength Index).
+
+    RSI = 100 - (100 / (1 + RS))
+    RS = Average Gain / Average Loss
+
+    Uses Wilder's smoothing method for the averages.
+
+    Args:
+        prices: List of price values (typically closing prices).
+        period: RSI period (default: 14, standard Wilder's period).
+
+    Returns:
+        RSIResult with rsi array.
+        First 'period' values are None (warmup period).
+
+    Raises:
+        ValueError: If prices has fewer elements than period + 1.
+        ValueError: If period is not positive.
+    """
+    if period <= 0:
+        raise ValueError("Period must be positive")
+
+    if len(prices) < period + 1:
+        raise ValueError(f"Need at least {period + 1} prices, got {len(prices)}")
+
+    # Calculate price changes
+    changes = [prices[i] - prices[i - 1] for i in range(1, len(prices))]
+
+    # Separate gains and losses
+    gains = [max(change, 0) for change in changes]
+    losses = [abs(min(change, 0)) for change in changes]
+
+    # Initialize RSI result with None for warmup period
+    rsi: list[float | None] = [None] * period
+
+    # Calculate first average gain/loss using SMA
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+
+    # Calculate first RSI value
+    rsi.append(_calculate_rsi_value(avg_gain, avg_loss))
+
+    # Calculate subsequent RSI values using Wilder's smoothing
+    for i in range(period, len(changes)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        rsi.append(_calculate_rsi_value(avg_gain, avg_loss))
+
+    return RSIResult(rsi=rsi)
+
+
+def _calculate_rsi_value(avg_gain: float, avg_loss: float) -> float:
+    """Calculate RSI from average gain and loss."""
+    if avg_loss == 0:
+        return 100.0 if avg_gain > 0 else 50.0
+
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))

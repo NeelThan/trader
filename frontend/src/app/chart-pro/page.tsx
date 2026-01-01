@@ -3,7 +3,7 @@
 /**
  * Chart Pro - Visual-First Trading Workflow
  *
- * Phase 1: Basic page shell with MACD indicator integration.
+ * Phase 2: MACD and RSI indicator integration.
  * Future phases will add: swing detection, multi-TF levels, heatmap, monitors.
  */
 
@@ -19,8 +19,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CandlestickChart, CandlestickChartHandle } from "@/components/trading";
+import { RSIPane } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useMACD } from "@/hooks/use-macd";
+import { useRSI } from "@/hooks/use-rsi";
 import {
   Timeframe,
   MarketSymbol,
@@ -58,6 +60,16 @@ export default function ChartProPage() {
   } = useMACD({
     data: marketData,
     enabled: marketData.length >= 26,
+  });
+
+  // Get RSI indicator
+  const {
+    rsiData,
+    isLoading: isLoadingRSI,
+    error: rsiError,
+  } = useRSI({
+    data: marketData,
+    enabled: marketData.length >= 15,
   });
 
   // Get current OHLC values
@@ -120,7 +132,7 @@ export default function ChartProPage() {
             <h1 className="text-2xl font-bold flex items-center gap-2">
               Chart Pro
               <Badge variant="secondary" className="text-xs">
-                Phase 1
+                Phase 2
               </Badge>
             </h1>
             <p className="text-muted-foreground">
@@ -234,78 +246,104 @@ export default function ChartProPage() {
           </CardContent>
         </Card>
 
-        {/* MACD Indicator Panel */}
-        <Card>
-          <CardHeader className="py-3">
-            <CardTitle className="text-base flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                MACD (12, 26, 9)
-                {macdSignal && (
-                  <Badge variant="outline" className={macdSignal.color}>
-                    {macdSignal.label}
+        {/* Indicators Grid - RSI and MACD side by side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* RSI Indicator Panel */}
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span>RSI (14)</span>
+                {rsiError && (
+                  <Badge variant="destructive" className="text-xs">
+                    Error
                   </Badge>
                 )}
-              </span>
-              {macdError && (
-                <Badge variant="destructive" className="text-xs">
-                  Error
-                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoadingRSI ? (
+                <Skeleton className="h-[120px] w-full" />
+              ) : rsiError ? (
+                <div className="text-red-400 text-sm">{rsiError}</div>
+              ) : (
+                <RSIPane rsiData={rsiData} />
               )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoadingMACD ? (
-              <Skeleton className="h-[150px] w-full" />
-            ) : macdError ? (
-              <div className="text-red-400 text-sm">{macdError}</div>
-            ) : currentMACD ? (
-              <div className="space-y-4">
-                {/* MACD Values */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="p-3 rounded-lg bg-muted/30">
-                    <div className="text-xs text-muted-foreground mb-1">MACD Line</div>
-                    <div
-                      className={`text-xl font-mono font-semibold ${
-                        currentMACD.macd >= 0 ? "text-green-400" : "text-red-400"
-                      }`}
-                    >
-                      {currentMACD.macd.toFixed(4)}
+            </CardContent>
+          </Card>
+
+          {/* MACD Indicator Panel */}
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  MACD (12, 26, 9)
+                  {macdSignal && (
+                    <Badge variant="outline" className={macdSignal.color}>
+                      {macdSignal.label}
+                    </Badge>
+                  )}
+                </span>
+                {macdError && (
+                  <Badge variant="destructive" className="text-xs">
+                    Error
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoadingMACD ? (
+                <Skeleton className="h-[150px] w-full" />
+              ) : macdError ? (
+                <div className="text-red-400 text-sm">{macdError}</div>
+              ) : currentMACD ? (
+                <div className="space-y-4">
+                  {/* MACD Values */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="p-3 rounded-lg bg-muted/30">
+                      <div className="text-xs text-muted-foreground mb-1">MACD Line</div>
+                      <div
+                        className={`text-xl font-mono font-semibold ${
+                          currentMACD.macd >= 0 ? "text-green-400" : "text-red-400"
+                        }`}
+                      >
+                        {currentMACD.macd.toFixed(4)}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-muted/30">
+                      <div className="text-xs text-muted-foreground mb-1">Signal Line</div>
+                      <div
+                        className={`text-xl font-mono font-semibold ${
+                          currentMACD.signal >= 0 ? "text-green-400" : "text-red-400"
+                        }`}
+                      >
+                        {currentMACD.signal.toFixed(4)}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-muted/30">
+                      <div className="text-xs text-muted-foreground mb-1">Histogram</div>
+                      <div
+                        className={`text-xl font-mono font-semibold ${
+                          currentMACD.histogram >= 0 ? "text-green-400" : "text-red-400"
+                        }`}
+                      >
+                        {currentMACD.histogram.toFixed(4)}
+                      </div>
                     </div>
                   </div>
-                  <div className="p-3 rounded-lg bg-muted/30">
-                    <div className="text-xs text-muted-foreground mb-1">Signal Line</div>
-                    <div
-                      className={`text-xl font-mono font-semibold ${
-                        currentMACD.signal >= 0 ? "text-green-400" : "text-red-400"
-                      }`}
-                    >
-                      {currentMACD.signal.toFixed(4)}
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-lg bg-muted/30">
-                    <div className="text-xs text-muted-foreground mb-1">Histogram</div>
-                    <div
-                      className={`text-xl font-mono font-semibold ${
-                        currentMACD.histogram >= 0 ? "text-green-400" : "text-red-400"
-                      }`}
-                    >
-                      {currentMACD.histogram.toFixed(4)}
-                    </div>
-                  </div>
+
+                  {/* Simple MACD Visualization */}
+                  <MACDChart macdData={macdData} />
                 </div>
+              ) : (
+                <div className="text-muted-foreground">
+                  Need at least 26 bars to calculate MACD
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-                {/* Simple MACD Visualization */}
-                <MACDChart macdData={macdData} />
-              </div>
-            ) : (
-              <div className="text-muted-foreground">
-                Need at least 26 bars to calculate MACD
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Phase 1 Status */}
+        {/* Phase 2 Status */}
         <Card>
           <CardHeader className="py-3">
             <CardTitle className="text-base">Implementation Status</CardTitle>
@@ -313,7 +351,7 @@ export default function ChartProPage() {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatusItem label="MACD Indicator" status="done" />
-              <StatusItem label="RSI Pane" status="pending" />
+              <StatusItem label="RSI Pane" status="done" />
               <StatusItem label="Swing Detection" status="pending" />
               <StatusItem label="Multi-TF Levels" status="pending" />
               <StatusItem label="Confluence Heatmap" status="pending" />
@@ -327,10 +365,10 @@ export default function ChartProPage() {
         {/* Info */}
         <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
           <p className="text-sm text-muted-foreground">
-            <span className="font-medium text-blue-400">Phase 1 Complete:</span>{" "}
-            MACD indicator is now calculated server-side per the thin client architecture.
-            The backend provides the EMA calculations, and this page displays the results.
-            Next phases will add RSI pane, swing detection, multi-timeframe levels, and more.
+            <span className="font-medium text-blue-400">Phase 2 Complete:</span>{" "}
+            MACD and RSI indicators are now calculated server-side per the thin client architecture.
+            Both indicators show overbought/oversold conditions and momentum direction.
+            Next phases will add swing detection, multi-timeframe levels, and more.
           </p>
         </div>
       </div>

@@ -1148,3 +1148,103 @@ class TestMACDEndpoint:
         )
 
         assert response.status_code == 400
+
+
+class TestRSIEndpoint:
+    """Tests for RSI indicator endpoint."""
+
+    async def test_rsi_with_ohlc_data(self, client: AsyncClient) -> None:
+        """POST /indicators/rsi calculates RSI from OHLC data."""
+        # Generate 20 closing prices
+        data = [
+            {
+                "time": f"2024-01-{i+1:02d}",
+                "open": 100,
+                "high": 105,
+                "low": 95,
+                "close": 100 + i,
+            }
+            for i in range(20)
+        ]
+        response = await client.post(
+            "/indicators/rsi",
+            json={"data": data},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert "rsi" in result
+        assert len(result["rsi"]) == 20
+
+    async def test_rsi_with_custom_period(self, client: AsyncClient) -> None:
+        """POST /indicators/rsi accepts custom period."""
+        data = [
+            {
+                "time": f"2024-01-{i+1:02d}",
+                "open": 100,
+                "high": 105,
+                "low": 95,
+                "close": 100 + i,
+            }
+            for i in range(20)
+        ]
+        response = await client.post(
+            "/indicators/rsi",
+            json={"data": data, "period": 7},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert len(result["rsi"]) == 20
+
+    async def test_rsi_values_in_valid_range(self, client: AsyncClient) -> None:
+        """RSI values should be between 0 and 100."""
+        data = [
+            {
+                "time": f"2024-01-{i+1:02d}",
+                "open": 100,
+                "high": 105,
+                "low": 95,
+                "close": 100 + i,
+            }
+            for i in range(20)
+        ]
+        response = await client.post(
+            "/indicators/rsi",
+            json={"data": data},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        for value in result["rsi"]:
+            if value is not None:
+                assert 0 <= value <= 100
+
+    async def test_rsi_insufficient_data(self, client: AsyncClient) -> None:
+        """POST /indicators/rsi returns error for insufficient data."""
+        # Only 10 bars, need 15 for default period 14
+        data = [
+            {
+                "time": f"2024-01-{i+1:02d}",
+                "open": 100,
+                "high": 105,
+                "low": 95,
+                "close": 100 + i,
+            }
+            for i in range(10)
+        ]
+        response = await client.post(
+            "/indicators/rsi",
+            json={"data": data},
+        )
+
+        assert response.status_code == 400
+
+    async def test_rsi_empty_data(self, client: AsyncClient) -> None:
+        """POST /indicators/rsi returns error for empty data."""
+        response = await client.post(
+            "/indicators/rsi",
+            json={"data": []},
+        )
+
+        assert response.status_code == 400

@@ -22,7 +22,7 @@ from trader.harmonics import (
     calculate_reversal_zone,
     validate_pattern,
 )
-from trader.indicators import calculate_macd
+from trader.indicators import calculate_macd, calculate_rsi
 from trader.journal import (
     JournalEntry,
     calculate_analytics,
@@ -407,6 +407,19 @@ class MACDResponse(BaseModel):
     macd: list[float | None]
     signal: list[float | None]
     histogram: list[float | None]
+
+
+class RSIRequest(BaseModel):
+    """Request model for RSI calculation."""
+
+    data: list[OHLCBarModel]
+    period: int = 14
+
+
+class RSIResponse(BaseModel):
+    """Response model for RSI calculation."""
+
+    rsi: list[float | None]
 
 
 # --- Endpoints ---
@@ -853,3 +866,27 @@ async def macd_indicator(request: MACDRequest) -> MACDResponse:
         signal=result.signal,
         histogram=result.histogram,
     )
+
+
+@app.post("/indicators/rsi", response_model=RSIResponse)
+async def rsi_indicator(request: RSIRequest) -> RSIResponse:
+    """Calculate RSI indicator from OHLC data.
+
+    RSI (Relative Strength Index) is a momentum oscillator that measures
+    the speed and magnitude of price movements on a scale of 0 to 100.
+
+    - RSI > 70 = Overbought condition
+    - RSI < 30 = Oversold condition
+    """
+    if not request.data:
+        raise HTTPException(status_code=400, detail="No data provided")
+
+    # Extract closing prices from OHLC data
+    prices = [bar.close for bar in request.data]
+
+    try:
+        result = calculate_rsi(prices=prices, period=request.period)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return RSIResponse(rsi=result.rsi)
