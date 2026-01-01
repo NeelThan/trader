@@ -473,7 +473,7 @@ export default function ChartProPage() {
                 </div>
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                Drag chart to pan left/right. Drag the price axis (right edge) up/down to adjust vertical range. Double-click price axis to auto-fit.
+                Drag to pan left/right | Middle-click+drag for vertical pan | Ctrl+scroll for vertical zoom | Double-click price axis to auto-fit
               </p>
             </CardHeader>
             <CardContent className="p-0">

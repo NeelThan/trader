@@ -589,6 +589,97 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     };
   }, [autoSize, handleResize]);
 
+  // Custom vertical panning: Middle mouse button OR Ctrl+Scroll for vertical zoom
+  const isDraggingVerticalRef = useRef(false);
+  const lastYRef = useRef(0);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      // Middle mouse button (button 1) for vertical panning
+      if (e.button === 1) {
+        isDraggingVerticalRef.current = true;
+        lastYRef.current = e.clientY;
+        // Disable auto-scale to allow manual adjustment
+        chartRef.current?.priceScale("right").applyOptions({ autoScale: false });
+        e.preventDefault();
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingVerticalRef.current || !chartRef.current) return;
+
+      const deltaY = e.clientY - lastYRef.current;
+      lastYRef.current = e.clientY;
+
+      const priceScale = chartRef.current.priceScale("right");
+      const priceRange = priceScale.options();
+      const currentMargins = priceRange.scaleMargins ?? { top: 0.1, bottom: 0.1 };
+
+      // Adjust margins to simulate vertical scrolling
+      const sensitivity = 0.003;
+      const adjustment = deltaY * sensitivity;
+
+      priceScale.applyOptions({
+        scaleMargins: {
+          top: Math.max(0, Math.min(0.8, (currentMargins.top ?? 0.1) + adjustment)),
+          bottom: Math.max(0, Math.min(0.8, (currentMargins.bottom ?? 0.1) - adjustment)),
+        },
+      });
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (e.button === 1) {
+        isDraggingVerticalRef.current = false;
+      }
+    };
+
+    // Ctrl+Scroll for vertical zoom
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey && chartRef.current) {
+        e.preventDefault();
+        const priceScale = chartRef.current.priceScale("right");
+
+        // Disable auto-scale
+        priceScale.applyOptions({ autoScale: false });
+
+        const priceRange = priceScale.options();
+        const currentMargins = priceRange.scaleMargins ?? { top: 0.1, bottom: 0.1 };
+
+        // Zoom: scroll up = zoom in (decrease margins), scroll down = zoom out (increase margins)
+        const zoomFactor = e.deltaY > 0 ? 0.02 : -0.02;
+
+        priceScale.applyOptions({
+          scaleMargins: {
+            top: Math.max(0.02, Math.min(0.45, (currentMargins.top ?? 0.1) + zoomFactor)),
+            bottom: Math.max(0.02, Math.min(0.45, (currentMargins.bottom ?? 0.1) + zoomFactor)),
+          },
+        });
+      }
+    };
+
+    // Prevent context menu on middle click
+    const handleContextMenu = (e: MouseEvent) => {
+      if (e.button === 1) e.preventDefault();
+    };
+
+    container.addEventListener("mousedown", handleMouseDown);
+    container.addEventListener("auxclick", handleContextMenu);
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      container.removeEventListener("mousedown", handleMouseDown);
+      container.removeEventListener("auxclick", handleContextMenu);
+      container.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
     return (
       <div
         ref={containerRef}
