@@ -91,6 +91,7 @@ export default function ChartProPage() {
   );
 
   const [showStrategyPanel, setShowStrategyPanel] = useState(true);
+  const [showTrendAlignment, setShowTrendAlignment] = useState(true);
   const [showIndicatorsPanel, setShowIndicatorsPanel] = useState(true);
   const [showLevelsTable, setShowLevelsTable] = useState(true);
 
@@ -553,15 +554,6 @@ export default function ChartProPage() {
             </CardContent>
           </Card>
 
-          {/* Trend Alignment Panel */}
-          <TrendAlignmentPanel
-            trends={trendData}
-            overall={overallTrend}
-            isLoading={isLoadingTrend}
-            onRefresh={refreshTrend}
-            chartColors={chartColors}
-          />
-
           {/* Main Chart */}
           <Card>
             <CardHeader className="py-3">
@@ -630,6 +622,39 @@ export default function ChartProPage() {
                 </div>
               )}
             </CardContent>
+          </Card>
+
+          {/* Trend Alignment Panel */}
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  Trend Alignment
+                  {isLoadingTrend && (
+                    <Badge variant="secondary" className="text-xs">
+                      Loading...
+                    </Badge>
+                  )}
+                </span>
+                <button
+                  onClick={() => setShowTrendAlignment(!showTrendAlignment)}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showTrendAlignment ? "Hide" : "Show"}
+                </button>
+              </CardTitle>
+            </CardHeader>
+            {showTrendAlignment && (
+              <CardContent className="pt-0">
+                <TrendAlignmentPanel
+                  trends={trendData}
+                  overall={overallTrend}
+                  isLoading={isLoadingTrend}
+                  onRefresh={refreshTrend}
+                  chartColors={chartColors}
+                />
+              </CardContent>
+            )}
           </Card>
 
           {/* Indicators Panel */}

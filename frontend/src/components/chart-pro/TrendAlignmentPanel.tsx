@@ -10,8 +10,6 @@
  */
 
 import { TrendingUp, TrendingDown, Minus, RefreshCw } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -242,6 +240,7 @@ function AlignmentBadge({
 
 /**
  * Main Trend Alignment Panel component
+ * Note: This component renders just the content - wrap it in a Card for standalone use
  */
 export function TrendAlignmentPanel({
   trends,
@@ -251,71 +250,62 @@ export function TrendAlignmentPanel({
   chartColors,
 }: TrendAlignmentPanelProps) {
   return (
-    <Card>
-      <CardHeader className="py-3">
-        <CardTitle className="text-base flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            Trend Alignment
-            {isLoading && (
-              <Badge variant="secondary" className="text-xs">
-                Loading...
-              </Badge>
-            )}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onRefresh}
-            disabled={isLoading}
-            className="h-7 px-2"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-          </Button>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Overall Summary */}
-        <div className="flex items-center justify-between">
-          <AlignmentBadge overall={overall} chartColors={chartColors} />
-          <div className="text-right">
-            <div className="flex items-center gap-2 text-xs">
-              <span style={{ color: chartColors.up }}>
-                {overall.bullishCount} Bullish
-              </span>
-              <span className="text-muted-foreground">|</span>
-              <span style={{ color: chartColors.down }}>
-                {overall.bearishCount} Bearish
-              </span>
-              <span className="text-muted-foreground">|</span>
-              <span className="text-gray-400">
-                {overall.rangingCount} Ranging
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {overall.description}
-            </p>
+    <div className="space-y-4">
+      {/* Refresh Button Row */}
+      <div className="flex justify-end">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onRefresh}
+          disabled={isLoading}
+          className="h-7 px-2"
+        >
+          <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+          <span className="ml-1 text-xs">Refresh</span>
+        </Button>
+      </div>
+
+      {/* Overall Summary */}
+      <div className="flex items-center justify-between">
+        <AlignmentBadge overall={overall} chartColors={chartColors} />
+        <div className="text-right">
+          <div className="flex items-center gap-2 text-xs">
+            <span style={{ color: chartColors.up }}>
+              {overall.bullishCount} Bullish
+            </span>
+            <span className="text-muted-foreground">|</span>
+            <span style={{ color: chartColors.down }}>
+              {overall.bearishCount} Bearish
+            </span>
+            <span className="text-muted-foreground">|</span>
+            <span className="text-gray-400">
+              {overall.rangingCount} Ranging
+            </span>
           </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            {overall.description}
+          </p>
         </div>
+      </div>
 
-        {/* Timeframe Grid */}
-        <div className="space-y-1">
-          {trends.map((trend) => (
-            <TimeframeRow
-              key={trend.timeframe}
-              trend={trend}
-              chartColors={chartColors}
-            />
-          ))}
-        </div>
+      {/* Timeframe Grid */}
+      <div className="space-y-1">
+        {trends.map((trend) => (
+          <TimeframeRow
+            key={trend.timeframe}
+            trend={trend}
+            chartColors={chartColors}
+          />
+        ))}
+      </div>
 
-        {/* Legend */}
-        <div className="flex items-center gap-4 pt-2 border-t text-[10px] text-muted-foreground">
-          <span>Indicators:</span>
-          <span>Swing (40%)</span>
-          <span>RSI (30%)</span>
-          <span>MACD (30%)</span>
-        </div>
-      </CardContent>
-    </Card>
+      {/* Legend */}
+      <div className="flex items-center gap-4 pt-2 border-t text-[10px] text-muted-foreground">
+        <span>Indicators:</span>
+        <span>Swing (40%)</span>
+        <span>RSI (30%)</span>
+        <span>MACD (30%)</span>
+      </div>
+    </div>
   );
 }
