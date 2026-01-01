@@ -309,10 +309,12 @@ export default function ChartProPage() {
       );
       const abcLabel = matchingPivot?.abcLabel;
 
-      // Build marker text: ABC label only (green), or swing type (theme colors)
-      const text = abcLabel ? abcLabel : marker.swingType;
+      // Build marker text: ABC with swing type (green), or just swing type (theme colors)
+      const text = abcLabel
+        ? `${abcLabel} (${marker.swingType})`
+        : marker.swingType;
 
-      // ABC labels are green, swing types use theme colors
+      // ABC labels are green, non-ABC swing types use theme colors
       const markerColor = abcLabel
         ? "#22c55e"
         : isBullish ? chartColors.up : chartColors.down;

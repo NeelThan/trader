@@ -264,9 +264,14 @@ export function useTrendAlignment({
 
     async function fetchTrendForTimeframe(tf: Timeframe): Promise<TimeframeTrend> {
       try {
-        // Fetch market data
+        // Fetch market data using query params format
+        const params = new URLSearchParams({
+          symbol,
+          timeframe: tf,
+          periods: "100",
+        });
         const marketRes = await fetch(
-          `${API_BASE}/market-data/${symbol}?timeframe=${tf}&limit=100`,
+          `${API_BASE}/market-data?${params}`,
           { signal: controller.signal }
         );
 
