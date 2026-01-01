@@ -22,6 +22,9 @@ import {
   LineWidth,
   LineStyle,
   CrosshairMode,
+  SeriesMarker,
+  createSeriesMarkers,
+  ISeriesMarkersPluginApi,
 } from "lightweight-charts";
 import { cn } from "@/lib/utils";
 
@@ -49,12 +52,22 @@ export type LineOverlay = {
   lineStyle?: LineStyle;
 };
 
+export type ChartMarker = {
+  time: Time;
+  position: "aboveBar" | "belowBar" | "inBar";
+  color: string;
+  shape: "circle" | "square" | "arrowUp" | "arrowDown";
+  text?: string;
+  size?: number;
+};
+
 export type ChartType = "candlestick" | "bar" | "heikin-ashi";
 
 export type CandlestickChartProps = {
   data: OHLCData[];
   priceLines?: PriceLine[];
   lineOverlays?: LineOverlay[];
+  markers?: ChartMarker[];
   chartType?: ChartType;
   width?: number;
   height?: number;
@@ -71,6 +84,9 @@ export type CandlestickChartHandle = {
   resetView: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
+  fitPriceScale: () => void;
+  scrollUp: () => void;
+  scrollDown: () => void;
 };
 
 const LIGHT_THEME: DeepPartial<ChartOptions> = {
@@ -189,6 +205,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       data,
       priceLines = [],
       lineOverlays = [],
+      markers = [],
       chartType = "candlestick",
       width,
       height = 400,
@@ -207,12 +224,15 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Bar"> | null>(null);
     const lineSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
     const priceLinesRef = useRef<IPriceLine[]>([]);
+    const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const hasInitializedRef = useRef(false);
 
     // Expose chart control methods via ref
     useImperativeHandle(ref, () => ({
       resetView: () => {
         chartRef.current?.timeScale().fitContent();
+        // Reset price scale to auto mode
+        chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
       },
       zoomIn: () => {
         const timeScale = chartRef.current?.timeScale();
@@ -244,12 +264,33 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
           }
         }
       },
+      fitPriceScale: () => {
+        // Reset price scale to auto-fit all visible data and price lines
+        chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
+      },
+      scrollUp: () => {
+        // Scroll price scale up (show lower prices)
+        const priceScale = chartRef.current?.priceScale("right");
+        if (priceScale) {
+          // Disable auto-scale to allow manual scrolling
+          priceScale.applyOptions({ autoScale: false });
+        }
+      },
+      scrollDown: () => {
+        // Scroll price scale down (show higher prices)
+        const priceScale = chartRef.current?.priceScale("right");
+        if (priceScale) {
+          // Disable auto-scale to allow manual scrolling
+          priceScale.applyOptions({ autoScale: false });
+        }
+      },
     }));
 
-  // Store latest data/priceLines/lineOverlays/callbacks in refs for access in effects
+  // Store latest data/priceLines/lineOverlays/markers/callbacks in refs for access in effects
   const dataRef = useRef(data);
   const priceLinesPropsRef = useRef(priceLines);
   const lineOverlaysRef = useRef(lineOverlays);
+  const markersPropsRef = useRef(markers);
   const onCrosshairMoveRef = useRef(onCrosshairMove);
   const onLoadMoreRef = useRef(onLoadMore);
   const isLoadingMoreRef = useRef(false);
@@ -259,6 +300,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     dataRef.current = data;
     priceLinesPropsRef.current = priceLines;
     lineOverlaysRef.current = lineOverlays;
+    markersPropsRef.current = markers;
     onCrosshairMoveRef.current = onCrosshairMove;
     onLoadMoreRef.current = onLoadMore;
   });
@@ -275,6 +317,36 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       ...themeOptions,
       crosshair: {
         mode: CrosshairMode.Normal,
+      },
+      rightPriceScale: {
+        ...themeOptions.rightPriceScale,
+        autoScale: true,
+        // Allow user to manually adjust price scale
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.1,
+        },
+      },
+      handleScale: {
+        // Enable scaling by dragging on price axis (vertical) and time axis (horizontal)
+        axisPressedMouseMove: {
+          price: true,
+          time: true,
+        },
+        // Enable mouse wheel zoom
+        mouseWheel: true,
+        // Enable pinch zoom on touch devices
+        pinch: true,
+      },
+      handleScroll: {
+        // Enable scrolling by mouse drag
+        pressedMouseMove: true,
+        // Enable horizontal touch drag
+        horzTouchDrag: true,
+        // Enable vertical touch drag
+        vertTouchDrag: true,
+        // Enable mouse wheel scroll
+        mouseWheel: true,
       },
       timeScale: {
         ...themeOptions.timeScale,
@@ -390,6 +462,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       seriesRef.current = null;
       priceLinesRef.current = [];
       lineSeriesRef.current = [];
+      markersPluginRef.current = null;
       hasInitializedRef.current = false; // Reset so new chart fits content
     };
   }, [theme, height, width, upColor, downColor, chartType]);
@@ -464,6 +537,37 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       }
     });
   }, [lineOverlays]);
+
+  // Update markers when they change
+  useEffect(() => {
+    if (!seriesRef.current) return;
+
+    // Convert ChartMarker to SeriesMarker format
+    const seriesMarkers: SeriesMarker<Time>[] = markers.map((m) => ({
+      time: m.time,
+      position: m.position,
+      color: m.color,
+      shape: m.shape,
+      text: m.text ?? "",
+      size: m.size ?? 1,
+    }));
+
+    // Sort markers by time (required by lightweight-charts)
+    seriesMarkers.sort((a, b) => {
+      const timeA = typeof a.time === "number" ? a.time : new Date(a.time as string).getTime();
+      const timeB = typeof b.time === "number" ? b.time : new Date(b.time as string).getTime();
+      return timeA - timeB;
+    });
+
+    // Use v5 API: createSeriesMarkers
+    if (markersPluginRef.current) {
+      // Update existing markers
+      markersPluginRef.current.setMarkers(seriesMarkers);
+    } else if (seriesMarkers.length > 0) {
+      // Create markers plugin on first use
+      markersPluginRef.current = createSeriesMarkers(seriesRef.current, seriesMarkers);
+    }
+  }, [markers]);
 
   // Handle resize with ResizeObserver
   const handleResize = useCallback(() => {
