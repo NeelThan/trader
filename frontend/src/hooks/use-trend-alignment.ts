@@ -295,33 +295,43 @@ export function useTrendAlignment({
           };
         }
 
+        // Prepare OHLC data for API calls
+        const ohlcData = bars.map((bar: { time: string | number; open: number; high: number; low: number; close: number }) => ({
+          time: bar.time,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+        }));
+
         // Fetch swing markers, RSI, and MACD in parallel
         const [swingRes, rsiRes, macdRes] = await Promise.all([
-          fetch(`${API_BASE}/swing/detect`, {
+          fetch(`${API_BASE}/pivot/swings`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              ohlc_data: bars.map((bar: { time: string | number; open: number; high: number; low: number; close: number }) => ({
-                time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close,
-              })),
+              data: ohlcData,
               lookback,
             }),
             signal: controller.signal,
           }),
-          fetch(`${API_BASE}/rsi`, {
+          fetch(`${API_BASE}/indicators/rsi`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              prices: bars.map((bar: { close: number }) => bar.close),
+              data: ohlcData,
               period: 14,
             }),
             signal: controller.signal,
           }),
-          fetch(`${API_BASE}/macd`, {
+          fetch(`${API_BASE}/indicators/macd`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              prices: bars.map((bar: { close: number }) => bar.close),
+              data: ohlcData,
+              fast_period: 12,
+              slow_period: 26,
+              signal_period: 9,
             }),
             signal: controller.signal,
           }),
@@ -332,8 +342,11 @@ export function useTrendAlignment({
         const rsiData = rsiRes.ok ? await rsiRes.json() : { rsi: [] };
         const macdData = macdRes.ok ? await macdRes.json() : { histogram: [] };
 
-        // Get latest values
-        const markers = swingData.markers || [];
+        // Get swing markers (API returns swing_type, we need swingType)
+        const markers = (swingData.markers || []).map((m: { swing_type: string }) => ({
+          ...m,
+          swingType: m.swing_type,
+        }));
         const rsiValues = rsiData.rsi || [];
         const histogramValues = macdData.histogram || [];
 
