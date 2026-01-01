@@ -26,6 +26,11 @@ import {
   formatRatioLabel,
   isLevelVisible,
 } from "@/lib/chart-pro/strategy-types";
+import {
+  cacheMarketData,
+  getCachedMarketData,
+} from "@/lib/market-data-cache";
+import type { DataMode } from "@/hooks/use-data-mode";
 
 const API_BASE = "/api/trader";
 
@@ -57,6 +62,8 @@ export type UseMultiTFLevelsOptions = {
   visibilityConfig: VisibilityConfig;
   confluenceTolerance?: number;
   enabled?: boolean;
+  /** Data mode - "live" fetches from API, "simulated" uses cached data only */
+  dataMode?: DataMode;
 };
 
 export type UseMultiTFLevelsReturn = MultiTFLevelsResult & {
@@ -67,23 +74,53 @@ export type UseMultiTFLevelsReturn = MultiTFLevelsResult & {
 
 /**
  * Fetch market data for a symbol and timeframe
+ * - In simulated mode, returns cached data only
+ * - In live mode, fetches from API and caches the result
+ * - Falls back to cached data on rate limit (429) errors
  */
 async function fetchMarketData(
   symbol: MarketSymbol,
-  timeframe: Timeframe
+  timeframe: Timeframe,
+  dataMode: DataMode = "live"
 ): Promise<OHLCData[]> {
-  try {
-    const response = await fetch(
-      `${API_BASE}/../market-data?symbol=${symbol}&timeframe=${timeframe}&periods=100`
-    );
+  // In simulated mode, only use cached data
+  if (dataMode === "simulated") {
+    const cached = getCachedMarketData(symbol, timeframe);
+    if (cached) return cached.data;
+    return [];
+  }
 
-    if (!response.ok) return [];
+  // Live mode - fetch from API
+  const url = `${API_BASE}/market-data?symbol=${symbol}&timeframe=${timeframe}&periods=100`;
+
+  try {
+    const response = await fetch(url);
+
+    // Handle rate limiting - fall back to cached data
+    if (response.status === 429) {
+      const cached = getCachedMarketData(symbol, timeframe);
+      if (cached) return cached.data;
+      return [];
+    }
+
+    if (!response.ok) {
+      // Try cached data as fallback
+      const cached = getCachedMarketData(symbol, timeframe);
+      if (cached) return cached.data;
+      return [];
+    }
 
     const data: MarketDataResponse = await response.json();
     if (!data.success || !data.data) return [];
 
+    // Cache the successful response
+    cacheMarketData(symbol, timeframe, data.data, "yahoo");
+
     return data.data;
   } catch {
+    // Try cached data as fallback on network errors
+    const cached = getCachedMarketData(symbol, timeframe);
+    if (cached) return cached.data;
     return [];
   }
 }
@@ -308,6 +345,7 @@ export function useMultiTFLevels({
   visibilityConfig,
   confluenceTolerance = 0.5,
   enabled = true,
+  dataMode = "live",
 }: UseMultiTFLevelsOptions): UseMultiTFLevelsReturn {
   const [byTimeframe, setByTimeframe] = useState<TimeframeLevels[]>([]);
   const [loadingStates, setLoadingStates] = useState<Record<Timeframe, boolean>>(
@@ -338,12 +376,12 @@ export function useMultiTFLevels({
     async (timeframe: Timeframe): Promise<TimeframeLevels | null> => {
       const cacheKey = getCacheKey(symbol, timeframe);
 
-      // Check cache first
+      // Check in-memory cache first (for this session)
       let data = marketDataCache.current[cacheKey];
 
-      // Fetch if not cached
+      // Fetch if not in memory cache
       if (!data || data.length === 0) {
-        data = await fetchMarketData(symbol, timeframe);
+        data = await fetchMarketData(symbol, timeframe, dataMode);
         if (data.length > 0) {
           marketDataCache.current[cacheKey] = data;
         }
@@ -380,6 +418,8 @@ export function useMultiTFLevels({
 
       // Fetch levels for LONG direction
       const longStrategies = getEnabledStrategies(visibilityConfig, timeframe, "long");
+      const shortStrategies = getEnabledStrategies(visibilityConfig, timeframe, "short");
+
       for (const strategy of longStrategies) {
         if (strategy === "RETRACEMENT") {
           const retracement = await fetchFibonacciLevels(high, low, "buy", "retracement");
@@ -414,7 +454,6 @@ export function useMultiTFLevels({
       }
 
       // Fetch levels for SHORT direction
-      const shortStrategies = getEnabledStrategies(visibilityConfig, timeframe, "short");
       for (const strategy of shortStrategies) {
         if (strategy === "RETRACEMENT") {
           const retracement = await fetchFibonacciLevels(high, low, "sell", "retracement");
@@ -455,7 +494,7 @@ export function useMultiTFLevels({
         pivotLow: low,
       };
     },
-    [symbol, visibilityConfig]
+    [symbol, visibilityConfig, dataMode]
   );
 
   // Fetch all levels
@@ -505,6 +544,7 @@ export function useMultiTFLevels({
     const validResults = results.filter(
       (r): r is TimeframeLevels => r !== null
     );
+
     setByTimeframe(validResults);
   }, [enabled, enabledTimeframes, fetchLevelsForTimeframe]);
 
@@ -513,10 +553,42 @@ export function useMultiTFLevels({
     marketDataCache.current = {};
   }, [symbol]);
 
+  // Track if a fetch is in progress to prevent overlapping requests
+  const isFetching = useRef(false);
+  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounced fetch - wait 300ms after last config change before fetching
   // Fetch levels when dependencies change
   useEffect(() => {
-    fetchAllLevels();
-  }, [fetchAllLevels]);
+    // Clear any pending fetch
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
+    }
+
+    // Skip if no enabled timeframes
+    if (enabledTimeframes.length === 0) {
+      return;
+    }
+
+    // Skip if already fetching
+    if (isFetching.current) {
+      return;
+    }
+
+    // Debounce the fetch by 300ms to avoid rapid successive calls
+    fetchTimeoutRef.current = setTimeout(() => {
+      isFetching.current = true;
+      fetchAllLevels().finally(() => {
+        isFetching.current = false;
+      });
+    }, 300);
+
+    return () => {
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+      }
+    };
+  }, [fetchAllLevels, enabledTimeframes]);
 
   // Calculate all levels with heat scores
   const allLevels = useMemo(() => {
