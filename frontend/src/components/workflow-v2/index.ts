@@ -20,3 +20,6 @@ export type { SizingPanelProps } from "./SizingPanel";
 
 export { ExecutionPanel } from "./ExecutionPanel";
 export type { ExecutionPanelProps } from "./ExecutionPanel";
+
+export { ManagePanel } from "./ManagePanel";
+export type { ManagePanelProps } from "./ManagePanel";
