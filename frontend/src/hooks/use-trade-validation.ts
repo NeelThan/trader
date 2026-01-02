@@ -192,38 +192,96 @@ export function useTradeValidation({
       )
     );
 
-    // 4. RSI Confirmation
+    // 4. RSI Confirmation (Pullback Logic)
+    // For pullback entries, we WANT the lower TF to show counter-trend:
+    // - LONG (buy the dip): Lower TF RSI bearish/oversold = GOOD pullback
+    // - SHORT (sell the rally): Lower TF RSI bullish/overbought = GOOD rally
     const rsiSignal = opportunity.lowerTrend?.rsi.signal;
-    const rsiConfirmed =
-      (opportunity.direction === "long" && rsiSignal === "bullish") ||
-      (opportunity.direction === "short" && rsiSignal === "bearish") ||
-      rsiSignal === "neutral";
+    const rsiValue = opportunity.lowerTrend?.rsi.value;
+    const higherTrend = opportunity.higherTrend?.trend;
+    const lowerTrend = opportunity.lowerTrend?.trend;
+
+    // Check if this is a pullback setup (higher TF trending, lower TF counter-trend)
+    const isPullbackSetup =
+      (opportunity.direction === "long" && higherTrend === "bullish" && lowerTrend === "bearish") ||
+      (opportunity.direction === "short" && higherTrend === "bearish" && lowerTrend === "bullish");
+
+    let rsiConfirmed: boolean;
+    let rsiExplanation: string;
+
+    if (isPullbackSetup) {
+      // For pullbacks, counter-trend RSI is expected and good
+      const isOversold = rsiValue !== undefined && rsiValue < 40;
+      const isOverbought = rsiValue !== undefined && rsiValue > 60;
+
+      if (opportunity.direction === "long") {
+        // For long pullback, RSI bearish/oversold means good entry opportunity
+        rsiConfirmed = rsiSignal === "bearish" || isOversold;
+        rsiExplanation = rsiConfirmed
+          ? `RSI ${rsiValue?.toFixed(1) ?? ""}${isOversold ? " (oversold)" : ""} - pullback entry opportunity`
+          : `RSI neutral - wait for deeper pullback`;
+      } else {
+        // For short pullback, RSI bullish/overbought means good entry opportunity
+        rsiConfirmed = rsiSignal === "bullish" || isOverbought;
+        rsiExplanation = rsiConfirmed
+          ? `RSI ${rsiValue?.toFixed(1) ?? ""}${isOverbought ? " (overbought)" : ""} - rally entry opportunity`
+          : `RSI neutral - wait for stronger rally`;
+      }
+    } else {
+      // Non-pullback: use original logic
+      rsiConfirmed =
+        (opportunity.direction === "long" && rsiSignal === "bullish") ||
+        (opportunity.direction === "short" && rsiSignal === "bearish") ||
+        rsiSignal === "neutral";
+      rsiExplanation = rsiConfirmed
+        ? `RSI ${rsiSignal} on ${opportunity.lowerTimeframe}`
+        : `RSI ${rsiSignal} conflicts with ${opportunity.direction} bias`;
+    }
+
     checks.push(
       createCheck(
         "RSI Confirmation",
         rsiConfirmed,
-        rsiConfirmed
-          ? `RSI ${rsiSignal} on ${opportunity.lowerTimeframe}`
-          : `RSI ${rsiSignal} conflicts with ${opportunity.direction} bias`,
-        opportunity.lowerTrend?.rsi.value
-          ? `RSI: ${opportunity.lowerTrend.rsi.value.toFixed(1)}`
-          : undefined
+        rsiExplanation,
+        rsiValue ? `RSI: ${rsiValue.toFixed(1)}` : undefined
       )
     );
 
-    // 5. MACD Confirmation
+    // 5. MACD Confirmation (Pullback Logic)
+    // For pullbacks, we check the higher TF MACD for trend confirmation
+    // Lower TF MACD being counter-trend is expected during pullback
     const macdSignal = opportunity.lowerTrend?.macd.signal;
-    const macdConfirmed =
-      (opportunity.direction === "long" && macdSignal === "bullish") ||
-      (opportunity.direction === "short" && macdSignal === "bearish");
+    const higherMacdSignal = opportunity.higherTrend?.macd.signal;
+
+    let macdConfirmed: boolean;
+    let macdExplanation: string;
+
+    if (isPullbackSetup) {
+      // For pullbacks, check that HIGHER TF MACD confirms the trend direction
+      macdConfirmed =
+        (opportunity.direction === "long" && higherMacdSignal === "bullish") ||
+        (opportunity.direction === "short" && higherMacdSignal === "bearish");
+      macdExplanation = macdConfirmed
+        ? `${opportunity.higherTimeframe} MACD ${higherMacdSignal} - trend momentum intact`
+        : `${opportunity.higherTimeframe} MACD ${higherMacdSignal} - trend momentum weakening`;
+    } else {
+      // Non-pullback: use original logic
+      macdConfirmed =
+        (opportunity.direction === "long" && macdSignal === "bullish") ||
+        (opportunity.direction === "short" && macdSignal === "bearish");
+      macdExplanation = macdConfirmed
+        ? `MACD ${macdSignal} confirms ${opportunity.direction} momentum`
+        : `MACD ${macdSignal} - momentum not confirmed`;
+    }
+
     checks.push(
       createCheck(
         "MACD Confirmation",
         macdConfirmed,
-        macdConfirmed
-          ? `MACD ${macdSignal} confirms ${opportunity.direction} momentum`
-          : `MACD ${macdSignal} - momentum not confirmed`,
-        undefined
+        macdExplanation,
+        isPullbackSetup
+          ? `${opportunity.higherTimeframe}: ${higherMacdSignal}, ${opportunity.lowerTimeframe}: ${macdSignal}`
+          : undefined
       )
     );
 
