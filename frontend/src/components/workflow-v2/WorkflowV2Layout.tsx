@@ -205,6 +205,25 @@ export function WorkflowV2Layout({
     bearishTrends: trendData.filter(t => t.trend === "bearish").length,
   }), [discovery.activeOpportunities, discovery.opportunities, trendData]);
 
+  // Current OHLC values for display
+  const currentOHLC = useMemo(() => {
+    if (marketData.length === 0) return null;
+    const bar = marketData[marketData.length - 1];
+    return {
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      close: bar.close,
+    };
+  }, [marketData]);
+
+  // Format price based on symbol
+  const formatPrice = useCallback((price: number) => {
+    if (symbol === "EURUSD") return price.toFixed(5);
+    if (price >= 10000) return price.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    return price.toFixed(2);
+  }, [symbol]);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -216,84 +235,11 @@ export function WorkflowV2Layout({
             <Badge variant="secondary" className="text-xs hidden sm:inline-flex">v2</Badge>
           </div>
 
-          {/* Center section */}
+          {/* Center section - simplified */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Symbol Selector */}
-            <Select value={symbol} onValueChange={(v) => onSymbolChange(v as MarketSymbol)}>
-              <SelectTrigger className="w-[80px] sm:w-[100px]">
-                <SelectValue>{symbol}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {SYMBOLS.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{s}</span>
-                      <span className="text-xs text-muted-foreground hidden sm:inline">
-                        {MARKET_CONFIG[s].name}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Timeframe Selector */}
-            <Select value={timeframe} onValueChange={(v) => onTimeframeChange(v as Timeframe)}>
-              <SelectTrigger className="w-[70px] sm:w-[85px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TIMEFRAMES.map((tf) => (
-                  <SelectItem key={tf} value={tf}>
-                    {TIMEFRAME_CONFIG[tf].label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Chart feature toggles */}
-            <div className="hidden md:flex items-center gap-1 border-l pl-2 ml-1">
-              <button
-                onClick={() => setShowSwingMarkers(!showSwingMarkers)}
-                className={cn(
-                  "px-2 py-1 text-xs rounded transition-colors",
-                  showSwingMarkers
-                    ? "bg-primary/20 text-primary"
-                    : "text-muted-foreground hover:bg-muted"
-                )}
-                title="Toggle swing markers (HH/HL/LH/LL)"
-              >
-                HH/LL
-              </button>
-              <button
-                onClick={() => setShowFibLevels(!showFibLevels)}
-                className={cn(
-                  "px-2 py-1 text-xs rounded transition-colors",
-                  showFibLevels
-                    ? "bg-primary/20 text-primary"
-                    : "text-muted-foreground hover:bg-muted"
-                )}
-                title="Toggle Fibonacci levels"
-              >
-                Fib
-              </button>
-              <button
-                onClick={() => setShowIndicators(!showIndicators)}
-                className={cn(
-                  "px-2 py-1 text-xs rounded transition-colors",
-                  showIndicators
-                    ? "bg-primary/20 text-primary"
-                    : "text-muted-foreground hover:bg-muted"
-                )}
-                title="Toggle RSI/MACD indicators"
-              >
-                RSI
-              </button>
-            </div>
-
             {/* Trend alignment summary */}
             {!isLoadingTrend && (
-              <div className="hidden lg:flex items-center gap-1 px-2 py-1 bg-muted/50 rounded text-xs">
+              <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded text-xs">
                 <span style={{ color: chartColors.up }}>{stats.bullishTrends}</span>
                 <span className="text-muted-foreground">/</span>
                 <span style={{ color: chartColors.down }}>{stats.bearishTrends}</span>
@@ -351,14 +297,88 @@ export function WorkflowV2Layout({
         <div className="flex-1 p-2 sm:p-4 overflow-hidden min-h-[300px] lg:min-h-0 flex flex-col gap-2">
           {/* Main Chart */}
           <Card className="flex-1 flex flex-col min-h-0">
-            <CardHeader className="py-2 sm:py-3 shrink-0">
-              <CardTitle className="text-sm sm:text-base flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span>
-                    {symbol} - {TIMEFRAME_CONFIG[timeframe].label}
-                  </span>
+            <CardContent className="py-2 sm:py-3 shrink-0 border-b">
+              <div className="flex flex-col gap-2">
+                {/* Controls Row */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Symbol Selector */}
+                  <Select value={symbol} onValueChange={(v) => onSymbolChange(v as MarketSymbol)}>
+                    <SelectTrigger className="w-[80px] sm:w-[90px] h-8">
+                      <SelectValue>{symbol}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SYMBOLS.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium w-16">{s}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {MARKET_CONFIG[s].name}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Timeframe Selector */}
+                  <Select value={timeframe} onValueChange={(v) => onTimeframeChange(v as Timeframe)}>
+                    <SelectTrigger className="w-[70px] sm:w-[80px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIMEFRAMES.map((tf) => (
+                        <SelectItem key={tf} value={tf}>
+                          {TIMEFRAME_CONFIG[tf].label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Separator */}
+                  <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
+
+                  {/* Feature toggles */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setShowSwingMarkers(!showSwingMarkers)}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        showSwingMarkers
+                          ? "bg-primary/20 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                      title="Toggle swing markers (HH/HL/LH/LL)"
+                    >
+                      HH/LL
+                    </button>
+                    <button
+                      onClick={() => setShowFibLevels(!showFibLevels)}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        showFibLevels
+                          ? "bg-primary/20 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                      title="Toggle Fibonacci levels"
+                    >
+                      Fib
+                    </button>
+                    <button
+                      onClick={() => setShowIndicators(!showIndicators)}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        showIndicators
+                          ? "bg-primary/20 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                      title="Toggle RSI/MACD indicators"
+                    >
+                      RSI
+                    </button>
+                  </div>
+
                   {/* Status badges */}
-                  <div className="flex items-center gap-1 text-xs">
+                  <div className="flex items-center gap-1 text-xs ml-auto">
                     {showFibLevels && visibleLevels.length > 0 && (
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                         {visibleLevels.length} Fib
@@ -375,32 +395,58 @@ export function WorkflowV2Layout({
                       </Badge>
                     )}
                   </div>
+
+                  {/* Zoom controls */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => chartRef.current?.zoomIn()}
+                      className="p-1 sm:p-1.5 rounded hover:bg-muted/50"
+                      title="Zoom In"
+                    >
+                      <ZoomInIcon />
+                    </button>
+                    <button
+                      onClick={() => chartRef.current?.zoomOut()}
+                      className="p-1 sm:p-1.5 rounded hover:bg-muted/50"
+                      title="Zoom Out"
+                    >
+                      <ZoomOutIcon />
+                    </button>
+                    <button
+                      onClick={() => chartRef.current?.resetView()}
+                      className="p-1 sm:p-1.5 rounded hover:bg-muted/50"
+                      title="Reset View"
+                    >
+                      <ResetIcon />
+                    </button>
+                  </div>
+
+                  {/* OHLC Values */}
+                  {currentOHLC && (
+                    <div className="hidden md:flex items-center gap-3 ml-2 text-sm font-mono">
+                      <div>
+                        <span className="text-muted-foreground mr-1">O:</span>
+                        <span>{formatPrice(currentOHLC.open)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground mr-1">H:</span>
+                        <span style={{ color: chartColors.up }}>{formatPrice(currentOHLC.high)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground mr-1">L:</span>
+                        <span style={{ color: chartColors.down }}>{formatPrice(currentOHLC.low)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground mr-1">C:</span>
+                        <span style={{ color: currentOHLC.close >= currentOHLC.open ? chartColors.up : chartColors.down }}>
+                          {formatPrice(currentOHLC.close)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <button
-                    onClick={() => chartRef.current?.zoomIn()}
-                    className="p-1 sm:p-1.5 rounded hover:bg-muted/50"
-                    title="Zoom In"
-                  >
-                    <ZoomInIcon />
-                  </button>
-                  <button
-                    onClick={() => chartRef.current?.zoomOut()}
-                    className="p-1 sm:p-1.5 rounded hover:bg-muted/50"
-                    title="Zoom Out"
-                  >
-                    <ZoomOutIcon />
-                  </button>
-                  <button
-                    onClick={() => chartRef.current?.resetView()}
-                    className="p-1 sm:p-1.5 rounded hover:bg-muted/50"
-                    title="Reset View"
-                  >
-                    <ResetIcon />
-                  </button>
-                </div>
-              </CardTitle>
-            </CardHeader>
+              </div>
+            </CardContent>
             <CardContent className="flex-1 p-0 overflow-hidden">
               {isLoadingData && marketData.length === 0 ? (
                 <Skeleton className="h-full w-full" />
