@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CandlestickChart, CandlestickChartHandle, PriceLine, LineOverlay } from "@/components/trading";
+import { CandlestickChart, CandlestickChartHandle, PriceLine, LineOverlay, type ChartType } from "@/components/trading";
 import { RSIPane, MACDChart, PivotPointsEditor } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
@@ -97,6 +97,7 @@ export function WorkflowV2Layout({
   const [showFibLevels, setShowFibLevels] = useState(true);
   const [showPivotEditor, setShowPivotEditor] = useState(false);
   const [showTradeView, setShowTradeView] = useState(false);
+  const [chartType, setChartType] = useState<ChartType>("bar");
 
   // Reset trade view when opportunity changes or phase goes back to discover
   useEffect(() => {
@@ -533,6 +534,48 @@ export function WorkflowV2Layout({
                   {/* Separator */}
                   <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
 
+                  {/* Chart type selector */}
+                  <div className="flex items-center gap-0.5 bg-muted/50 rounded p-0.5">
+                    <button
+                      onClick={() => setChartType("bar")}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        chartType === "bar"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      title="OHLC Bars"
+                    >
+                      Bar
+                    </button>
+                    <button
+                      onClick={() => setChartType("candlestick")}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        chartType === "candlestick"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      title="Candlesticks"
+                    >
+                      Candle
+                    </button>
+                    <button
+                      onClick={() => setChartType("heikin-ashi")}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        chartType === "heikin-ashi"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      title="Heikin-Ashi"
+                    >
+                      HA
+                    </button>
+                  </div>
+
+                  <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
+
                   {/* Feature toggles */}
                   <div className="flex items-center gap-1">
                     <button
@@ -736,6 +779,7 @@ export function WorkflowV2Layout({
                 <CandlestickChart
                   ref={chartRef}
                   data={marketData}
+                  chartType={chartType}
                   markers={chartMarkers}
                   priceLines={strategyPriceLines}
                   lineOverlays={swingLineOverlays}
