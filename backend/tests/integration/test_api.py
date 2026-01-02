@@ -1335,3 +1335,165 @@ class TestSwingEndpoint:
         result = response.json()
         assert "pivots" in result
         assert "markers" in result
+
+
+class TestWorkflowAssessEndpoint:
+    """Tests for workflow trend assessment endpoint."""
+
+    async def test_assess_returns_trend_assessment(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/assess returns trend assessment."""
+        response = await client.get(
+            "/workflow/assess",
+            params={"symbol": "DJI", "timeframe": "1D"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "trend" in data
+        assert data["trend"] in ["bullish", "bearish", "neutral"]
+        assert "swing_type" in data
+        assert data["swing_type"] in ["HH", "HL", "LH", "LL"]
+        assert "explanation" in data
+        assert "confidence" in data
+
+    async def test_assess_requires_symbol(self, client: AsyncClient) -> None:
+        """GET /workflow/assess requires symbol parameter."""
+        response = await client.get("/workflow/assess")
+
+        assert response.status_code == 422
+
+    async def test_assess_with_different_timeframes(
+        self, client: AsyncClient
+    ) -> None:
+        """Assess works with various timeframes."""
+        for tf in ["1M", "1W", "1D", "4H"]:
+            response = await client.get(
+                "/workflow/assess",
+                params={"symbol": "DJI", "timeframe": tf},
+            )
+            assert response.status_code == 200
+
+
+class TestWorkflowAlignEndpoint:
+    """Tests for workflow timeframe alignment endpoint."""
+
+    async def test_align_returns_alignment_result(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/align returns alignment result."""
+        response = await client.get(
+            "/workflow/align",
+            params={"symbol": "DJI", "timeframes": "1M,1W,1D"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "aligned_count" in data
+        assert "total_count" in data
+        assert data["total_count"] == 3
+        assert "strength" in data
+        assert data["strength"] in ["strong", "moderate", "weak"]
+        assert "timeframes" in data
+
+    async def test_align_requires_symbol(self, client: AsyncClient) -> None:
+        """GET /workflow/align requires symbol parameter."""
+        response = await client.get(
+            "/workflow/align",
+            params={"timeframes": "1M,1W,1D"},
+        )
+
+        assert response.status_code == 422
+
+
+class TestWorkflowLevelsEndpoint:
+    """Tests for workflow Fibonacci levels endpoint."""
+
+    async def test_levels_returns_levels_result(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/levels returns entry and target zones."""
+        response = await client.get(
+            "/workflow/levels",
+            params={"symbol": "DJI", "timeframe": "1D", "direction": "buy"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "entry_zones" in data
+        assert "target_zones" in data
+        assert isinstance(data["entry_zones"], list)
+        assert isinstance(data["target_zones"], list)
+
+    async def test_levels_requires_direction(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/levels requires direction parameter."""
+        response = await client.get(
+            "/workflow/levels",
+            params={"symbol": "DJI", "timeframe": "1D"},
+        )
+
+        assert response.status_code == 422
+
+    async def test_levels_validates_direction(
+        self, client: AsyncClient
+    ) -> None:
+        """Direction must be 'buy' or 'sell'."""
+        response = await client.get(
+            "/workflow/levels",
+            params={"symbol": "DJI", "timeframe": "1D", "direction": "invalid"},
+        )
+
+        assert response.status_code == 422
+
+
+class TestWorkflowConfirmEndpoint:
+    """Tests for workflow indicator confirmation endpoint."""
+
+    async def test_confirm_returns_indicator_signals(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/confirm returns indicator confirmation."""
+        response = await client.get(
+            "/workflow/confirm",
+            params={"symbol": "DJI", "timeframe": "1D"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "rsi" in data
+        assert "macd" in data
+        assert "overall" in data
+        assert data["overall"] in ["strong", "partial", "wait"]
+
+    async def test_confirm_rsi_has_expected_fields(
+        self, client: AsyncClient
+    ) -> None:
+        """RSI signal has value, signal, and explanation."""
+        response = await client.get(
+            "/workflow/confirm",
+            params={"symbol": "DJI", "timeframe": "1D"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "value" in data["rsi"]
+        assert "signal" in data["rsi"]
+        assert "explanation" in data["rsi"]
+
+    async def test_confirm_macd_has_expected_fields(
+        self, client: AsyncClient
+    ) -> None:
+        """MACD signal has value, signal, and explanation."""
+        response = await client.get(
+            "/workflow/confirm",
+            params={"symbol": "DJI", "timeframe": "1D"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "value" in data["macd"]
+        assert "signal" in data["macd"]
+        assert "explanation" in data["macd"]

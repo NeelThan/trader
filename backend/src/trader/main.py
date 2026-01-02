@@ -40,6 +40,16 @@ from trader.position_sizing import (
     calculate_risk_reward,
 )
 from trader.signals import Bar, detect_signal
+from trader.workflow import (
+    AlignmentResult,
+    IndicatorConfirmation,
+    LevelsResult,
+    TrendAssessment,
+    assess_trend,
+    check_timeframe_alignment,
+    confirm_with_indicators,
+    identify_fibonacci_levels,
+)
 
 # Initialize singleton services
 _market_data_service = MarketDataService()
@@ -967,3 +977,81 @@ async def rsi_indicator(request: RSIRequest) -> RSIResponse:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     return RSIResponse(rsi=result.rsi)
+
+
+# --- Workflow Endpoints ---
+
+
+@app.get("/workflow/assess", response_model=TrendAssessment)
+async def workflow_assess(
+    symbol: str,
+    timeframe: str = "1D",
+) -> TrendAssessment:
+    """Assess trend direction from swing pattern analysis.
+
+    Analyzes market data to determine trend direction based on
+    swing highs and lows (HH/HL/LH/LL patterns).
+    """
+    return await assess_trend(
+        symbol=symbol,
+        timeframe=timeframe,
+        market_service=_market_data_service,
+    )
+
+
+@app.get("/workflow/align", response_model=AlignmentResult)
+async def workflow_align(
+    symbol: str,
+    timeframes: str = "1M,1W,1D",
+) -> AlignmentResult:
+    """Check trend alignment across multiple timeframes.
+
+    Args:
+        symbol: Market symbol to analyze.
+        timeframes: Comma-separated list of timeframes (e.g., "1M,1W,1D").
+
+    Returns:
+        AlignmentResult with count and strength of aligned timeframes.
+    """
+    timeframe_list = [tf.strip() for tf in timeframes.split(",")]
+    return await check_timeframe_alignment(
+        symbol=symbol,
+        timeframes=timeframe_list,
+        market_service=_market_data_service,
+    )
+
+
+@app.get("/workflow/levels", response_model=LevelsResult)
+async def workflow_levels(
+    symbol: str,
+    direction: Literal["buy", "sell"],
+    timeframe: str = "1D",
+) -> LevelsResult:
+    """Identify Fibonacci levels for entries and targets.
+
+    Calculates retracement levels for potential entry zones
+    and extension levels for potential target zones.
+    """
+    return await identify_fibonacci_levels(
+        symbol=symbol,
+        timeframe=timeframe,
+        direction=direction,
+        market_service=_market_data_service,
+    )
+
+
+@app.get("/workflow/confirm", response_model=IndicatorConfirmation)
+async def workflow_confirm(
+    symbol: str,
+    timeframe: str = "1D",
+) -> IndicatorConfirmation:
+    """Confirm trade setup with RSI and MACD indicators.
+
+    Analyzes RSI and MACD to provide confirmation signals
+    and an overall recommendation (strong/partial/wait).
+    """
+    return await confirm_with_indicators(
+        symbol=symbol,
+        timeframe=timeframe,
+        market_service=_market_data_service,
+    )
