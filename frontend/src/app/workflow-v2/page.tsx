@@ -19,12 +19,13 @@ import { ManagePanel } from "@/components/workflow-v2/ManagePanel";
 import { useTradeDiscovery, type TradeOpportunity } from "@/hooks/use-trade-discovery";
 import { useTradeValidation } from "@/hooks/use-trade-validation";
 import { useTradeExecution } from "@/hooks/use-trade-execution";
-import type { MarketSymbol } from "@/lib/chart-constants";
+import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
 
 export type WorkflowPhase = "discover" | "validate" | "size" | "execute" | "manage";
 
 export default function WorkflowV2Page() {
   const [symbol, setSymbol] = useState<MarketSymbol>("DJI");
+  const [timeframe, setTimeframe] = useState<Timeframe>("1D");
   const [phase, setPhase] = useState<WorkflowPhase>("discover");
   const [selectedOpportunity, setSelectedOpportunity] = useState<TradeOpportunity | null>(null);
 
@@ -135,6 +136,8 @@ export default function WorkflowV2Page() {
     <WorkflowV2Layout
       symbol={symbol}
       onSymbolChange={setSymbol}
+      timeframe={timeframe}
+      onTimeframeChange={setTimeframe}
       phase={phase}
       opportunity={selectedOpportunity}
       discovery={discovery}

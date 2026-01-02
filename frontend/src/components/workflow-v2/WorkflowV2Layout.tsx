@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * WorkflowV2Layout - Chart-centric layout
+ * WorkflowV2Layout - Chart-centric layout with full analysis features
  *
  * Main layout with chart always visible on the left (60%),
  * and a sidebar panel on the right (40%) for workflow phases.
+ * Includes: Multi-TF levels, swing markers, RSI/MACD, trend alignment.
  * Responsive: sidebar becomes bottom sheet on mobile.
  */
 
@@ -20,21 +21,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CandlestickChart, CandlestickChartHandle } from "@/components/trading";
+import { CandlestickChart, CandlestickChartHandle, PriceLine, LineOverlay } from "@/components/trading";
+import { RSIPane, MACDChart } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
+import { useMultiTFLevels } from "@/hooks/use-multi-tf-levels";
+import { useSwingMarkers } from "@/hooks/use-swing-markers";
+import { useChartMarkers } from "@/hooks/use-chart-markers";
+import { useEditablePivots } from "@/hooks/use-editable-pivots";
+import { useMACD } from "@/hooks/use-macd";
+import { useRSI } from "@/hooks/use-rsi";
+import { useTrendAlignment } from "@/hooks/use-trend-alignment";
+import { usePersistedVisibilityConfig } from "@/hooks/use-persisted-visibility-config";
+import { usePersistedSwingSettings } from "@/hooks/use-persisted-swing-settings";
+import { generateSwingLineOverlays } from "@/lib/chart-pro/swing-overlays";
+import { isLevelVisible, DIRECTION_COLORS } from "@/lib/chart-pro/strategy-types";
 import { cn } from "@/lib/utils";
 import type { UseTradeDiscoveryResult, TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
 import type { WorkflowPhase } from "@/app/workflow-v2/page";
-import { MARKET_CONFIG } from "@/lib/chart-constants";
+import { MARKET_CONFIG, TIMEFRAME_CONFIG } from "@/lib/chart-constants";
 
 const SYMBOLS: MarketSymbol[] = ["DJI", "SPX", "NDX", "BTCUSD", "EURUSD", "GOLD"];
+const TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
 const DEFAULT_CHART_COLORS = { up: "#22c55e", down: "#ef4444" } as const;
 
 type WorkflowV2LayoutProps = {
   symbol: MarketSymbol;
   onSymbolChange: (symbol: MarketSymbol) => void;
+  timeframe: Timeframe;
+  onTimeframeChange: (timeframe: Timeframe) => void;
   phase: WorkflowPhase;
   opportunity: TradeOpportunity | null;
   discovery: UseTradeDiscoveryResult;
@@ -52,6 +68,8 @@ const PHASE_LABELS: Record<WorkflowPhase, string> = {
 export function WorkflowV2Layout({
   symbol,
   onSymbolChange,
+  timeframe,
+  onTimeframeChange,
   phase,
   opportunity,
   discovery,
@@ -65,22 +83,127 @@ export function WorkflowV2Layout({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setIsSidebarOpen((prev) => !prev), []);
 
-  // Get chart timeframe from opportunity or default to 1D
-  const chartTimeframe: Timeframe = opportunity?.lowerTimeframe ?? "1D";
+  // Chart display toggles
+  const [showIndicators, setShowIndicators] = useState(false);
+  const [showSwingMarkers, setShowSwingMarkers] = useState(true);
+  const [showFibLevels, setShowFibLevels] = useState(true);
 
   // Fetch market data for chart
   const { data: marketData, isLoading: isLoadingData } = useMarketDataSubscription(
     symbol,
-    chartTimeframe,
+    timeframe,
     "yahoo",
     { autoRefresh: true }
   );
+
+  // Visibility configuration for Fibonacci levels (persisted)
+  const { visibilityConfig } = usePersistedVisibilityConfig();
+
+  // Swing settings (persisted)
+  const { getTimeframeSettings } = usePersistedSwingSettings();
+  const swingSettings = useMemo(
+    () => getTimeframeSettings(timeframe),
+    [getTimeframeSettings, timeframe]
+  );
+
+  // Get swing markers (HH/HL/LH/LL)
+  const minBarsForSwing = swingSettings.settings.lookback * 2 + 1;
+  const { result: swingResult, isLoading: isLoadingSwings } = useSwingMarkers({
+    data: marketData,
+    lookback: swingSettings.settings.lookback,
+    enabled: showSwingMarkers && swingSettings.enabled && marketData.length >= minBarsForSwing,
+    symbol,
+    timeframe,
+    useCache: true,
+  });
+
+  // Editable pivots (allows adjustment)
+  const apiPivots = useMemo(() => swingResult?.pivots ?? [], [swingResult?.pivots]);
+  const { pivots: editablePivots } = useEditablePivots(apiPivots, timeframe);
+
+  // Swing line overlays
+  const swingLineOverlays = useMemo<LineOverlay[]>(() => {
+    if (!showSwingMarkers || !swingSettings.enabled || !swingSettings.settings.showLines) {
+      return [];
+    }
+    return generateSwingLineOverlays(editablePivots, {
+      lookback: swingSettings.settings.lookback,
+      showLines: swingSettings.settings.showLines,
+    });
+  }, [editablePivots, showSwingMarkers, swingSettings]);
+
+  // Chart markers from swing detection
+  const chartMarkers = useChartMarkers({
+    swingEnabled: showSwingMarkers && swingSettings.enabled,
+    markers: swingResult?.markers,
+    marketData,
+    editablePivots,
+  });
+
+  // Multi-TF Fibonacci levels
+  const { allLevels, isLoading: isLoadingLevels } = useMultiTFLevels({
+    symbol,
+    visibilityConfig,
+    enabled: showFibLevels,
+    dataMode: "live",
+  });
+
+  // Get visible levels based on visibility config
+  const visibleLevels = useMemo(() => {
+    if (!showFibLevels) return [];
+    return allLevels.filter((level) => isLevelVisible(level, visibilityConfig));
+  }, [allLevels, visibilityConfig, showFibLevels]);
+
+  // Convert levels to price lines
+  const strategyPriceLines = useMemo<PriceLine[]>(() => {
+    return visibleLevels.map((level) => ({
+      price: level.price,
+      color: level.direction === "long" ? DIRECTION_COLORS.long : DIRECTION_COLORS.short,
+      lineWidth: level.heat > 50 ? 2 : 1,
+      lineStyle: level.strategy === "RETRACEMENT" ? 2 : 1,
+      axisLabelVisible: true,
+      title: `${level.timeframe} ${level.label} ${level.direction === "long" ? "L" : "S"}`,
+    }));
+  }, [visibleLevels]);
+
+  // RSI indicator
+  const { rsiData, isLoading: isLoadingRSI } = useRSI({
+    data: marketData,
+    enabled: showIndicators && marketData.length >= 15,
+  });
+
+  // MACD indicator
+  const { macdData, isLoading: isLoadingMACD } = useMACD({
+    data: marketData,
+    enabled: showIndicators && marketData.length >= 26,
+  });
+
+  // Trend alignment
+  const { trends: trendData, overall: overallTrend, isLoading: isLoadingTrend } = useTrendAlignment({
+    symbol,
+    enabled: true,
+  });
+
+  // Current MACD values
+  const currentMACD = useMemo(() => {
+    if (!macdData || macdData.macd.length === 0) return null;
+    const lastMacd = macdData.macd.filter((v) => v !== null).slice(-1)[0];
+    const lastSignal = macdData.signal.filter((v) => v !== null).slice(-1)[0];
+    const lastHistogram = macdData.histogram.filter((v) => v !== null).slice(-1)[0];
+    return {
+      macd: lastMacd ?? 0,
+      signal: lastSignal ?? 0,
+      histogram: lastHistogram ?? 0,
+    };
+  }, [macdData]);
 
   // Summary stats
   const stats = useMemo(() => ({
     activeCount: discovery.activeOpportunities.length,
     totalCount: discovery.opportunities.length,
-  }), [discovery.activeOpportunities, discovery.opportunities]);
+    bullishTrends: trendData.filter(t => t.trend === "bullish").length,
+    bearishTrends: trendData.filter(t => t.trend === "bearish").length,
+  }), [discovery.activeOpportunities, discovery.opportunities, trendData]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -97,7 +220,7 @@ export function WorkflowV2Layout({
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Symbol Selector */}
             <Select value={symbol} onValueChange={(v) => onSymbolChange(v as MarketSymbol)}>
-              <SelectTrigger className="w-[80px] sm:w-[120px]">
+              <SelectTrigger className="w-[80px] sm:w-[100px]">
                 <SelectValue>{symbol}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -113,6 +236,72 @@ export function WorkflowV2Layout({
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Timeframe Selector */}
+            <Select value={timeframe} onValueChange={(v) => onTimeframeChange(v as Timeframe)}>
+              <SelectTrigger className="w-[70px] sm:w-[85px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIMEFRAMES.map((tf) => (
+                  <SelectItem key={tf} value={tf}>
+                    {TIMEFRAME_CONFIG[tf].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Chart feature toggles */}
+            <div className="hidden md:flex items-center gap-1 border-l pl-2 ml-1">
+              <button
+                onClick={() => setShowSwingMarkers(!showSwingMarkers)}
+                className={cn(
+                  "px-2 py-1 text-xs rounded transition-colors",
+                  showSwingMarkers
+                    ? "bg-primary/20 text-primary"
+                    : "text-muted-foreground hover:bg-muted"
+                )}
+                title="Toggle swing markers (HH/HL/LH/LL)"
+              >
+                HH/LL
+              </button>
+              <button
+                onClick={() => setShowFibLevels(!showFibLevels)}
+                className={cn(
+                  "px-2 py-1 text-xs rounded transition-colors",
+                  showFibLevels
+                    ? "bg-primary/20 text-primary"
+                    : "text-muted-foreground hover:bg-muted"
+                )}
+                title="Toggle Fibonacci levels"
+              >
+                Fib
+              </button>
+              <button
+                onClick={() => setShowIndicators(!showIndicators)}
+                className={cn(
+                  "px-2 py-1 text-xs rounded transition-colors",
+                  showIndicators
+                    ? "bg-primary/20 text-primary"
+                    : "text-muted-foreground hover:bg-muted"
+                )}
+                title="Toggle RSI/MACD indicators"
+              >
+                RSI
+              </button>
+            </div>
+
+            {/* Trend alignment summary */}
+            {!isLoadingTrend && (
+              <div className="hidden lg:flex items-center gap-1 px-2 py-1 bg-muted/50 rounded text-xs">
+                <span style={{ color: chartColors.up }}>{stats.bullishTrends}</span>
+                <span className="text-muted-foreground">/</span>
+                <span style={{ color: chartColors.down }}>{stats.bearishTrends}</span>
+                <span className="text-muted-foreground ml-1">
+                  {overallTrend.direction === "bullish" ? "Bull" : overallTrend.direction === "bearish" ? "Bear" : "Mix"}
+                </span>
+              </div>
+            )}
 
             {/* Phase indicator */}
             <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 bg-muted rounded-md">
@@ -159,13 +348,34 @@ export function WorkflowV2Layout({
       {/* Main Content */}
       <div className="flex flex-col lg:flex-row h-[calc(100vh-3.5rem)]">
         {/* Chart Area - full width on mobile, 60% on desktop */}
-        <div className="flex-1 p-2 sm:p-4 overflow-hidden min-h-[300px] lg:min-h-0">
-          <Card className="h-full flex flex-col">
+        <div className="flex-1 p-2 sm:p-4 overflow-hidden min-h-[300px] lg:min-h-0 flex flex-col gap-2">
+          {/* Main Chart */}
+          <Card className="flex-1 flex flex-col min-h-0">
             <CardHeader className="py-2 sm:py-3 shrink-0">
               <CardTitle className="text-sm sm:text-base flex items-center justify-between">
-                <span>
-                  {symbol} - {chartTimeframe}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span>
+                    {symbol} - {TIMEFRAME_CONFIG[timeframe].label}
+                  </span>
+                  {/* Status badges */}
+                  <div className="flex items-center gap-1 text-xs">
+                    {showFibLevels && visibleLevels.length > 0 && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {visibleLevels.length} Fib
+                      </Badge>
+                    )}
+                    {showSwingMarkers && chartMarkers.length > 0 && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {chartMarkers.length} Swing
+                      </Badge>
+                    )}
+                    {(isLoadingLevels || isLoadingSwings) && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 animate-pulse">
+                        Loading...
+                      </Badge>
+                    )}
+                  </div>
+                </div>
                 <div className="flex items-center gap-1 sm:gap-2">
                   <button
                     onClick={() => chartRef.current?.zoomIn()}
@@ -198,6 +408,9 @@ export function WorkflowV2Layout({
                 <CandlestickChart
                   ref={chartRef}
                   data={marketData}
+                  markers={chartMarkers}
+                  priceLines={strategyPriceLines}
+                  lineOverlays={swingLineOverlays}
                   upColor={chartColors.up}
                   downColor={chartColors.down}
                 />
@@ -208,6 +421,65 @@ export function WorkflowV2Layout({
               )}
             </CardContent>
           </Card>
+
+          {/* Indicators Panel - RSI and MACD */}
+          {showIndicators && (
+            <Card className="shrink-0">
+              <CardContent className="p-3">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* RSI */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium">RSI (14)</span>
+                      {isLoadingRSI && <span className="text-xs text-muted-foreground">Loading...</span>}
+                    </div>
+                    {isLoadingRSI ? (
+                      <Skeleton className="h-[80px] w-full" />
+                    ) : rsiData ? (
+                      <RSIPane rsiData={rsiData} chartColors={chartColors} />
+                    ) : (
+                      <div className="h-[80px] flex items-center justify-center text-xs text-muted-foreground">
+                        Need 15+ bars
+                      </div>
+                    )}
+                  </div>
+
+                  {/* MACD */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium flex items-center gap-1">
+                        MACD (12,26,9)
+                        {currentMACD && (
+                          <span
+                            className="text-[10px] px-1 py-0.5 rounded"
+                            style={{
+                              backgroundColor:
+                                currentMACD.histogram > 0
+                                  ? `${chartColors.up}20`
+                                  : `${chartColors.down}20`,
+                              color: currentMACD.histogram > 0 ? chartColors.up : chartColors.down,
+                            }}
+                          >
+                            {currentMACD.histogram > 0 ? "Bull" : "Bear"}
+                          </span>
+                        )}
+                      </span>
+                      {isLoadingMACD && <span className="text-xs text-muted-foreground">Loading...</span>}
+                    </div>
+                    {isLoadingMACD ? (
+                      <Skeleton className="h-[80px] w-full" />
+                    ) : macdData ? (
+                      <MACDChart macdData={macdData} chartColors={chartColors} />
+                    ) : (
+                      <div className="h-[80px] flex items-center justify-center text-xs text-muted-foreground">
+                        Need 26+ bars
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Mobile overlay */}
