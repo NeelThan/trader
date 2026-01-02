@@ -9,3 +9,6 @@ export type { WorkflowV2ChartProps, WorkflowV2ChartHandle } from "./WorkflowV2Ch
 
 export { PivotSettingsPanel } from "./PivotSettingsPanel";
 export type { PivotSettingsPanelProps } from "./PivotSettingsPanel";
+
+export { SignalsPanel } from "./SignalsPanel";
+export type { SignalsPanelProps } from "./SignalsPanel";
