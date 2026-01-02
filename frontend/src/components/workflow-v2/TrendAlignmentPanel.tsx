@@ -5,13 +5,22 @@
  *
  * Shows per-timeframe trend status (bullish/bearish/neutral) with
  * visual indicators and summary statistics.
+ *
+ * Click any timeframe to see the calculation breakdown.
  */
 
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { TrendingUp, TrendingDown, Activity, BarChart3, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { TimeframeTrend, OverallAlignment } from "@/hooks/use-trend-alignment";
+import type { TimeframeTrend, OverallAlignment, IndicatorStatus } from "@/hooks/use-trend-alignment";
 import type { Timeframe } from "@/lib/chart-constants";
 import { TIMEFRAME_COLORS } from "@/lib/chart-pro/strategy-types";
 
@@ -81,6 +90,223 @@ function strengthToConfidence(strength: "strong" | "moderate" | "weak"): number 
  * Order timeframes from highest to lowest
  */
 const TIMEFRAME_ORDER: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
+
+/**
+ * Indicator weights used in calculation
+ */
+const INDICATOR_WEIGHTS = {
+  swing: 0.4,  // 40%
+  rsi: 0.3,    // 30%
+  macd: 0.3,   // 30%
+} as const;
+
+/**
+ * Get signal icon component
+ */
+function getSignalIcon(signal: "bullish" | "bearish" | "neutral", size = 14) {
+  switch (signal) {
+    case "bullish":
+      return <TrendingUp size={size} className="text-green-400" />;
+    case "bearish":
+      return <TrendingDown size={size} className="text-red-400" />;
+    default:
+      return <Activity size={size} className="text-muted-foreground" />;
+  }
+}
+
+/**
+ * Format indicator value for display
+ */
+function formatIndicatorValue(indicator: IndicatorStatus): string {
+  if (indicator.value !== undefined) {
+    return indicator.value.toFixed(1);
+  }
+  return "—";
+}
+
+/**
+ * Calculate weighted score for an indicator
+ */
+function getIndicatorScore(signal: "bullish" | "bearish" | "neutral", weight: number): number {
+  switch (signal) {
+    case "bullish":
+      return weight * 100;
+    case "bearish":
+      return -weight * 100;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Timeframe calculation breakdown popover
+ */
+function TimeframeBreakdown({
+  trend,
+  chartColors,
+}: {
+  trend: TimeframeTrend;
+  chartColors: { up: string; down: string };
+}) {
+  const swingScore = getIndicatorScore(trend.swing.signal, INDICATOR_WEIGHTS.swing);
+  const rsiScore = getIndicatorScore(trend.rsi.signal, INDICATOR_WEIGHTS.rsi);
+  const macdScore = getIndicatorScore(trend.macd.signal, INDICATOR_WEIGHTS.macd);
+  const totalScore = swingScore + rsiScore + macdScore;
+
+  const getScoreColor = (score: number) => {
+    if (score > 0) return chartColors.up;
+    if (score < 0) return chartColors.down;
+    return "#888888";
+  };
+
+  const formatScore = (score: number) => {
+    const sign = score > 0 ? "+" : "";
+    return `${sign}${score.toFixed(0)}`;
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b pb-2">
+        <span className="font-medium">{trend.timeframe} Calculation</span>
+        <Badge
+          variant="outline"
+          className="text-[10px]"
+          style={{
+            borderColor: getScoreColor(totalScore),
+            color: getScoreColor(totalScore),
+          }}
+        >
+          {trend.trend.toUpperCase()}
+        </Badge>
+      </div>
+
+      {/* Formula explanation */}
+      <div className="p-2 bg-muted/50 rounded text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-1 mb-1">
+          <Info size={10} />
+          <span className="font-medium">How it's calculated:</span>
+        </div>
+        <p>
+          Trend = (Swing × 40%) + (RSI × 30%) + (MACD × 30%)
+        </p>
+        <p className="mt-1">
+          Each indicator contributes a score: bullish = +weight, bearish = -weight
+        </p>
+      </div>
+
+      {/* Indicator breakdown */}
+      <div className="space-y-2">
+        {/* Swing Analysis */}
+        <div className="flex items-center justify-between p-2 rounded bg-muted/30">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={14} className="text-blue-400" />
+            <div>
+              <div className="text-xs font-medium">Swing Pattern</div>
+              <div className="text-[10px] text-muted-foreground">
+                HH/HL = Bull, LH/LL = Bear
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {getSignalIcon(trend.swing.signal)}
+            <span
+              className="text-xs font-mono font-medium"
+              style={{ color: getScoreColor(swingScore) }}
+            >
+              {formatScore(swingScore)}
+            </span>
+            <span className="text-[10px] text-muted-foreground">(40%)</span>
+          </div>
+        </div>
+
+        {/* RSI Analysis */}
+        <div className="flex items-center justify-between p-2 rounded bg-muted/30">
+          <div className="flex items-center gap-2">
+            <Activity size={14} className="text-purple-400" />
+            <div>
+              <div className="text-xs font-medium">RSI (14)</div>
+              <div className="text-[10px] text-muted-foreground">
+                {trend.rsi.value !== undefined
+                  ? `Value: ${trend.rsi.value.toFixed(1)} (${trend.rsi.value > 50 ? ">50 = Bull" : "<50 = Bear"})`
+                  : ">50 = Bull, <50 = Bear"}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {getSignalIcon(trend.rsi.signal)}
+            <span
+              className="text-xs font-mono font-medium"
+              style={{ color: getScoreColor(rsiScore) }}
+            >
+              {formatScore(rsiScore)}
+            </span>
+            <span className="text-[10px] text-muted-foreground">(30%)</span>
+          </div>
+        </div>
+
+        {/* MACD Analysis */}
+        <div className="flex items-center justify-between p-2 rounded bg-muted/30">
+          <div className="flex items-center gap-2">
+            <TrendingUp size={14} className="text-amber-400" />
+            <div>
+              <div className="text-xs font-medium">MACD Histogram</div>
+              <div className="text-[10px] text-muted-foreground">
+                {trend.macd.value !== undefined
+                  ? `Value: ${trend.macd.value.toFixed(2)} (${trend.macd.value > 0 ? ">0 = Bull" : "<0 = Bear"})`
+                  : ">0 = Bull, <0 = Bear"}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {getSignalIcon(trend.macd.signal)}
+            <span
+              className="text-xs font-mono font-medium"
+              style={{ color: getScoreColor(macdScore) }}
+            >
+              {formatScore(macdScore)}
+            </span>
+            <span className="text-[10px] text-muted-foreground">(30%)</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Total Score */}
+      <div className="flex items-center justify-between p-2 rounded border-2" style={{ borderColor: getScoreColor(totalScore) }}>
+        <span className="text-xs font-medium">Total Score</span>
+        <div className="flex items-center gap-2">
+          <span
+            className="text-sm font-mono font-bold"
+            style={{ color: getScoreColor(totalScore) }}
+          >
+            {formatScore(totalScore)}
+          </span>
+          <span className="text-[10px] text-muted-foreground">
+            {totalScore >= 50 ? "Strong" : totalScore >= 30 ? "Moderate" : totalScore > 0 ? "Weak" : totalScore <= -50 ? "Strong" : totalScore <= -30 ? "Moderate" : "Weak"}
+          </span>
+        </div>
+      </div>
+
+      {/* Decision logic */}
+      <div className="text-[10px] text-muted-foreground border-t pt-2">
+        <strong>Decision:</strong>{" "}
+        {totalScore >= 50
+          ? "Score ≥ 50 → Bullish"
+          : totalScore >= 30
+          ? "Score ≥ 30 → Bullish (moderate)"
+          : totalScore > 0
+          ? "Score > 0 → Bullish (weak)"
+          : totalScore <= -50
+          ? "Score ≤ -50 → Bearish"
+          : totalScore <= -30
+          ? "Score ≤ -30 → Bearish (moderate)"
+          : totalScore < 0
+          ? "Score < 0 → Bearish (weak)"
+          : "Score = 0 → Ranging (mixed signals)"}
+      </div>
+    </div>
+  );
+}
 
 export function TrendAlignmentPanel({
   trends,
@@ -155,36 +381,49 @@ export function TrendAlignmentPanel({
         </CardTitle>
       </CardHeader>
       <CardContent className="px-3 pb-3 pt-0">
+        {/* Hint text */}
+        <div className="text-[10px] text-muted-foreground mb-2 flex items-center gap-1">
+          <Info size={10} />
+          <span>Click any timeframe to see calculation breakdown</span>
+        </div>
+
         <div className="grid grid-cols-7 gap-1">
           {sortedTrends.map((trend) => {
             const info = getTrendInfo(trend.trend, chartColors);
             const tfColor = TIMEFRAME_COLORS[trend.timeframe];
 
             return (
-              <div
-                key={trend.timeframe}
-                className={cn(
-                  "flex flex-col items-center p-1.5 rounded",
-                  "border border-border/50 hover:border-border transition-colors"
-                )}
-                style={{ backgroundColor: info.bgColor }}
-              >
-                <span
-                  className="text-[10px] font-medium mb-0.5"
-                  style={{ color: tfColor }}
-                >
-                  {trend.timeframe}
-                </span>
-                <span className="text-lg" style={{ color: info.color }}>
-                  {info.icon}
-                </span>
-                <span
-                  className="text-[9px] mt-0.5"
-                  style={{ color: info.color }}
-                >
-                  {info.label}
-                </span>
-              </div>
+              <Popover key={trend.timeframe}>
+                <PopoverTrigger asChild>
+                  <button
+                    className={cn(
+                      "flex flex-col items-center p-1.5 rounded cursor-pointer",
+                      "border border-border/50 hover:border-border hover:scale-105 transition-all"
+                    )}
+                    style={{ backgroundColor: info.bgColor }}
+                    title={`Click to see ${trend.timeframe} calculation`}
+                  >
+                    <span
+                      className="text-[10px] font-medium mb-0.5"
+                      style={{ color: tfColor }}
+                    >
+                      {trend.timeframe}
+                    </span>
+                    <span className="text-lg" style={{ color: info.color }}>
+                      {info.icon}
+                    </span>
+                    <span
+                      className="text-[9px] mt-0.5"
+                      style={{ color: info.color }}
+                    >
+                      {info.label}
+                    </span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="center">
+                  <TimeframeBreakdown trend={trend} chartColors={chartColors} />
+                </PopoverContent>
+              </Popover>
             );
           })}
         </div>
