@@ -23,7 +23,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, Sparkles, RotateCcw } from "lucide-react";
 import type { Timeframe } from "@/lib/chart-constants";
 import {
   type VisibilityConfig,
@@ -271,6 +271,31 @@ export function TimeframeSettingsPopover({
     onVisibilityChange({ timeframes: newTimeframes });
   };
 
+  // Reset this timeframe (disable all)
+  const resetTimeframe = () => {
+    const newTimeframes = visibilityConfig.timeframes.map(tf => {
+      if (tf.timeframe !== timeframe) return tf;
+
+      return {
+        ...tf,
+        enabled: false,
+        strategies: tf.strategies.map(strat => ({
+          ...strat,
+          long: {
+            enabled: false,
+            ratios: strat.long.ratios.map(r => ({ ...r, visible: false })),
+          },
+          short: {
+            enabled: false,
+            ratios: strat.short.ratios.map(r => ({ ...r, visible: false })),
+          },
+        })),
+      };
+    });
+
+    onVisibilityChange({ timeframes: newTimeframes });
+  };
+
   // Format ratio for display
   const formatRatio = (strategy: StrategySource, ratio: number): string => {
     if (strategy === "RETRACEMENT") {
@@ -336,6 +361,15 @@ export function TimeframeSettingsPopover({
               title="Enable all levels"
             >
               All
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-destructive"
+              onClick={resetTimeframe}
+              title="Reset (disable all levels)"
+            >
+              <RotateCcw className="h-3 w-3" />
             </Button>
           </div>
         </div>
