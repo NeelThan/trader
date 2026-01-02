@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CandlestickChart, CandlestickChartHandle, PriceLine, LineOverlay, type ChartType } from "@/components/trading";
-import { RSIPane, MACDChart, PivotPointsEditor, LevelsTable } from "@/components/chart-pro";
+import { RSIPane, MACDChart, PivotPointsEditor, LevelsTable, SwingSettingsPanel } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
 import { useMultiTFLevels } from "@/hooks/use-multi-tf-levels";
@@ -275,7 +275,16 @@ export function WorkflowV2Layout({
   }, [visibilityConfig, setVisibilityConfig]);
 
   // Swing settings (persisted)
-  const { getTimeframeSettings } = usePersistedSwingSettings();
+  const {
+    swingConfig,
+    getTimeframeSettings,
+    updateTimeframeLookback,
+    updateTimeframeEnabled,
+    updateTimeframeShowLines,
+    resetToDefaults: resetSwingDefaults,
+    isLoaded: isSwingSettingsLoaded,
+  } = usePersistedSwingSettings();
+  const [showSwingSettings, setShowSwingSettings] = useState(false);
   const swingSettings = useMemo(
     () => getTimeframeSettings(timeframe),
     [getTimeframeSettings, timeframe]
@@ -786,6 +795,18 @@ export function WorkflowV2Layout({
                         <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
                       )}
                     </button>
+                    <button
+                      onClick={() => setShowSwingSettings(!showSwingSettings)}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        showSwingSettings
+                          ? "bg-orange-500/20 text-orange-400"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                      title="Adjust swing detection lookback per timeframe"
+                    >
+                      Swing
+                    </button>
                     {/* Trade View toggle - only show when opportunity selected */}
                     {opportunity && phase !== "discover" && (
                       <button
@@ -989,7 +1010,7 @@ export function WorkflowV2Layout({
           </Card>
 
           {/* Analysis Panels - horizontal grid layout, doesn't overlay chart */}
-          {(showIndicators || showPivotEditor || showTrendPanel || showConfluenceZones || showLevelsTable) && (
+          {(showIndicators || showPivotEditor || showTrendPanel || showConfluenceZones || showLevelsTable || showSwingSettings) && (
             <div className="shrink-0 grid grid-cols-1 lg:grid-cols-3 gap-2">
               {/* Trend Alignment Panel */}
               {showTrendPanel && (
@@ -1075,6 +1096,24 @@ export function WorkflowV2Layout({
                   modifiedCount={pivotModifiedCount}
                   isLoading={isLoadingSwings || !isPivotsLoaded}
                 />
+              )}
+
+              {/* Swing Settings Panel - Per-timeframe lookback adjustment */}
+              {showSwingSettings && (
+                <Card className="shrink-0">
+                  <CardContent className="p-3">
+                    <SwingSettingsPanel
+                      currentTimeframe={timeframe}
+                      swingConfig={swingConfig}
+                      getTimeframeSettings={getTimeframeSettings}
+                      updateTimeframeLookback={updateTimeframeLookback}
+                      updateTimeframeEnabled={updateTimeframeEnabled}
+                      updateTimeframeShowLines={updateTimeframeShowLines}
+                      resetToDefaults={resetSwingDefaults}
+                      isLoaded={isSwingSettingsLoaded}
+                    />
+                  </CardContent>
+                </Card>
               )}
 
               {/* Confluence Zones Panel - Shows clusters of Fib levels */}
