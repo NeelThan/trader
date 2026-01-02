@@ -12,3 +12,5 @@ export type { PivotSettingsPanelProps } from "./PivotSettingsPanel";
 
 export { SignalsPanel } from "./SignalsPanel";
 export type { SignalsPanelProps } from "./SignalsPanel";
+
+export { ValidationPanel } from "./ValidationPanel";
