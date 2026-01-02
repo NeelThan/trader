@@ -23,3 +23,6 @@ export type { ExecutionPanelProps } from "./ExecutionPanel";
 
 export { ManagePanel } from "./ManagePanel";
 export type { ManagePanelProps } from "./ManagePanel";
+
+export { WatchlistPanel } from "./WatchlistPanel";
+export type { WatchlistPanelProps } from "./WatchlistPanel";
