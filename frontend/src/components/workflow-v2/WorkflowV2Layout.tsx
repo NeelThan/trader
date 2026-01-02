@@ -1094,14 +1094,14 @@ export function WorkflowV2Layout({
                       <span className="text-[10px] text-muted-foreground">Tolerance:</span>
                       <input
                         type="range"
-                        min="0.1"
-                        max="1.0"
-                        step="0.05"
+                        min="0.02"
+                        max="0.5"
+                        step="0.01"
                         value={confluenceTolerance}
                         onChange={(e) => setConfluenceTolerance(parseFloat(e.target.value))}
                         className="flex-1 h-1 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                       />
-                      <span className="text-[10px] font-mono w-10 text-right">{confluenceTolerance.toFixed(2)}%</span>
+                      <span className="text-[10px] font-mono w-12 text-right">{confluenceTolerance.toFixed(2)}%</span>
                     </div>
                   </CardHeader>
                   <CardContent className="px-3 pb-3 pt-0 max-h-[200px] overflow-y-auto">
