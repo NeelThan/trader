@@ -5,7 +5,7 @@
  * Connects to journal for auto-logging trades.
  */
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { createJournalEntry, type JournalEntryRequest } from "@/lib/api";
 import type { TradeOpportunity } from "./use-trade-discovery";
 import type { ValidationResult } from "./use-trade-validation";
@@ -123,19 +123,33 @@ export function useTradeExecution({
   const [isExecuting, setIsExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize sizing from validation suggestions
-  const [sizingOverrides, setSizingOverrides] = useState<Partial<SizingData>>({
+  // Initialize sizing - separate account settings from trade-specific values
+  const [accountSettings, setAccountSettings] = useState({
     accountBalance: 10000,
     riskPercentage: 2,
   });
 
+  // Trade-specific overrides (entry, stop, targets)
+  const [tradeOverrides, setTradeOverrides] = useState<{
+    entryPrice?: number;
+    stopLoss?: number;
+    targets?: number[];
+  }>({});
+
+  // Reset trade overrides when opportunity or validation changes
+  // This allows the new suggested values to take effect
+  useEffect(() => {
+    setTradeOverrides({});
+  }, [opportunity?.id, validation.suggestedEntry, validation.suggestedStop]);
+
   // Calculate full sizing data
   const sizing = useMemo((): SizingData => {
-    const accountBalance = sizingOverrides.accountBalance ?? 10000;
-    const riskPercentage = sizingOverrides.riskPercentage ?? 2;
-    const entryPrice = sizingOverrides.entryPrice ?? validation.suggestedEntry ?? 0;
-    const stopLoss = sizingOverrides.stopLoss ?? validation.suggestedStop ?? 0;
-    const targets = sizingOverrides.targets ?? validation.suggestedTargets ?? [];
+    const { accountBalance, riskPercentage } = accountSettings;
+
+    // Use overrides if user edited, otherwise use validation suggestions
+    const entryPrice = tradeOverrides.entryPrice ?? validation.suggestedEntry ?? 0;
+    const stopLoss = tradeOverrides.stopLoss ?? validation.suggestedStop ?? 0;
+    const targets = tradeOverrides.targets ?? validation.suggestedTargets ?? [];
     const direction = opportunity?.direction ?? "long";
 
     const { positionSize, riskAmount, stopDistance } = calculatePositionSize(
@@ -162,11 +176,31 @@ export function useTradeExecution({
       recommendation,
       isValid,
     };
-  }, [sizingOverrides, validation, opportunity?.direction]);
+  }, [accountSettings, tradeOverrides, validation, opportunity?.direction]);
 
-  // Update sizing
+  // Update sizing - route to appropriate state based on field
   const updateSizing = useCallback((updates: Partial<SizingData>) => {
-    setSizingOverrides((prev) => ({ ...prev, ...updates }));
+    // Account settings
+    if (updates.accountBalance !== undefined || updates.riskPercentage !== undefined) {
+      setAccountSettings((prev) => ({
+        accountBalance: updates.accountBalance ?? prev.accountBalance,
+        riskPercentage: updates.riskPercentage ?? prev.riskPercentage,
+      }));
+    }
+
+    // Trade-specific overrides
+    if (
+      updates.entryPrice !== undefined ||
+      updates.stopLoss !== undefined ||
+      updates.targets !== undefined
+    ) {
+      setTradeOverrides((prev) => ({
+        ...prev,
+        ...(updates.entryPrice !== undefined && { entryPrice: updates.entryPrice }),
+        ...(updates.stopLoss !== undefined && { stopLoss: updates.stopLoss }),
+        ...(updates.targets !== undefined && { targets: updates.targets }),
+      }));
+    }
   }, []);
 
   // Execute trade and journal it

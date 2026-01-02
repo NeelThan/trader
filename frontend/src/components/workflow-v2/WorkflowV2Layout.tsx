@@ -367,6 +367,59 @@ export function WorkflowV2Layout({
     return calculateConfluenceZones(visibleLevels, 0.5);
   }, [visibleLevels, showConfluenceZones]);
 
+  // Confluence zone price lines - creates visual bands on chart
+  const zonePriceLines = useMemo<PriceLine[]>(() => {
+    if (!showConfluenceZones || confluenceZones.length === 0) return [];
+
+    const lines: PriceLine[] = [];
+
+    confluenceZones.forEach((zone, index) => {
+      const zoneColor =
+        zone.direction === "long"
+          ? "rgba(34, 197, 94, 0.4)" // green with opacity
+          : zone.direction === "short"
+            ? "rgba(239, 68, 68, 0.4)" // red with opacity
+            : "rgba(168, 85, 247, 0.4)"; // purple for neutral
+
+      // Top of zone
+      lines.push({
+        price: zone.highPrice,
+        color: zoneColor,
+        lineWidth: 2,
+        lineStyle: 0, // Solid
+        axisLabelVisible: false,
+        title: `Zone ${index + 1} Top`,
+      });
+
+      // Bottom of zone
+      lines.push({
+        price: zone.lowPrice,
+        color: zoneColor,
+        lineWidth: 2,
+        lineStyle: 0, // Solid
+        axisLabelVisible: false,
+        title: `Zone ${index + 1} Bottom`,
+      });
+
+      // Center line with label
+      lines.push({
+        price: zone.centerPrice,
+        color: zoneColor,
+        lineWidth: 1,
+        lineStyle: 2, // Dashed
+        axisLabelVisible: true,
+        title: `Zone (${zone.levelCount})`,
+      });
+    });
+
+    return lines;
+  }, [confluenceZones, showConfluenceZones]);
+
+  // Combine all price lines
+  const allPriceLines = useMemo<PriceLine[]>(() => {
+    return [...strategyPriceLines, ...zonePriceLines];
+  }, [strategyPriceLines, zonePriceLines]);
+
   // Crosshair move handler
   const handleCrosshairMove = useCallback((price: number | null) => {
     setCrosshairPrice(price);
@@ -834,7 +887,7 @@ export function WorkflowV2Layout({
                     data={marketData}
                     chartType={chartType}
                     markers={chartMarkers}
-                    priceLines={strategyPriceLines}
+                    priceLines={allPriceLines}
                     lineOverlays={swingLineOverlays}
                     upColor={chartColors.up}
                     downColor={chartColors.down}

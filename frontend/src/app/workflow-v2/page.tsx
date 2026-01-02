@@ -105,6 +105,7 @@ export default function WorkflowV2Page() {
           <SizingPanel
             opportunity={selectedOpportunity!}
             sizing={execution.sizing}
+            validation={validation.result}
             onUpdateSizing={execution.updateSizing}
             onBack={() => setPhase("validate")}
             onProceed={handleProceedToExecute}
