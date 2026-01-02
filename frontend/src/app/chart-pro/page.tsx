@@ -50,8 +50,15 @@ import {
 } from "@/lib/chart-constants";
 import {
   type StrategySource,
+  type TimeframeTrendData,
+  type TimeframePivotAnalysis,
   isLevelVisible,
   toggleRatioVisibility,
+  syncVisibilityWithTrend,
+  getSyncSummary,
+  analyzePivotsForSync,
+  syncVisibilityWithPivots,
+  getPivotSyncSummary,
   DIRECTION_COLORS,
 } from "@/lib/chart-pro/strategy-types";
 
@@ -148,6 +155,70 @@ export default function ChartProPage() {
     overall: overallTrend,
     filters: signalFilters,
   });
+
+  // Convert trend data to format needed for sync
+  const trendDataForSync = useMemo<TimeframeTrendData[]>(() => {
+    return trendData
+      .filter((t) => !t.isLoading && !t.error)
+      .map((t) => ({
+        timeframe: t.timeframe,
+        trend: t.trend,
+        confidence: t.confidence,
+      }));
+  }, [trendData]);
+
+  // Get sync summary for UI display
+  const syncSummary = useMemo(() => {
+    const summary = getSyncSummary(trendDataForSync);
+    return {
+      bullishCount: summary.bullishTimeframes.length,
+      bearishCount: summary.bearishTimeframes.length,
+      direction: summary.totalLevelsDirection,
+    };
+  }, [trendDataForSync]);
+
+  // Handler to sync visibility config with detected trends
+  const handleSyncWithTrend = useCallback(() => {
+    const newConfig = syncVisibilityWithTrend(
+      visibilityConfig,
+      trendDataForSync,
+      {
+        includeRanging: false,
+        minConfidence: 50, // Only include trends with 50%+ confidence
+        strategies: ["RETRACEMENT", "EXTENSION"],
+      }
+    );
+    setVisibilityConfig(newConfig);
+  }, [visibilityConfig, trendDataForSync, setVisibilityConfig]);
+
+  // Pivot analysis for smart sync - uses raw pivot/marker data from trend alignment
+  const pivotAnalysis = useMemo<TimeframePivotAnalysis[]>(() => {
+    return trendData
+      .filter((t) => !t.isLoading && !t.error && t.pivots && t.markers && t.currentPrice)
+      .map((t) =>
+        analyzePivotsForSync(
+          t.pivots!,
+          t.markers!,
+          t.currentPrice!,
+          t.timeframe
+        )
+      );
+  }, [trendData]);
+
+  // Get pivot sync summary for UI display
+  const pivotSyncSummary = useMemo(() => {
+    return getPivotSyncSummary(pivotAnalysis, { minConfidence: 50 });
+  }, [pivotAnalysis]);
+
+  // Handler for pivot-based smart sync
+  const handlePivotSync = useCallback(() => {
+    const newConfig = syncVisibilityWithPivots(
+      visibilityConfig,
+      pivotAnalysis,
+      { minConfidence: 50 }
+    );
+    setVisibilityConfig(newConfig);
+  }, [visibilityConfig, pivotAnalysis, setVisibilityConfig]);
 
   useEffect(() => {
     setHasMounted(true);
@@ -364,78 +435,25 @@ export default function ChartProPage() {
                 Visual-first trading workflow with multi-timeframe analysis
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              {/* Data Mode Toggle */}
-              <button
-                onClick={toggleDataMode}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  isSimulated
-                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
-                    : "bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30"
-                }`}
-                title={
-                  isSimulated
-                    ? `Using cached data (${cachedData.length} entries, ${cacheSizeFormatted})`
-                    : "Using live API data (click to use cached)"
-                }
+            <button
+              onClick={() => setShowStrategyPanel(!showStrategyPanel)}
+              className="p-2 rounded-md hover:bg-muted/50 transition-colors"
+              title={showStrategyPanel ? "Hide Strategy Panel" : "Show Strategy Panel"}
+            >
+              <svg
+                className={`w-5 h-5 transition-transform ${showStrategyPanel ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                {isSimulated ? "📦 Cached" : "🔴 Live"}
-              </button>
-
-              <Select value={symbol} onValueChange={(v) => setSymbol(v as MarketSymbol)}>
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SYMBOLS.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={timeframe} onValueChange={(v) => setTimeframe(v as Timeframe)}>
-                <SelectTrigger className="w-[100px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIMEFRAMES.map((tf) => (
-                    <SelectItem key={tf} value={tf}>
-                      {TIMEFRAME_CONFIG[tf].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={chartType} onValueChange={(v) => setChartType(v as ChartType)}>
-                <SelectTrigger className="w-[130px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="candlestick">Candlestick</SelectItem>
-                  <SelectItem value="bar">Bar</SelectItem>
-                  <SelectItem value="heikin-ashi">Heikin Ashi</SelectItem>
-                </SelectContent>
-              </Select>
-              <button
-                onClick={() => setShowStrategyPanel(!showStrategyPanel)}
-                className="p-2 rounded-md hover:bg-muted/50 transition-colors"
-                title={showStrategyPanel ? "Hide Strategy Panel" : "Show Strategy Panel"}
-              >
-                <svg
-                  className={`w-5 h-5 transition-transform ${showStrategyPanel ? "rotate-180" : ""}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </button>
-            </div>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </button>
           </div>
 
           {/* Backend Status */}
@@ -462,43 +480,101 @@ export default function ChartProPage() {
             </div>
           )}
 
-          {/* OHLC Summary Bar */}
+          {/* Market Controls & OHLC Summary */}
           <Card>
             <CardContent className="py-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-6">
-                  <div>
-                    <span className="text-xs text-muted-foreground mr-2">Symbol:</span>
-                    <span className="font-semibold">{symbol}</span>
-                    <span className="text-xs text-muted-foreground ml-1">
-                      ({MARKET_CONFIG[symbol].name})
-                    </span>
-                  </div>
-                  <Badge variant="outline">{timeframe}</Badge>
+              <div className="flex flex-col gap-3">
+                {/* Controls Row */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Symbol Dropdown */}
+                  <Select value={symbol} onValueChange={(v) => setSymbol(v as MarketSymbol)}>
+                    <SelectTrigger className="w-[90px]">
+                      <SelectValue>{symbol}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SYMBOLS.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium w-16">{s}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {MARKET_CONFIG[s].name}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Timeframe Dropdown */}
+                  <Select value={timeframe} onValueChange={(v) => setTimeframe(v as Timeframe)}>
+                    <SelectTrigger className="w-[85px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIMEFRAMES.map((tf) => (
+                        <SelectItem key={tf} value={tf}>
+                          {TIMEFRAME_CONFIG[tf].label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Chart Type Dropdown */}
+                  <Select value={chartType} onValueChange={(v) => setChartType(v as ChartType)}>
+                    <SelectTrigger className="w-[115px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="candlestick">Candlestick</SelectItem>
+                      <SelectItem value="bar">Bar</SelectItem>
+                      <SelectItem value="heikin-ashi">Heikin Ashi</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Separator */}
+                  <div className="h-6 w-px bg-border mx-1" />
+
+                  {/* Data Mode Toggle */}
+                  <button
+                    onClick={toggleDataMode}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      isSimulated
+                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
+                        : "bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30"
+                    }`}
+                    title={
+                      isSimulated
+                        ? `Using cached data (${cachedData.length} entries, ${cacheSizeFormatted})`
+                        : "Using live API data (click to use cached)"
+                    }
+                  >
+                    {isSimulated ? "Cached" : "Live"}
+                  </button>
+
+                  {/* OHLC Values - pushed to the right */}
+                  {currentOHLC && (
+                    <div className="flex items-center gap-4 ml-auto text-sm font-mono">
+                      <div>
+                        <span className="text-muted-foreground mr-1">O:</span>
+                        <span>{formatPrice(currentOHLC.open)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground mr-1">H:</span>
+                        <span style={{ color: chartColors.up }}>{formatPrice(currentOHLC.high)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground mr-1">L:</span>
+                        <span style={{ color: chartColors.down }}>{formatPrice(currentOHLC.low)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground mr-1">C:</span>
+                        <span style={{ color: currentOHLC.close >= currentOHLC.open ? chartColors.up : chartColors.down }}>
+                          {formatPrice(currentOHLC.close)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {currentOHLC && (
-                  <div className="flex items-center gap-6 text-sm font-mono">
-                    <span className="text-xs text-muted-foreground">(Last Bar)</span>
-                    <div>
-                      <span className="text-muted-foreground mr-1">O:</span>
-                      <span>{formatPrice(currentOHLC.open)}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground mr-1">H:</span>
-                      <span style={{ color: chartColors.up }}>{formatPrice(currentOHLC.high)}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground mr-1">L:</span>
-                      <span style={{ color: chartColors.down }}>{formatPrice(currentOHLC.low)}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground mr-1">C:</span>
-                      <span style={{ color: currentOHLC.close >= currentOHLC.open ? chartColors.up : chartColors.down }}>
-                        {formatPrice(currentOHLC.close)}
-                      </span>
-                    </div>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -601,6 +677,11 @@ export default function ChartProPage() {
                   isLoading={isLoadingTrend}
                   onRefresh={refreshTrend}
                   chartColors={chartColors}
+                  onSyncWithLevels={handleSyncWithTrend}
+                  syncSummary={syncSummary}
+                  onPivotSync={handlePivotSync}
+                  pivotSyncSummary={pivotSyncSummary}
+                  pivotAnalysis={pivotAnalysis}
                 />
               </CardContent>
             )}
@@ -636,6 +717,7 @@ export default function ChartProPage() {
                   shortCount={shortCount}
                   waitCount={waitCount}
                   chartColors={chartColors}
+                  allLevels={allLevels}
                 />
               </CardContent>
             )}

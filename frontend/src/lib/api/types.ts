@@ -253,3 +253,55 @@ export type JournalAnalyticsData = {
 export type JournalAnalyticsResponse = {
   analytics: JournalAnalyticsData;
 };
+
+// Workflow Request/Response Types
+
+export type TrendDirection = "bullish" | "bearish" | "neutral";
+export type SwingType = "HH" | "HL" | "LH" | "LL";
+export type StrengthLevel = "strong" | "moderate" | "weak";
+export type SignalType = "bullish" | "bearish" | "neutral" | "oversold" | "overbought";
+export type OverallConfirmation = "strong" | "partial" | "wait";
+
+export type TrendAssessmentResponse = {
+  trend: TrendDirection;
+  swing_type: SwingType;
+  explanation: string;
+  confidence: number;
+};
+
+export type TimeframeTrend = {
+  timeframe: string;
+  trend: TrendDirection;
+  swing_type: SwingType | null;
+};
+
+export type AlignmentResultResponse = {
+  aligned_count: number;
+  total_count: number;
+  strength: StrengthLevel;
+  timeframes: TimeframeTrend[];
+};
+
+export type LevelZone = {
+  label: string;
+  price: number;
+  heat: number;
+  formula: string;
+};
+
+export type LevelsResultResponse = {
+  entry_zones: LevelZone[];
+  target_zones: LevelZone[];
+};
+
+export type IndicatorSignal = {
+  value: number | null;
+  signal: SignalType;
+  explanation: string;
+};
+
+export type IndicatorConfirmationResponse = {
+  rsi: IndicatorSignal;
+  macd: IndicatorSignal;
+  overall: OverallConfirmation;
+};

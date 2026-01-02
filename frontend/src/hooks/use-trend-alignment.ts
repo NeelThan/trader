@@ -21,6 +21,26 @@ export type IndicatorStatus = {
   value?: number;
 };
 
+/**
+ * Pivot point data for analysis
+ */
+export type PivotData = {
+  index: number;
+  price: number;
+  type: "high" | "low";
+  time: string | number;
+};
+
+/**
+ * Swing marker data for analysis
+ */
+export type SwingMarkerTrend = {
+  index: number;
+  price: number;
+  time: string | number;
+  swingType: "HH" | "HL" | "LH" | "LL";
+};
+
 export type TimeframeTrend = {
   timeframe: Timeframe;
   trend: TrendDirection;
@@ -30,6 +50,12 @@ export type TimeframeTrend = {
   macd: IndicatorStatus;
   isLoading: boolean;
   error: string | null;
+  /** Raw pivot points from swing detection (for pivot-based sync) */
+  pivots?: PivotData[];
+  /** Raw swing markers from detection (for pivot-based sync) */
+  markers?: SwingMarkerTrend[];
+  /** Current (latest) price for this timeframe */
+  currentPrice?: number;
 };
 
 export type OverallAlignment = {
@@ -343,10 +369,20 @@ export function useTrendAlignment({
         const rsiData = rsiRes.ok ? await rsiRes.json() : { rsi: [] };
         const macdData = macdRes.ok ? await macdRes.json() : { histogram: [] };
 
+        // Get raw pivots for pivot-based sync
+        const rawPivots: PivotData[] = (swingData.pivots || []).map((p: { index: number; price: number; type: string; time: string | number }) => ({
+          index: p.index,
+          price: p.price,
+          type: p.type as "high" | "low",
+          time: p.time,
+        }));
+
         // Get swing markers (API returns swing_type, we need swingType)
-        const markers = (swingData.markers || []).map((m: { swing_type: string }) => ({
-          ...m,
-          swingType: m.swing_type,
+        const rawMarkers: SwingMarkerTrend[] = (swingData.markers || []).map((m: { index: number; price: number; time: string | number; swing_type: string }) => ({
+          index: m.index,
+          price: m.price,
+          time: m.time,
+          swingType: m.swing_type as "HH" | "HL" | "LH" | "LL",
         }));
         const rsiValues = rsiData.rsi || [];
         const histogramValues = macdData.histogram || [];
@@ -354,8 +390,11 @@ export function useTrendAlignment({
         const latestRSI = rsiValues.filter((v: number | null) => v !== null).slice(-1)[0] ?? null;
         const latestHistogram = histogramValues.filter((v: number | null) => v !== null).slice(-1)[0] ?? null;
 
+        // Get current price (latest close)
+        const currentPrice = bars.length > 0 ? bars[bars.length - 1].close : undefined;
+
         // Analyze each indicator
-        const swing = analyzeSwingTrend(markers);
+        const swing = analyzeSwingTrend(rawMarkers);
         const rsi = analyzeRSI(latestRSI);
         const macd = analyzeMACD(latestHistogram);
 
@@ -371,6 +410,9 @@ export function useTrendAlignment({
           macd,
           isLoading: false,
           error: null,
+          pivots: rawPivots,
+          markers: rawMarkers,
+          currentPrice,
         };
       } catch (err) {
         if ((err as Error).name === "AbortError") {

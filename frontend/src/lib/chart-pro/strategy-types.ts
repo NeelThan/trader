@@ -407,3 +407,720 @@ export const STRATEGY_DISPLAY_NAMES: Record<StrategySource, string> = {
   HARMONIC: "Harmonic",
   SIGNAL: "Signal",
 };
+
+/**
+ * Trend direction type (matches use-trend-alignment.ts)
+ */
+export type TrendDirection = "bullish" | "bearish" | "ranging";
+
+/**
+ * Trend data per timeframe for syncing visibility
+ */
+export type TimeframeTrendData = {
+  timeframe: Timeframe;
+  trend: TrendDirection;
+  confidence: number;
+};
+
+/**
+ * Options for syncing visibility with trend
+ */
+export type SyncVisibilityOptions = {
+  /** Include ranging timeframes (default: false - hides them) */
+  includeRanging?: boolean;
+  /** Minimum confidence threshold to include (default: 0) */
+  minConfidence?: number;
+  /** Strategies to enable (default: RETRACEMENT, EXTENSION) */
+  strategies?: StrategySource[];
+  /** Only allow these specific timeframes (default: all) */
+  allowedTimeframes?: Timeframe[];
+  /** Strategy assignment per timeframe for more granular control */
+  timeframeStrategies?: Record<Timeframe, {
+    strategies: StrategySource[];
+    direction?: "long" | "short" | "both";
+  }>;
+};
+
+/**
+ * Sync visibility config with trend data.
+ *
+ * For each timeframe:
+ * - Bullish trend → enable timeframe, show only LONG levels
+ * - Bearish trend → enable timeframe, show only SHORT levels
+ * - Ranging trend → disable timeframe (reduces noise)
+ *
+ * This filters Fibonacci levels to align with the detected trend,
+ * showing only levels that make sense for the current market direction.
+ *
+ * Options:
+ * - allowedTimeframes: Only enable these specific timeframes (for signal-based filtering)
+ * - timeframeStrategies: Override strategies per timeframe (e.g., retracements for entry TF, extensions for target TF)
+ */
+export function syncVisibilityWithTrend(
+  config: VisibilityConfig,
+  trendData: TimeframeTrendData[],
+  options: SyncVisibilityOptions = {}
+): VisibilityConfig {
+  const {
+    includeRanging = false,
+    minConfidence = 0,
+    strategies = ["RETRACEMENT", "EXTENSION"],
+    allowedTimeframes,
+    timeframeStrategies,
+  } = options;
+
+  return {
+    timeframes: config.timeframes.map((tfConfig) => {
+      const tf = tfConfig.timeframe;
+
+      // Check if timeframe is in allowed list (if specified)
+      if (allowedTimeframes && !allowedTimeframes.includes(tf)) {
+        return {
+          ...tfConfig,
+          enabled: false,
+        };
+      }
+
+      // Find trend data for this timeframe
+      const trend = trendData.find((t) => t.timeframe === tf);
+
+      // No trend data - keep disabled
+      if (!trend) {
+        return {
+          ...tfConfig,
+          enabled: false,
+        };
+      }
+
+      // Below confidence threshold - keep disabled
+      if (trend.confidence < minConfidence) {
+        return {
+          ...tfConfig,
+          enabled: false,
+        };
+      }
+
+      // Ranging trend - disable unless includeRanging is true
+      if (trend.trend === "ranging" && !includeRanging) {
+        return {
+          ...tfConfig,
+          enabled: false,
+        };
+      }
+
+      // Get per-timeframe strategy override if available
+      const tfOverride = timeframeStrategies?.[tf];
+      const tfStrategies = tfOverride?.strategies ?? strategies;
+
+      // Determine direction based on trend or override
+      let enableLong: boolean;
+      let enableShort: boolean;
+
+      if (tfOverride?.direction) {
+        // Use override direction
+        enableLong = tfOverride.direction === "long" || tfOverride.direction === "both";
+        enableShort = tfOverride.direction === "short" || tfOverride.direction === "both";
+      } else {
+        // Use trend direction
+        enableLong = trend.trend === "bullish" || (trend.trend === "ranging" && includeRanging);
+        enableShort = trend.trend === "bearish" || (trend.trend === "ranging" && includeRanging);
+      }
+
+      return {
+        ...tfConfig,
+        enabled: true,
+        strategies: tfConfig.strategies.map((stratConfig) => {
+          // Only enable strategies in the list for this timeframe
+          const isEnabledStrategy = tfStrategies.includes(stratConfig.strategy);
+
+          return {
+            ...stratConfig,
+            long: {
+              ...stratConfig.long,
+              enabled: isEnabledStrategy && enableLong,
+            },
+            short: {
+              ...stratConfig.short,
+              enabled: isEnabledStrategy && enableShort,
+            },
+          };
+        }),
+      };
+    }),
+  };
+}
+
+/**
+ * Get a summary of what the sync will do
+ */
+export function getSyncSummary(
+  trendData: TimeframeTrendData[],
+  options: SyncVisibilityOptions = {}
+): {
+  bullishTimeframes: Timeframe[];
+  bearishTimeframes: Timeframe[];
+  rangingTimeframes: Timeframe[];
+  skippedTimeframes: Timeframe[];
+  totalLevelsDirection: "long" | "short" | "mixed" | "none";
+} {
+  const { includeRanging = false, minConfidence = 0 } = options;
+
+  const bullishTimeframes: Timeframe[] = [];
+  const bearishTimeframes: Timeframe[] = [];
+  const rangingTimeframes: Timeframe[] = [];
+  const skippedTimeframes: Timeframe[] = [];
+
+  for (const trend of trendData) {
+    if (trend.confidence < minConfidence) {
+      skippedTimeframes.push(trend.timeframe);
+      continue;
+    }
+
+    switch (trend.trend) {
+      case "bullish":
+        bullishTimeframes.push(trend.timeframe);
+        break;
+      case "bearish":
+        bearishTimeframes.push(trend.timeframe);
+        break;
+      case "ranging":
+        if (includeRanging) {
+          rangingTimeframes.push(trend.timeframe);
+        } else {
+          skippedTimeframes.push(trend.timeframe);
+        }
+        break;
+    }
+  }
+
+  // Determine overall direction
+  let totalLevelsDirection: "long" | "short" | "mixed" | "none";
+  if (bullishTimeframes.length > 0 && bearishTimeframes.length > 0) {
+    totalLevelsDirection = "mixed";
+  } else if (bullishTimeframes.length > 0) {
+    totalLevelsDirection = "long";
+  } else if (bearishTimeframes.length > 0) {
+    totalLevelsDirection = "short";
+  } else {
+    totalLevelsDirection = "none";
+  }
+
+  return {
+    bullishTimeframes,
+    bearishTimeframes,
+    rangingTimeframes,
+    skippedTimeframes,
+    totalLevelsDirection,
+  };
+}
+
+// ============================================================================
+// PIVOT-BASED SYNC - Intelligent strategy selection based on swing structure
+// ============================================================================
+
+/**
+ * Swing type for pivot analysis (matches use-swing-markers.ts)
+ */
+export type SwingType = "HH" | "HL" | "LH" | "LL";
+
+/**
+ * Pivot point from swing detection
+ */
+export type PivotPointData = {
+  index: number;
+  price: number;
+  type: "high" | "low";
+  time: string | number;
+};
+
+/**
+ * Swing marker from detection
+ */
+export type SwingMarkerData = {
+  index: number;
+  price: number;
+  time: string | number;
+  swingType: SwingType;
+};
+
+/**
+ * Per-strategy direction based on swing shape
+ * See docs/references/fibonacci_conditions.md for full explanation
+ */
+export type StrategyDirections = {
+  /** Retracement direction: based on where swing ENDED
+   * - Ended LOW (HL/LL) → LONG (buy the pullback up)
+   * - Ended HIGH (HH/LH) → SHORT (sell the pullback down)
+   */
+  retracement: "long" | "short" | "neutral";
+  /** Extension direction: follows the swing direction
+   * - Swing DOWN (ended low) → LONG (targets below)
+   * - Swing UP (ended high) → SHORT (targets above)
+   */
+  extension: "long" | "short" | "neutral";
+  /** Projection direction: based on ABC pattern
+   * - Bullish ABC (A=Low, B=High, C=HL) → LONG
+   * - Bearish ABC (A=High, B=Low, C=LH) → SHORT
+   */
+  projection: "long" | "short" | "neutral";
+  /** Expansion direction: based on A-B relationship
+   * - A > B (high to low) → LONG (targets below B)
+   * - A < B (low to high) → SHORT (targets above B)
+   */
+  expansion: "long" | "short" | "neutral";
+};
+
+/**
+ * Pivot analysis for a single timeframe
+ * Calculated from swing detection results
+ */
+export type TimeframePivotAnalysis = {
+  timeframe: Timeframe;
+  /** Overall direction based on swing structure (for backward compat) */
+  direction: "long" | "short" | "neutral";
+  /** Per-strategy directions based on swing shape conditions */
+  strategyDirections: StrategyDirections;
+  /** Whether the swing ended at a HIGH or LOW */
+  swingEndpoint: "high" | "low" | "unknown";
+  /** Whether price has moved past 100% of the swing (beyond retracement zone) */
+  isPast100: boolean;
+  /** Recommended strategy based on price position */
+  recommendedStrategy: "RETRACEMENT" | "EXTENSION" | "BOTH";
+  /** Current price position as percentage of swing (0-100 = retracement zone, >100 = extension zone) */
+  pricePosition: number;
+  /** Latest swing type that determined direction */
+  latestSwing: SwingType | null;
+  /** Confidence in the analysis (0-100) */
+  confidence: number;
+  /** The pivot high used in analysis */
+  pivotHigh: number | null;
+  /** The pivot low used in analysis */
+  pivotLow: number | null;
+};
+
+/**
+ * Determine if the swing endpoint is a high or low
+ */
+function getSwingEndpoint(swingType: SwingType): "high" | "low" {
+  // HH and LH are highs (the swing ended at a high point)
+  if (swingType === "HH" || swingType === "LH") {
+    return "high";
+  }
+  // HL and LL are lows (the swing ended at a low point)
+  return "low";
+}
+
+/**
+ * Calculate per-strategy directions based on swing shape.
+ *
+ * RETRACEMENT:
+ * - Swing ended LOW (HL/LL) → LONG (buy the pullback up)
+ * - Swing ended HIGH (HH/LH) → SHORT (sell the pullback down)
+ *
+ * EXTENSION:
+ * - Swing DOWN (ended low) → LONG (targets below)
+ * - Swing UP (ended high) → SHORT (targets above)
+ *
+ * PROJECTION & EXPANSION:
+ * - Follow same logic as extension (based on swing direction)
+ */
+function calculateStrategyDirections(swingType: SwingType): StrategyDirections {
+  const endpoint = getSwingEndpoint(swingType);
+
+  // Retracement: based on where swing ENDED
+  // If ended LOW → price moved DOWN → retracement is UP → BUY/LONG
+  // If ended HIGH → price moved UP → retracement is DOWN → SELL/SHORT
+  const retracementDir = endpoint === "low" ? "long" : "short";
+
+  // Extension: follows swing direction (targets beyond endpoint)
+  // If ended LOW → swing was DOWN → targets are BELOW → LONG
+  // If ended HIGH → swing was UP → targets are ABOVE → SHORT
+  const extensionDir = endpoint === "low" ? "long" : "short";
+
+  // Projection: same as extension (projects from C in the swing direction)
+  const projectionDir = extensionDir;
+
+  // Expansion: same as extension (expands from B in swing direction)
+  const expansionDir = extensionDir;
+
+  return {
+    retracement: retracementDir,
+    extension: extensionDir,
+    projection: projectionDir,
+    expansion: expansionDir,
+  };
+}
+
+/**
+ * Analyze swing markers to determine direction and strategy for a timeframe
+ *
+ * Logic for per-strategy directions (see docs/references/fibonacci_conditions.md):
+ * - RETRACEMENT: based on where swing ENDED (low = buy pullback, high = sell pullback)
+ * - EXTENSION: based on swing DIRECTION (down = long targets, up = short targets)
+ * - PROJECTION/EXPANSION: follows extension logic
+ *
+ * Additional filters:
+ * - If current price > 100% of swing range → show extensions only
+ * - If current price < 100% of swing range → show retracements
+ */
+export function analyzePivotsForSync(
+  pivots: PivotPointData[],
+  markers: SwingMarkerData[],
+  currentPrice: number,
+  timeframe: Timeframe
+): TimeframePivotAnalysis {
+  // Default neutral result
+  const neutralDirections: StrategyDirections = {
+    retracement: "neutral",
+    extension: "neutral",
+    projection: "neutral",
+    expansion: "neutral",
+  };
+
+  const neutralResult: TimeframePivotAnalysis = {
+    timeframe,
+    direction: "neutral",
+    strategyDirections: neutralDirections,
+    swingEndpoint: "unknown",
+    isPast100: false,
+    recommendedStrategy: "BOTH",
+    pricePosition: 50,
+    latestSwing: null,
+    confidence: 0,
+    pivotHigh: null,
+    pivotLow: null,
+  };
+
+  if (markers.length === 0 || pivots.length < 2) {
+    return neutralResult;
+  }
+
+  // Get the latest swing marker to determine direction
+  const latestMarker = markers[markers.length - 1];
+  const swingEndpoint = getSwingEndpoint(latestMarker.swingType);
+
+  // Calculate per-strategy directions based on swing shape
+  const strategyDirections = calculateStrategyDirections(latestMarker.swingType);
+
+  // Overall direction from swing structure (for backward compatibility)
+  // HH/HL = bullish structure, LH/LL = bearish structure
+  let direction: "long" | "short" | "neutral";
+  if (latestMarker.swingType === "HH" || latestMarker.swingType === "HL") {
+    direction = "long"; // Bullish structure
+  } else if (latestMarker.swingType === "LH" || latestMarker.swingType === "LL") {
+    direction = "short"; // Bearish structure
+  } else {
+    direction = "neutral";
+  }
+
+  // Find the most recent significant high and low
+  const highs = pivots.filter((p) => p.type === "high").sort((a, b) => b.index - a.index);
+  const lows = pivots.filter((p) => p.type === "low").sort((a, b) => b.index - a.index);
+
+  if (highs.length === 0 || lows.length === 0) {
+    return {
+      ...neutralResult,
+      direction,
+      strategyDirections,
+      swingEndpoint,
+      latestSwing: latestMarker.swingType,
+    };
+  }
+
+  const pivotHigh = highs[0].price;
+  const pivotLow = lows[0].price;
+  const swingRange = pivotHigh - pivotLow;
+
+  if (swingRange <= 0) {
+    return {
+      ...neutralResult,
+      direction,
+      strategyDirections,
+      swingEndpoint,
+      latestSwing: latestMarker.swingType,
+      pivotHigh,
+      pivotLow,
+    };
+  }
+
+  // Calculate price position as percentage of the swing
+  // For longs (swing ended low): 0% = at low, 100% = at high, >100% = below low
+  // For shorts (swing ended high): 0% = at high, 100% = at low, >100% = above high
+  let pricePosition: number;
+  if (swingEndpoint === "low") {
+    // Swing ended at low, measure from low upward
+    pricePosition = ((currentPrice - pivotLow) / swingRange) * 100;
+  } else {
+    // Swing ended at high, measure from high downward
+    pricePosition = ((pivotHigh - currentPrice) / swingRange) * 100;
+  }
+
+  // Determine if we're past 100% (in extension territory)
+  const isPast100 = pricePosition > 100;
+
+  // Recommend strategy based on position
+  let recommendedStrategy: "RETRACEMENT" | "EXTENSION" | "BOTH";
+  if (isPast100) {
+    recommendedStrategy = "EXTENSION"; // Price beyond 100%, only extensions make sense
+  } else if (pricePosition > 80) {
+    recommendedStrategy = "BOTH"; // Near the edge, both could be relevant
+  } else {
+    recommendedStrategy = "RETRACEMENT"; // In retracement zone
+  }
+
+  // Calculate confidence based on:
+  // - How many swing markers we have (more = higher confidence)
+  // - Consistency of direction (all same direction = higher)
+  const recentMarkers = markers.slice(-4);
+  const bullishCount = recentMarkers.filter((m) => m.swingType === "HH" || m.swingType === "HL").length;
+  const bearishCount = recentMarkers.filter((m) => m.swingType === "LH" || m.swingType === "LL").length;
+  const majorityCount = Math.max(bullishCount, bearishCount);
+  const consistency = majorityCount / recentMarkers.length;
+  const confidence = Math.round(consistency * 100);
+
+  return {
+    timeframe,
+    direction,
+    strategyDirections,
+    swingEndpoint,
+    isPast100,
+    recommendedStrategy,
+    pricePosition: Math.round(pricePosition * 10) / 10,
+    latestSwing: latestMarker.swingType,
+    confidence,
+    pivotHigh,
+    pivotLow,
+  };
+}
+
+/**
+ * Override for a single timeframe
+ */
+export type PivotSyncOverride = {
+  direction?: "long" | "short";
+  strategy?: "RETRACEMENT" | "EXTENSION" | "BOTH";
+};
+
+/**
+ * Options for pivot-based sync
+ */
+export type PivotSyncOptions = {
+  /** Minimum confidence to include timeframe (default: 50) */
+  minConfidence?: number;
+  /** Override strategies per timeframe */
+  overrides?: Partial<Record<Timeframe, PivotSyncOverride>>;
+};
+
+/**
+ * Get the direction for a specific strategy from the analysis
+ */
+function getStrategyDirection(
+  strategy: StrategySource,
+  strategyDirections: StrategyDirections
+): "long" | "short" | "neutral" {
+  switch (strategy) {
+    case "RETRACEMENT":
+      return strategyDirections.retracement;
+    case "EXTENSION":
+      return strategyDirections.extension;
+    case "PROJECTION":
+      return strategyDirections.projection;
+    case "EXPANSION":
+      return strategyDirections.expansion;
+    default:
+      return "neutral";
+  }
+}
+
+/**
+ * Sync visibility config with pivot analysis.
+ *
+ * For each timeframe, applies per-strategy direction based on swing shape:
+ * - RETRACEMENT: based on where swing ENDED (low = long, high = short)
+ * - EXTENSION: based on swing DIRECTION (down = long, up = short)
+ * - PROJECTION/EXPANSION: follows extension logic
+ *
+ * Price position filtering:
+ * - If price < 100% of swing → show retracements (in pullback zone)
+ * - If price > 100% of swing → show extensions (beyond origin)
+ *
+ * See docs/references/fibonacci_conditions.md for detailed conditions.
+ */
+export function syncVisibilityWithPivots(
+  config: VisibilityConfig,
+  pivotAnalysis: TimeframePivotAnalysis[],
+  options: PivotSyncOptions = {}
+): VisibilityConfig {
+  const { minConfidence = 50, overrides } = options;
+
+  return {
+    timeframes: config.timeframes.map((tfConfig) => {
+      const tf = tfConfig.timeframe;
+      const analysis = pivotAnalysis.find((a) => a.timeframe === tf);
+      const override = overrides?.[tf];
+
+      // No analysis data - disable timeframe
+      if (!analysis) {
+        return { ...tfConfig, enabled: false };
+      }
+
+      // Below confidence threshold - disable
+      if (analysis.confidence < minConfidence) {
+        return { ...tfConfig, enabled: false };
+      }
+
+      // Check if all strategies are neutral (no clear swing shape)
+      const allNeutral =
+        analysis.strategyDirections.retracement === "neutral" &&
+        analysis.strategyDirections.extension === "neutral";
+
+      if (allNeutral && !override?.direction) {
+        return { ...tfConfig, enabled: false };
+      }
+
+      // Get recommended strategy (override or from analysis)
+      const strategy = override?.strategy ?? analysis.recommendedStrategy;
+
+      // Determine which strategy types to enable based on price position
+      const enableRetracement = strategy === "RETRACEMENT" || strategy === "BOTH";
+      const enableExtension = strategy === "EXTENSION" || strategy === "BOTH";
+
+      return {
+        ...tfConfig,
+        enabled: true,
+        strategies: tfConfig.strategies.map((stratConfig) => {
+          const isRetracement = stratConfig.strategy === "RETRACEMENT";
+          const isExtension = stratConfig.strategy === "EXTENSION";
+          const isProjection = stratConfig.strategy === "PROJECTION";
+          const isExpansion = stratConfig.strategy === "EXPANSION";
+
+          // Check if this strategy type should be enabled based on price position
+          const strategyTypeEnabled =
+            (isRetracement && enableRetracement) ||
+            (isExtension && enableExtension) ||
+            (isProjection && enableExtension) || // Projection follows extension
+            (isExpansion && enableExtension); // Expansion follows extension
+
+          if (!strategyTypeEnabled) {
+            return {
+              ...stratConfig,
+              long: { ...stratConfig.long, enabled: false },
+              short: { ...stratConfig.short, enabled: false },
+            };
+          }
+
+          // Get the direction for THIS specific strategy
+          // (may be overridden for all strategies, or use per-strategy directions)
+          let stratDirection: "long" | "short" | "neutral";
+          if (override?.direction) {
+            // Override applies to all strategies
+            stratDirection = override.direction;
+          } else {
+            // Use per-strategy direction from swing shape analysis
+            stratDirection = getStrategyDirection(
+              stratConfig.strategy,
+              analysis.strategyDirections
+            );
+          }
+
+          // Enable the appropriate direction for this strategy
+          const enableLong = stratDirection === "long";
+          const enableShort = stratDirection === "short";
+
+          return {
+            ...stratConfig,
+            long: {
+              ...stratConfig.long,
+              enabled: enableLong,
+            },
+            short: {
+              ...stratConfig.short,
+              enabled: enableShort,
+            },
+          };
+        }),
+      };
+    }),
+  };
+}
+
+/**
+ * Per-timeframe sync summary with strategy-specific directions
+ */
+export type TimeframeSyncDetail = {
+  timeframe: Timeframe;
+  recommendedStrategy: "RETRACEMENT" | "EXTENSION" | "BOTH";
+  swingEndpoint: "high" | "low" | "unknown";
+  retracementDir: "long" | "short" | "neutral";
+  extensionDir: "long" | "short" | "neutral";
+  pricePosition: number;
+  confidence: number;
+};
+
+/**
+ * Get summary of pivot-based sync
+ */
+export function getPivotSyncSummary(
+  pivotAnalysis: TimeframePivotAnalysis[],
+  options: PivotSyncOptions = {}
+): {
+  longTimeframes: Array<{ timeframe: Timeframe; strategy: string }>;
+  shortTimeframes: Array<{ timeframe: Timeframe; strategy: string }>;
+  neutralTimeframes: Timeframe[];
+  overallDirection: "long" | "short" | "mixed" | "none";
+  /** Detailed per-timeframe breakdown */
+  details: TimeframeSyncDetail[];
+} {
+  const { minConfidence = 50 } = options;
+
+  const longTimeframes: Array<{ timeframe: Timeframe; strategy: string }> = [];
+  const shortTimeframes: Array<{ timeframe: Timeframe; strategy: string }> = [];
+  const neutralTimeframes: Timeframe[] = [];
+  const details: TimeframeSyncDetail[] = [];
+
+  for (const analysis of pivotAnalysis) {
+    // Add detail for this timeframe
+    details.push({
+      timeframe: analysis.timeframe,
+      recommendedStrategy: analysis.recommendedStrategy,
+      swingEndpoint: analysis.swingEndpoint,
+      retracementDir: analysis.strategyDirections.retracement,
+      extensionDir: analysis.strategyDirections.extension,
+      pricePosition: analysis.pricePosition,
+      confidence: analysis.confidence,
+    });
+
+    if (analysis.confidence < minConfidence) {
+      neutralTimeframes.push(analysis.timeframe);
+      continue;
+    }
+
+    // Use the overall direction for backward compat summary
+    if (analysis.direction === "long") {
+      longTimeframes.push({
+        timeframe: analysis.timeframe,
+        strategy: analysis.recommendedStrategy,
+      });
+    } else if (analysis.direction === "short") {
+      shortTimeframes.push({
+        timeframe: analysis.timeframe,
+        strategy: analysis.recommendedStrategy,
+      });
+    } else {
+      neutralTimeframes.push(analysis.timeframe);
+    }
+  }
+
+  let overallDirection: "long" | "short" | "mixed" | "none";
+  if (longTimeframes.length > 0 && shortTimeframes.length > 0) {
+    overallDirection = "mixed";
+  } else if (longTimeframes.length > 0) {
+    overallDirection = "long";
+  } else if (shortTimeframes.length > 0) {
+    overallDirection = "short";
+  } else {
+    overallDirection = "none";
+  }
+
+  return { longTimeframes, shortTimeframes, neutralTimeframes, overallDirection, details };
+}

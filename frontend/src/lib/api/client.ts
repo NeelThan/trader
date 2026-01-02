@@ -27,6 +27,11 @@ import type {
   JournalEntryResponse,
   JournalEntriesResponse,
   JournalAnalyticsResponse,
+  TrendAssessmentResponse,
+  AlignmentResultResponse,
+  LevelsResultResponse,
+  IndicatorConfirmationResponse,
+  Direction,
 } from "./types";
 
 const API_BASE = "/api/trader";
@@ -223,6 +228,44 @@ export async function deleteJournalEntry(
   });
 }
 
+// Workflow API
+
+export async function assessTrend(
+  symbol: string,
+  timeframe: string = "1D"
+): Promise<TrendAssessmentResponse> {
+  const params = new URLSearchParams({ symbol, timeframe });
+  return fetchAPI<TrendAssessmentResponse>(`/workflow/assess?${params}`);
+}
+
+export async function checkAlignment(
+  symbol: string,
+  timeframes: string[] = ["1M", "1W", "1D"]
+): Promise<AlignmentResultResponse> {
+  const params = new URLSearchParams({
+    symbol,
+    timeframes: timeframes.join(","),
+  });
+  return fetchAPI<AlignmentResultResponse>(`/workflow/align?${params}`);
+}
+
+export async function identifyLevels(
+  symbol: string,
+  direction: Direction,
+  timeframe: string = "1D"
+): Promise<LevelsResultResponse> {
+  const params = new URLSearchParams({ symbol, direction, timeframe });
+  return fetchAPI<LevelsResultResponse>(`/workflow/levels?${params}`);
+}
+
+export async function confirmIndicators(
+  symbol: string,
+  timeframe: string = "1D"
+): Promise<IndicatorConfirmationResponse> {
+  const params = new URLSearchParams({ symbol, timeframe });
+  return fetchAPI<IndicatorConfirmationResponse>(`/workflow/confirm?${params}`);
+}
+
 // Export all types
 export type { Direction } from "./types";
 export type {
@@ -262,4 +305,16 @@ export type {
   JournalEntriesResponse,
   JournalAnalyticsData,
   JournalAnalyticsResponse,
+  TrendDirection,
+  SwingType,
+  StrengthLevel,
+  SignalType,
+  OverallConfirmation,
+  TrendAssessmentResponse,
+  TimeframeTrend,
+  AlignmentResultResponse,
+  LevelZone,
+  LevelsResultResponse,
+  IndicatorSignal,
+  IndicatorConfirmationResponse,
 } from "./types";
