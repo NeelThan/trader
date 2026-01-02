@@ -231,62 +231,86 @@ export function ConfluenceZoneIndicator({
 }: ConfluenceZoneIndicatorProps) {
   if (zones.length === 0) return null;
 
+  // Get zone type label
+  const getZoneType = (direction: ConfluenceZone["direction"]) => {
+    switch (direction) {
+      case "long":
+        return "Support";
+      case "short":
+        return "Resistance";
+      default:
+        return "Neutral";
+    }
+  };
+
+  // Get zone color
+  const getZoneColor = (direction: ConfluenceZone["direction"]) => {
+    switch (direction) {
+      case "long":
+        return DIRECTION_COLORS.long;
+      case "short":
+        return DIRECTION_COLORS.short;
+      default:
+        return "#a855f7"; // purple
+    }
+  };
+
   return (
     <div className="space-y-2">
-      <div className="text-xs font-medium text-muted-foreground">
-        Confluence Zones ({zones.length})
-      </div>
-      {zones.map((zone) => (
-        <div
-          key={zone.id}
-          className="flex items-center gap-2 p-2 rounded-md bg-muted/30"
-          style={{
-            borderLeft: `3px solid ${
-              zone.direction === "long"
-                ? DIRECTION_COLORS.long
-                : zone.direction === "short"
-                  ? DIRECTION_COLORS.short
-                  : "#888"
-            }`,
-          }}
-        >
-          <div className="flex-1">
-            <div className="text-xs font-medium">
-              {formatPrice(zone.lowPrice)} - {formatPrice(zone.highPrice)}
+      {zones.map((zone, index) => {
+        const zoneColor = getZoneColor(zone.direction);
+        const zoneType = getZoneType(zone.direction);
+        const zoneLabel = `Z${index + 1}`;
+
+        return (
+          <div
+            key={zone.id}
+            className="flex items-center gap-2 p-2 rounded-md bg-muted/30"
+            style={{ borderLeft: `3px solid ${zoneColor}` }}
+          >
+            {/* Zone number badge */}
+            <div
+              className="flex items-center justify-center w-6 h-6 rounded text-[10px] font-bold"
+              style={{ backgroundColor: `${zoneColor}30`, color: zoneColor }}
+            >
+              {zoneLabel}
             </div>
-            <div className="text-[10px] text-muted-foreground">
-              {zone.levelCount} levels •{" "}
-              <span
-                className="capitalize"
-                style={{
-                  color:
-                    zone.direction === "long"
-                      ? DIRECTION_COLORS.long
-                      : zone.direction === "short"
-                        ? DIRECTION_COLORS.short
-                        : "inherit",
-                }}
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-xs font-medium"
+                  style={{ color: zoneColor }}
+                >
+                  {zoneType}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  ({zone.levelCount} levels)
+                </span>
+              </div>
+              <div className="text-[10px] font-mono text-muted-foreground">
+                {formatPrice(zone.lowPrice)} – {formatPrice(zone.highPrice)}
+              </div>
+            </div>
+            {/* Strength indicator */}
+            <div className="flex flex-col items-end">
+              <div
+                className="w-10 h-1.5 rounded-full bg-muted overflow-hidden"
               >
-                {zone.direction}
-              </span>{" "}
-              bias
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${zone.strength}%`,
+                    backgroundColor: zoneColor,
+                  }}
+                />
+              </div>
+              <span className="text-[8px] text-muted-foreground mt-0.5">
+                {zone.strength}%
+              </span>
             </div>
           </div>
-          <div
-            className="w-8 h-2 rounded-full"
-            style={{
-              background: `linear-gradient(to right, transparent, ${
-                zone.direction === "long"
-                  ? DIRECTION_COLORS.long
-                  : zone.direction === "short"
-                    ? DIRECTION_COLORS.short
-                    : "#888"
-              })`,
-              opacity: zone.strength / 100,
-            }}
-          />
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

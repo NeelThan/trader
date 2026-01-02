@@ -106,6 +106,8 @@ export default function WorkflowV2Page() {
             opportunity={selectedOpportunity!}
             sizing={execution.sizing}
             validation={validation.result}
+            capturedValidation={execution.capturedValidation}
+            hasCapturedSuggestions={execution.hasCapturedSuggestions}
             onUpdateSizing={execution.updateSizing}
             onRestoreSuggested={execution.restoreSuggested}
             onBack={() => setPhase("validate")}

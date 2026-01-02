@@ -102,8 +102,10 @@ export function WorkflowV2Layout({
   const [showTrendPanel, setShowTrendPanel] = useState(false);
   const [showConfluenceZones, setShowConfluenceZones] = useState(false);
   const [showFibLabels, setShowFibLabels] = useState(true);
+  const [showFibLines, setShowFibLines] = useState(true); // Toggle to hide lines but keep zones
   const [chartType, setChartType] = useState<ChartType>("bar");
   const [isChartExpanded, setIsChartExpanded] = useState(false);
+  const [confluenceTolerance, setConfluenceTolerance] = useState(0.2); // Default 0.2% tolerance
 
   // Crosshair tracking for level tooltips
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
@@ -350,7 +352,9 @@ export function WorkflowV2Layout({
   }, [allLevels, visibilityConfig, showFibLevels, showTradeView, opportunity]);
 
   // Convert levels to price lines (simplified labels for less clutter)
+  // Returns empty when showFibLines is false (hides lines but keeps zones)
   const strategyPriceLines = useMemo<PriceLine[]>(() => {
+    if (!showFibLines) return [];
     return visibleLevels.map((level) => ({
       price: level.price,
       color: level.direction === "long" ? DIRECTION_COLORS.long : DIRECTION_COLORS.short,
@@ -360,13 +364,13 @@ export function WorkflowV2Layout({
       // Shorter label: just ratio. Full details shown in tooltip on hover
       title: showFibLabels ? level.label : "",
     }));
-  }, [visibleLevels, showFibLabels]);
+  }, [visibleLevels, showFibLabels, showFibLines]);
 
   // Calculate confluence zones (clusters of levels)
   const confluenceZones = useMemo(() => {
     if (!showConfluenceZones || visibleLevels.length === 0) return [];
-    return calculateConfluenceZones(visibleLevels, 0.5);
-  }, [visibleLevels, showConfluenceZones]);
+    return calculateConfluenceZones(visibleLevels, confluenceTolerance);
+  }, [visibleLevels, showConfluenceZones, confluenceTolerance]);
 
   // Confluence zone price lines - creates visual bands on chart
   const zonePriceLines = useMemo<PriceLine[]>(() => {
@@ -375,41 +379,50 @@ export function WorkflowV2Layout({
     const lines: PriceLine[] = [];
 
     confluenceZones.forEach((zone, index) => {
+      // Color based on direction bias
       const zoneColor =
         zone.direction === "long"
-          ? "rgba(34, 197, 94, 0.4)" // green with opacity
+          ? "rgba(34, 197, 94, 0.5)" // green = support
           : zone.direction === "short"
-            ? "rgba(239, 68, 68, 0.4)" // red with opacity
-            : "rgba(168, 85, 247, 0.4)"; // purple for neutral
+            ? "rgba(239, 68, 68, 0.5)" // red = resistance
+            : "rgba(168, 85, 247, 0.5)"; // purple = neutral
 
-      // Top of zone
+      // Descriptive label showing zone number, type, and level count
+      const zoneType =
+        zone.direction === "long"
+          ? "S" // Support
+          : zone.direction === "short"
+            ? "R" // Resistance
+            : "N"; // Neutral
+
+      // Top boundary line
       lines.push({
         price: zone.highPrice,
         color: zoneColor,
         lineWidth: 2,
         lineStyle: 0, // Solid
         axisLabelVisible: false,
-        title: `Zone ${index + 1} Top`,
+        title: "",
       });
 
-      // Bottom of zone
+      // Bottom boundary line
       lines.push({
         price: zone.lowPrice,
         color: zoneColor,
         lineWidth: 2,
         lineStyle: 0, // Solid
         axisLabelVisible: false,
-        title: `Zone ${index + 1} Bottom`,
+        title: "",
       });
 
-      // Center line with label
+      // Center line with descriptive label: "Z1 S(4)" = Zone 1, Support, 4 levels
       lines.push({
         price: zone.centerPrice,
         color: zoneColor,
         lineWidth: 1,
         lineStyle: 2, // Dashed
         axisLabelVisible: true,
-        title: `Zone (${zone.levelCount})`,
+        title: `Z${index + 1} ${zoneType}(${zone.levelCount})`,
       });
     });
 
@@ -672,18 +685,32 @@ export function WorkflowV2Layout({
                       Fib
                     </button>
                     {showFibLevels && (
-                      <button
-                        onClick={() => setShowFibLabels(!showFibLabels)}
-                        className={cn(
-                          "px-1.5 py-1 text-[10px] rounded transition-colors",
-                          showFibLabels
-                            ? "bg-primary/20 text-primary"
-                            : "text-muted-foreground hover:bg-muted"
-                        )}
-                        title="Toggle Fib level labels"
-                      >
-                        Lbl
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setShowFibLines(!showFibLines)}
+                          className={cn(
+                            "px-1.5 py-1 text-[10px] rounded transition-colors",
+                            showFibLines
+                              ? "bg-primary/20 text-primary"
+                              : "text-muted-foreground hover:bg-muted"
+                          )}
+                          title="Toggle Fib level lines (hide to see zones clearly)"
+                        >
+                          Lines
+                        </button>
+                        <button
+                          onClick={() => setShowFibLabels(!showFibLabels)}
+                          className={cn(
+                            "px-1.5 py-1 text-[10px] rounded transition-colors",
+                            showFibLabels
+                              ? "bg-primary/20 text-primary"
+                              : "text-muted-foreground hover:bg-muted"
+                          )}
+                          title="Toggle Fib level labels"
+                        >
+                          Lbl
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={() => setShowConfluenceZones(!showConfluenceZones)}
@@ -1025,6 +1052,35 @@ export function WorkflowV2Layout({
                         {confluenceZones.length} zones
                       </Badge>
                     </CardTitle>
+                    {/* Legend */}
+                    <div className="flex items-center gap-3 mt-2 text-[10px]">
+                      <div className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-green-500" />
+                        <span className="text-muted-foreground">S = Support</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-red-500" />
+                        <span className="text-muted-foreground">R = Resistance</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-purple-500" />
+                        <span className="text-muted-foreground">N = Neutral</span>
+                      </div>
+                    </div>
+                    {/* Tolerance slider */}
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-[10px] text-muted-foreground">Tolerance:</span>
+                      <input
+                        type="range"
+                        min="0.1"
+                        max="1.0"
+                        step="0.05"
+                        value={confluenceTolerance}
+                        onChange={(e) => setConfluenceTolerance(parseFloat(e.target.value))}
+                        className="flex-1 h-1 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                      />
+                      <span className="text-[10px] font-mono w-10 text-right">{confluenceTolerance.toFixed(2)}%</span>
+                    </div>
                   </CardHeader>
                   <CardContent className="px-3 pb-3 pt-0 max-h-[200px] overflow-y-auto">
                     {confluenceZones.length > 0 ? (

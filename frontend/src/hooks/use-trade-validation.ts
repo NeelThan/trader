@@ -369,11 +369,19 @@ export function useTradeValidation({
     const passPercentage = Math.round((passedCount / totalCount) * 100);
     const isValid = passPercentage >= 60; // At least 3 of 5 checks
 
+    // Sort entry levels by price for proper entry/stop selection
+    // LONG: sort descending (highest first = closest to current price for support)
+    // SHORT: sort ascending (lowest first = closest to current price for resistance)
+    const sortedEntryLevels =
+      opportunity.direction === "long"
+        ? [...entryLevels].sort((a, b) => b.price - a.price)
+        : [...entryLevels].sort((a, b) => a.price - b.price);
+
     // Calculate suggested prices
-    const suggestedEntry = entryLevels[0]?.price ?? null;
-    const suggestedStop = opportunity.direction === "long"
-      ? entryLevels[entryLevels.length - 1]?.price ?? null
-      : entryLevels[0]?.price ?? null;
+    // Entry: first level (closest to current price)
+    // Stop: last level (furthest retracement - used as stop reference)
+    const suggestedEntry = sortedEntryLevels[0]?.price ?? null;
+    const suggestedStop = sortedEntryLevels[sortedEntryLevels.length - 1]?.price ?? null;
     const suggestedTargets = targetLevels.slice(0, 3).map((l) => l.price);
 
     return {

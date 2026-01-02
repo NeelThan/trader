@@ -16,13 +16,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
-import type { SizingData } from "@/hooks/use-trade-execution";
+import type { SizingData, CapturedValidation } from "@/hooks/use-trade-execution";
 import type { ValidationResult } from "@/hooks/use-trade-validation";
 
 export type SizingPanelProps = {
   opportunity: TradeOpportunity;
   sizing: SizingData;
   validation: ValidationResult;
+  /** Captured validation values (persisted across phase changes) */
+  capturedValidation: CapturedValidation;
+  /** Whether there are captured suggested values available */
+  hasCapturedSuggestions: boolean;
   onUpdateSizing: (updates: Partial<SizingData>) => void;
   onRestoreSuggested: () => void;
   onBack: () => void;
@@ -60,6 +64,8 @@ export function SizingPanel({
   opportunity,
   sizing,
   validation,
+  capturedValidation,
+  hasCapturedSuggestions,
   onUpdateSizing,
   onRestoreSuggested,
   onBack,
@@ -69,19 +75,20 @@ export function SizingPanel({
   const isHighRisk = sizing.riskPercentage > 3;
   const [newTarget, setNewTarget] = useState("");
 
+  // Use captured validation values (they persist when validation is disabled)
+  const suggestedEntry = capturedValidation.entry ?? validation.suggestedEntry;
+  const suggestedStop = capturedValidation.stop ?? validation.suggestedStop;
+  const suggestedTargets = capturedValidation.targets.length > 0
+    ? capturedValidation.targets
+    : validation.suggestedTargets;
+
   // Check if using suggested values
   const isUsingSuggestedEntry =
-    validation.suggestedEntry !== null &&
-    Math.abs(sizing.entryPrice - validation.suggestedEntry) < 0.01;
+    suggestedEntry !== null &&
+    Math.abs(sizing.entryPrice - suggestedEntry) < 0.01;
   const isUsingSuggestedStop =
-    validation.suggestedStop !== null &&
-    Math.abs(sizing.stopLoss - validation.suggestedStop) < 0.01;
-
-  // Check if suggested values are available
-  const hasSuggestedValues =
-    validation.suggestedEntry !== null ||
-    validation.suggestedStop !== null ||
-    validation.suggestedTargets.length > 0;
+    suggestedStop !== null &&
+    Math.abs(sizing.stopLoss - suggestedStop) < 0.01;
 
   const handleAccountBalanceChange = (value: string) => {
     const num = parseFloat(value);
@@ -195,7 +202,7 @@ export function SizingPanel({
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-medium">Trade Parameters</CardTitle>
-            {hasSuggestedValues && (
+            {hasCapturedSuggestions && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -227,7 +234,7 @@ export function SizingPanel({
               onChange={(e) => handleEntryChange(e.target.value)}
               min={0}
               step={0.01}
-              placeholder={validation.suggestedEntry?.toFixed(2) ?? "Enter price"}
+              placeholder={suggestedEntry?.toFixed(2) ?? "Enter price"}
             />
             {validation.entryLevels.length > 0 && !isUsingSuggestedEntry && (
               <p className="text-[10px] text-muted-foreground">
@@ -254,7 +261,7 @@ export function SizingPanel({
               onChange={(e) => handleStopLossChange(e.target.value)}
               min={0}
               step={0.01}
-              placeholder={validation.suggestedStop?.toFixed(2) ?? "Enter stop"}
+              placeholder={suggestedStop?.toFixed(2) ?? "Enter stop"}
             />
           </div>
 
@@ -262,7 +269,7 @@ export function SizingPanel({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>Targets</Label>
-              {validation.suggestedTargets.length > 0 && sizing.targets.length === validation.suggestedTargets.length && (
+              {suggestedTargets.length > 0 && sizing.targets.length === suggestedTargets.length && (
                 <Badge variant="outline" className="text-[10px] h-4 px-1.5 text-blue-400 border-blue-400/50">
                   <Lightbulb className="w-2.5 h-2.5 mr-0.5" />
                   From Validation
@@ -318,9 +325,9 @@ export function SizingPanel({
             </div>
 
             {/* Suggested targets hint */}
-            {validation.targetLevels.length > 0 && sizing.targets.length === 0 && (
+            {suggestedTargets.length > 0 && sizing.targets.length === 0 && (
               <p className="text-[10px] text-muted-foreground">
-                Suggested targets: {validation.targetLevels.slice(0, 3).map(l => l.label).join(", ")}
+                Suggested targets: {suggestedTargets.slice(0, 3).map(t => t.toFixed(2)).join(", ")}
               </p>
             )}
           </div>

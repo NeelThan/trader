@@ -44,9 +44,22 @@ export type UseTradeExecutionOptions = {
   enabled: boolean;
 };
 
+/**
+ * Captured validation values (persisted when validation is disabled)
+ */
+export type CapturedValidation = {
+  entry: number | null;
+  stop: number | null;
+  targets: number[];
+};
+
 export type UseTradeExecutionResult = {
   /** Current sizing data */
   sizing: SizingData;
+  /** Captured validation values (persisted across phase changes) */
+  capturedValidation: CapturedValidation;
+  /** Whether there are captured suggested values available */
+  hasCapturedSuggestions: boolean;
   /** Update sizing parameters */
   updateSizing: (updates: Partial<SizingData>) => void;
   /** Restore suggested values from validation */
@@ -291,8 +304,16 @@ export function useTradeExecution({
     }
   }, [opportunity, sizing]);
 
+  // Check if there are captured suggestions available
+  const hasCapturedSuggestions =
+    capturedValidation.entry !== null ||
+    capturedValidation.stop !== null ||
+    capturedValidation.targets.length > 0;
+
   return {
     sizing,
+    capturedValidation,
+    hasCapturedSuggestions,
     updateSizing,
     restoreSuggested,
     execute,
