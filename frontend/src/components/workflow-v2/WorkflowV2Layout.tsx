@@ -45,6 +45,7 @@ import {
 import { cn } from "@/lib/utils";
 import { TimeframeSettingsPopover } from "./TimeframeSettingsPopover";
 import { DataSourcePanel, DataSourceIndicator, type DataMode } from "./DataSourcePanel";
+import { TrendAlignmentPanel, TrendIndicatorButton } from "./TrendAlignmentPanel";
 import type { UseTradeDiscoveryResult, TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
 import type { WorkflowPhase } from "@/app/workflow-v2/page";
@@ -97,7 +98,9 @@ export function WorkflowV2Layout({
   const [showFibLevels, setShowFibLevels] = useState(true);
   const [showPivotEditor, setShowPivotEditor] = useState(false);
   const [showTradeView, setShowTradeView] = useState(false);
+  const [showTrendPanel, setShowTrendPanel] = useState(false);
   const [chartType, setChartType] = useState<ChartType>("bar");
+  const [isChartExpanded, setIsChartExpanded] = useState(false);
 
   // Reset trade view when opportunity changes or phase goes back to discover
   useEffect(() => {
@@ -423,18 +426,6 @@ export function WorkflowV2Layout({
 
           {/* Center section - simplified */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Trend alignment summary */}
-            {!isLoadingTrend && (
-              <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded text-xs">
-                <span style={{ color: chartColors.up }}>{stats.bullishTrends}</span>
-                <span className="text-muted-foreground">/</span>
-                <span style={{ color: chartColors.down }}>{stats.bearishTrends}</span>
-                <span className="text-muted-foreground ml-1">
-                  {overallTrend.direction === "bullish" ? "Bull" : overallTrend.direction === "bearish" ? "Bear" : "Mix"}
-                </span>
-              </div>
-            )}
-
             {/* Phase indicator */}
             <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 bg-muted rounded-md">
               <span className="text-xs text-muted-foreground hidden sm:inline">Phase:</span>
@@ -490,10 +481,17 @@ export function WorkflowV2Layout({
 
       {/* Main Content */}
       <div className="flex flex-col lg:flex-row h-[calc(100vh-3.5rem)]">
-        {/* Chart Area - full width on mobile, 60% on desktop */}
-        <div className="flex-1 p-2 sm:p-4 overflow-hidden min-h-[300px] lg:min-h-0 flex flex-col gap-2">
-          {/* Main Chart */}
-          <Card className="flex-1 flex flex-col min-h-0">
+        {/* Chart Area - expands when isChartExpanded is true */}
+        <div
+          className={cn(
+            "p-2 sm:p-4 overflow-y-auto flex flex-col gap-2 transition-all duration-300",
+            isChartExpanded
+              ? "flex-1 lg:w-full"
+              : "flex-1 min-h-[300px] lg:min-h-0"
+          )}
+        >
+          {/* Main Chart - taller height */}
+          <Card className="flex flex-col min-h-[400px] lg:min-h-[500px]" style={{ flex: isChartExpanded ? "1 1 auto" : "2 1 0" }}>
             <CardContent className="py-2 sm:py-3 shrink-0 border-b">
               <div className="flex flex-col gap-2">
                 {/* Controls Row */}
@@ -688,6 +686,18 @@ export function WorkflowV2Layout({
                     </>
                   )}
 
+                  {/* Trend indicator - clickable to show panel */}
+                  {!isLoadingTrend && (
+                    <TrendIndicatorButton
+                      bullishCount={stats.bullishTrends}
+                      bearishCount={stats.bearishTrends}
+                      overall={overallTrend}
+                      chartColors={chartColors}
+                      onClick={() => setShowTrendPanel(!showTrendPanel)}
+                      isActive={showTrendPanel}
+                    />
+                  )}
+
                   {/* Status badges */}
                   <div className="flex items-center gap-1 text-xs ml-auto">
                     {/* Trade view indicator */}
@@ -744,6 +754,19 @@ export function WorkflowV2Layout({
                     >
                       <ResetIcon />
                     </button>
+                    <div className="h-4 w-px bg-border mx-0.5" />
+                    <button
+                      onClick={() => setIsChartExpanded(!isChartExpanded)}
+                      className={cn(
+                        "p-1 sm:p-1.5 rounded transition-colors",
+                        isChartExpanded
+                          ? "bg-primary/20 text-primary"
+                          : "hover:bg-muted/50"
+                      )}
+                      title={isChartExpanded ? "Exit expanded view" : "Expand chart"}
+                    >
+                      <ExpandIcon isExpanded={isChartExpanded} />
+                    </button>
                   </div>
 
                   {/* OHLC Values */}
@@ -794,77 +817,95 @@ export function WorkflowV2Layout({
             </CardContent>
           </Card>
 
-          {/* Indicators Panel - RSI and MACD */}
-          {showIndicators && (
-            <Card className="shrink-0">
-              <CardContent className="p-3">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {/* RSI */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium">RSI (14)</span>
-                      {isLoadingRSI && <span className="text-xs text-muted-foreground">Loading...</span>}
-                    </div>
-                    {isLoadingRSI ? (
-                      <Skeleton className="h-[80px] w-full" />
-                    ) : rsiData ? (
-                      <RSIPane rsiData={rsiData} chartColors={chartColors} />
-                    ) : (
-                      <div className="h-[80px] flex items-center justify-center text-xs text-muted-foreground">
-                        Need 15+ bars
-                      </div>
-                    )}
-                  </div>
+          {/* Analysis Panels - horizontal grid layout, doesn't overlay chart */}
+          {(showIndicators || showPivotEditor || showTrendPanel) && (
+            <div className="shrink-0 grid grid-cols-1 lg:grid-cols-3 gap-2">
+              {/* Trend Alignment Panel */}
+              {showTrendPanel && (
+                <TrendAlignmentPanel
+                  trends={trendData}
+                  overall={overallTrend}
+                  isLoading={isLoadingTrend}
+                  chartColors={chartColors}
+                />
+              )}
 
-                  {/* MACD */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium flex items-center gap-1">
-                        MACD (12,26,9)
-                        {currentMACD && (
-                          <span
-                            className="text-[10px] px-1 py-0.5 rounded"
-                            style={{
-                              backgroundColor:
-                                currentMACD.histogram > 0
-                                  ? `${chartColors.up}20`
-                                  : `${chartColors.down}20`,
-                              color: currentMACD.histogram > 0 ? chartColors.up : chartColors.down,
-                            }}
-                          >
-                            {currentMACD.histogram > 0 ? "Bull" : "Bear"}
-                          </span>
+              {/* Indicators Panel - RSI and MACD */}
+              {showIndicators && (
+                <Card className="shrink-0">
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm">Indicators</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 pt-0">
+                    <div className="space-y-3">
+                      {/* RSI */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium">RSI (14)</span>
+                          {isLoadingRSI && <span className="text-xs text-muted-foreground">Loading...</span>}
+                        </div>
+                        {isLoadingRSI ? (
+                          <Skeleton className="h-[60px] w-full" />
+                        ) : rsiData ? (
+                          <RSIPane rsiData={rsiData} chartColors={chartColors} />
+                        ) : (
+                          <div className="h-[60px] flex items-center justify-center text-xs text-muted-foreground">
+                            Need 15+ bars
+                          </div>
                         )}
-                      </span>
-                      {isLoadingMACD && <span className="text-xs text-muted-foreground">Loading...</span>}
-                    </div>
-                    {isLoadingMACD ? (
-                      <Skeleton className="h-[80px] w-full" />
-                    ) : macdData ? (
-                      <MACDChart macdData={macdData} chartColors={chartColors} />
-                    ) : (
-                      <div className="h-[80px] flex items-center justify-center text-xs text-muted-foreground">
-                        Need 26+ bars
                       </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
-          {/* Pivot Points Editor - Editable pivot points with persistence */}
-          {showPivotEditor && (
-            <PivotPointsEditor
-              timeframe={timeframe}
-              pivots={editablePivots}
-              updatePivotPrice={updatePivotPrice}
-              resetPivot={resetPivot}
-              resetAllPivots={resetAllPivots}
-              hasModifications={hasPivotModifications}
-              modifiedCount={pivotModifiedCount}
-              isLoading={isLoadingSwings || !isPivotsLoaded}
-            />
+                      {/* MACD */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium flex items-center gap-1">
+                            MACD (12,26,9)
+                            {currentMACD && (
+                              <span
+                                className="text-[10px] px-1 py-0.5 rounded"
+                                style={{
+                                  backgroundColor:
+                                    currentMACD.histogram > 0
+                                      ? `${chartColors.up}20`
+                                      : `${chartColors.down}20`,
+                                  color: currentMACD.histogram > 0 ? chartColors.up : chartColors.down,
+                                }}
+                              >
+                                {currentMACD.histogram > 0 ? "Bull" : "Bear"}
+                              </span>
+                            )}
+                          </span>
+                          {isLoadingMACD && <span className="text-xs text-muted-foreground">Loading...</span>}
+                        </div>
+                        {isLoadingMACD ? (
+                          <Skeleton className="h-[60px] w-full" />
+                        ) : macdData ? (
+                          <MACDChart macdData={macdData} chartColors={chartColors} />
+                        ) : (
+                          <div className="h-[60px] flex items-center justify-center text-xs text-muted-foreground">
+                            Need 26+ bars
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Pivot Points Editor - Editable pivot points with persistence */}
+              {showPivotEditor && (
+                <PivotPointsEditor
+                  timeframe={timeframe}
+                  pivots={editablePivots}
+                  updatePivotPrice={updatePivotPrice}
+                  resetPivot={resetPivot}
+                  resetAllPivots={resetAllPivots}
+                  hasModifications={hasPivotModifications}
+                  modifiedCount={pivotModifiedCount}
+                  isLoading={isLoadingSwings || !isPivotsLoaded}
+                />
+              )}
+            </div>
           )}
         </div>
 
@@ -876,16 +917,18 @@ export function WorkflowV2Layout({
           />
         )}
 
-        {/* Sidebar - slide-over on mobile, fixed width on desktop */}
+        {/* Sidebar - slide-over on mobile, fixed width on desktop, hidden when expanded */}
         <div
           className={cn(
             // Base styles
-            "bg-card border-l border-border overflow-y-auto transition-transform duration-300",
+            "bg-card border-l border-border overflow-y-auto transition-all duration-300",
             // Mobile: slide-over from right
             "fixed top-14 right-0 bottom-0 w-[min(400px,90vw)] z-50",
             isSidebarOpen ? "translate-x-0" : "translate-x-full",
-            // Desktop: always visible, no transform
-            "lg:static lg:translate-x-0 lg:w-[400px] lg:z-0"
+            // Desktop: always visible, no transform (unless expanded)
+            isChartExpanded
+              ? "lg:w-0 lg:opacity-0 lg:pointer-events-none"
+              : "lg:static lg:translate-x-0 lg:w-[400px] lg:z-0 lg:opacity-100"
           )}
         >
           {/* Mobile close button */}
@@ -957,6 +1000,22 @@ function CloseIcon() {
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
         d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
+function ExpandIcon({ isExpanded }: { isExpanded: boolean }) {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {isExpanded ? (
+        // Collapse icon - arrows pointing inward
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M9 9L4 4m0 0v4m0-4h4m6 6l5 5m0 0v-4m0 4h-4M9 15l-5 5m0 0v-4m0 4h4m6-6l5-5m0 0v4m0-4h-4" />
+      ) : (
+        // Expand icon - arrows pointing outward
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+      )}
     </svg>
   );
 }
