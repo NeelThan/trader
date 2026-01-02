@@ -43,6 +43,7 @@ import {
   ALL_STRATEGIES,
 } from "@/lib/chart-pro/strategy-types";
 import { cn } from "@/lib/utils";
+import { TimeframeSettingsPopover } from "./TimeframeSettingsPopover";
 import type { UseTradeDiscoveryResult, TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
 import type { WorkflowPhase } from "@/app/workflow-v2/page";
@@ -483,24 +484,31 @@ export function WorkflowV2Layout({
                           const enabled = isTimeframeEnabled(tf);
                           const color = TIMEFRAME_COLORS[tf];
                           return (
-                            <button
+                            <TimeframeSettingsPopover
                               key={tf}
-                              onClick={() => toggleTimeframeVisibility(tf)}
-                              className={cn(
-                                "px-1.5 py-0.5 text-[10px] sm:text-xs rounded transition-all",
-                                enabled
-                                  ? "font-medium"
-                                  : "text-muted-foreground/50 hover:text-muted-foreground"
-                              )}
-                              style={{
-                                backgroundColor: enabled ? `${color}20` : undefined,
-                                color: enabled ? color : undefined,
-                                borderBottom: enabled ? `2px solid ${color}` : "2px solid transparent",
-                              }}
-                              title={`Toggle ${tf} Fibonacci levels`}
+                              timeframe={tf}
+                              isEnabled={enabled}
+                              visibilityConfig={visibilityConfig}
+                              onVisibilityChange={setVisibilityConfig}
+                              onToggleTimeframe={() => toggleTimeframeVisibility(tf)}
                             >
-                              {tf}
-                            </button>
+                              <button
+                                className={cn(
+                                  "px-1.5 py-0.5 text-[10px] sm:text-xs rounded transition-all",
+                                  enabled
+                                    ? "font-medium"
+                                    : "text-muted-foreground/50 hover:text-muted-foreground"
+                                )}
+                                style={{
+                                  backgroundColor: enabled ? `${color}20` : undefined,
+                                  color: enabled ? color : undefined,
+                                  borderBottom: enabled ? `2px solid ${color}` : "2px solid transparent",
+                                }}
+                                title={`Configure ${tf} Fibonacci levels (click to open settings)`}
+                              >
+                                {tf}
+                              </button>
+                            </TimeframeSettingsPopover>
                           );
                         })}
                       </div>
