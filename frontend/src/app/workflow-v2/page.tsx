@@ -107,6 +107,7 @@ export default function WorkflowV2Page() {
             sizing={execution.sizing}
             validation={validation.result}
             onUpdateSizing={execution.updateSizing}
+            onRestoreSuggested={execution.restoreSuggested}
             onBack={() => setPhase("validate")}
             onProceed={handleProceedToExecute}
           />

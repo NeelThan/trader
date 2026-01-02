@@ -101,6 +101,7 @@ export function WorkflowV2Layout({
   const [showTradeView, setShowTradeView] = useState(false);
   const [showTrendPanel, setShowTrendPanel] = useState(false);
   const [showConfluenceZones, setShowConfluenceZones] = useState(false);
+  const [showFibLabels, setShowFibLabels] = useState(true);
   const [chartType, setChartType] = useState<ChartType>("bar");
   const [isChartExpanded, setIsChartExpanded] = useState(false);
 
@@ -355,11 +356,11 @@ export function WorkflowV2Layout({
       color: level.direction === "long" ? DIRECTION_COLORS.long : DIRECTION_COLORS.short,
       lineWidth: level.heat > 50 ? 2 : 1,
       lineStyle: level.strategy === "RETRACEMENT" ? 2 : 1,
-      axisLabelVisible: true,
+      axisLabelVisible: showFibLabels,
       // Shorter label: just ratio. Full details shown in tooltip on hover
-      title: level.label,
+      title: showFibLabels ? level.label : "",
     }));
-  }, [visibleLevels]);
+  }, [visibleLevels, showFibLabels]);
 
   // Calculate confluence zones (clusters of levels)
   const confluenceZones = useMemo(() => {
@@ -670,6 +671,20 @@ export function WorkflowV2Layout({
                     >
                       Fib
                     </button>
+                    {showFibLevels && (
+                      <button
+                        onClick={() => setShowFibLabels(!showFibLabels)}
+                        className={cn(
+                          "px-1.5 py-1 text-[10px] rounded transition-colors",
+                          showFibLabels
+                            ? "bg-primary/20 text-primary"
+                            : "text-muted-foreground hover:bg-muted"
+                        )}
+                        title="Toggle Fib level labels"
+                      >
+                        Lbl
+                      </button>
+                    )}
                     <button
                       onClick={() => setShowConfluenceZones(!showConfluenceZones)}
                       className={cn(

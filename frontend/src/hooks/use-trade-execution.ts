@@ -49,6 +49,8 @@ export type UseTradeExecutionResult = {
   sizing: SizingData;
   /** Update sizing parameters */
   updateSizing: (updates: Partial<SizingData>) => void;
+  /** Restore suggested values from validation */
+  restoreSuggested: () => void;
   /** Execute the trade */
   execute: () => Promise<boolean>;
   /** Is currently executing */
@@ -197,7 +199,9 @@ export function useTradeExecution({
 
     const riskRewardRatio = calculateRiskReward(entryPrice, stopLoss, targets, direction);
     const recommendation = getRecommendation(riskRewardRatio);
-    const isValid = positionSize > 0 && riskRewardRatio >= 1.5 && targets.length > 0;
+    // isValid = basic requirements met (entry and stop set, position size calculated)
+    // This allows proceeding even with poor R:R - user just sees warning
+    const isValid = entryPrice > 0 && stopLoss > 0 && positionSize > 0;
 
     return {
       accountBalance,
@@ -239,10 +243,20 @@ export function useTradeExecution({
     }
   }, []);
 
+  // Restore suggested values from validation
+  const restoreSuggested = useCallback(() => {
+    // Clear trade overrides so captured validation values are used
+    setTradeOverrides({});
+  }, []);
+
   // Execute trade and journal it
   const execute = useCallback(async (): Promise<boolean> => {
-    if (!opportunity || !sizing.isValid) {
-      setError("Invalid trade parameters");
+    if (!opportunity) {
+      setError("No opportunity selected");
+      return false;
+    }
+    if (!sizing.isValid) {
+      setError("Please set entry price and stop loss");
       return false;
     }
 
@@ -280,6 +294,7 @@ export function useTradeExecution({
   return {
     sizing,
     updateSizing,
+    restoreSuggested,
     execute,
     isExecuting,
     error,

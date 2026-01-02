@@ -7,7 +7,7 @@
 
 "use client";
 
-import { ArrowLeft, Lightbulb, X, Plus } from "lucide-react";
+import { ArrowLeft, Lightbulb, X, Plus, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,7 @@ export type SizingPanelProps = {
   sizing: SizingData;
   validation: ValidationResult;
   onUpdateSizing: (updates: Partial<SizingData>) => void;
+  onRestoreSuggested: () => void;
   onBack: () => void;
   onProceed: () => void;
 };
@@ -60,6 +61,7 @@ export function SizingPanel({
   sizing,
   validation,
   onUpdateSizing,
+  onRestoreSuggested,
   onBack,
   onProceed,
 }: SizingPanelProps) {
@@ -74,6 +76,12 @@ export function SizingPanel({
   const isUsingSuggestedStop =
     validation.suggestedStop !== null &&
     Math.abs(sizing.stopLoss - validation.suggestedStop) < 0.01;
+
+  // Check if suggested values are available
+  const hasSuggestedValues =
+    validation.suggestedEntry !== null ||
+    validation.suggestedStop !== null ||
+    validation.suggestedTargets.length > 0;
 
   const handleAccountBalanceChange = (value: string) => {
     const num = parseFloat(value);
@@ -185,7 +193,20 @@ export function SizingPanel({
       {/* Trade Parameters */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Trade Parameters</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium">Trade Parameters</CardTitle>
+            {hasSuggestedValues && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onRestoreSuggested}
+                className="h-7 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+              >
+                <RotateCcw className="w-3 h-3 mr-1" />
+                Use Suggested
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           {/* Entry Price */}
@@ -336,25 +357,37 @@ export function SizingPanel({
         </CardContent>
       </Card>
 
-      {/* Warnings */}
-      {isHighRisk && (
-        <div className="text-sm text-amber-400 bg-amber-400/10 px-3 py-2 rounded">
-          High risk: You are risking more than 3% of your account on this trade.
-        </div>
-      )}
+      {/* Warnings - informational only, don't block proceeding */}
+      <div className="space-y-2">
+        {isHighRisk && (
+          <div className="text-sm text-amber-400 bg-amber-400/10 px-3 py-2 rounded">
+            ⚠️ High risk: You are risking more than 3% of your account on this trade.
+          </div>
+        )}
+        {sizing.recommendation === "poor" && sizing.riskRewardRatio > 0 && (
+          <div className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded">
+            ⚠️ Low R:R ratio ({sizing.riskRewardRatio.toFixed(2)}). Consider adjusting targets or stop loss.
+          </div>
+        )}
+        {sizing.targets.length === 0 && (
+          <div className="text-sm text-amber-400 bg-amber-400/10 px-3 py-2 rounded">
+            ⚠️ No targets set. Consider adding at least one profit target.
+          </div>
+        )}
+      </div>
 
-      {/* Proceed Button */}
+      {/* Proceed Button - always enabled if entry/stop are set */}
       <div className="space-y-2">
         <Button
           className="w-full"
           onClick={onProceed}
-          disabled={!sizing.isValid}
+          disabled={sizing.entryPrice <= 0 || sizing.stopLoss <= 0}
         >
           Proceed to Execution
         </Button>
-        {!sizing.isValid && sizing.recommendation === "poor" && (
+        {(sizing.entryPrice <= 0 || sizing.stopLoss <= 0) && (
           <p className="text-sm text-muted-foreground text-center">
-            R:R ratio must be at least 1.5 to proceed
+            Set entry price and stop loss to proceed
           </p>
         )}
       </div>
