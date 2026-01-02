@@ -9,7 +9,7 @@
  * Responsive: sidebar becomes bottom sheet on mobile.
  */
 
-import { useMemo, useRef, useState, useCallback } from "react";
+import { useMemo, useRef, useState, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -102,32 +102,37 @@ export function WorkflowV2Layout({
 
   // Enable sensible defaults for Workflow V2 on first load
   const [hasInitializedVisibility, setHasInitializedVisibility] = useState(false);
-  if (isVisibilityLoaded && !hasInitializedVisibility) {
-    // Check if any timeframes are enabled
-    const anyEnabled = visibilityConfig.timeframes.some(tf => tf.enabled);
-    if (!anyEnabled) {
-      // Enable 1D, 4H, 1H with both long and short retracements
-      const updatedConfig = {
-        ...visibilityConfig,
-        timeframes: visibilityConfig.timeframes.map(tf => {
-          if (["1D", "4H", "1H"].includes(tf.timeframe)) {
-            return {
-              ...tf,
-              enabled: true,
-              strategies: tf.strategies.map(s => ({
-                ...s,
-                long: { ...s.long, enabled: true },
-                short: { ...s.short, enabled: true },
-              })),
-            };
-          }
-          return tf;
-        }),
-      };
-      setVisibilityConfig(updatedConfig);
+
+  // Effect to set default visibility if none configured
+  useEffect(() => {
+    if (isVisibilityLoaded && !hasInitializedVisibility) {
+      // Check if any timeframes are enabled
+      const anyEnabled = visibilityConfig.timeframes.some(tf => tf.enabled);
+      if (!anyEnabled) {
+        // Enable 1D, 4H, 1H with both long and short retracements
+        const updatedConfig = {
+          ...visibilityConfig,
+          timeframes: visibilityConfig.timeframes.map(tf => {
+            if (["1D", "4H", "1H"].includes(tf.timeframe)) {
+              return {
+                ...tf,
+                enabled: true,
+                strategies: tf.strategies.map(s => ({
+                  ...s,
+                  long: { ...s.long, enabled: true },
+                  short: { ...s.short, enabled: true },
+                })),
+              };
+            }
+            return tf;
+          }),
+        };
+        setVisibilityConfig(updatedConfig);
+      }
+      setHasInitializedVisibility(true);
     }
-    setHasInitializedVisibility(true);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Only run when loaded state changes
+  }, [isVisibilityLoaded, hasInitializedVisibility]);
 
   // Swing settings (persisted)
   const { getTimeframeSettings } = usePersistedSwingSettings();
