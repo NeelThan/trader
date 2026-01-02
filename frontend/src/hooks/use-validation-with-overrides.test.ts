@@ -57,6 +57,7 @@ const mockOpportunity: TradeOpportunity = {
     type: "LONG",
     higherTF: "1D",
     lowerTF: "4H",
+    pairName: "1D → 4H",
     confidence: 75,
     description: "Test signal",
     reasoning: "Test reasoning",

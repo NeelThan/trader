@@ -1,0 +1,217 @@
+/**
+ * Trade Execution Hook
+ *
+ * Handles position sizing calculation and trade execution.
+ * Connects to journal for auto-logging trades.
+ */
+
+import { useState, useCallback, useMemo } from "react";
+import { createJournalEntry, type JournalEntryRequest } from "@/lib/api";
+import type { TradeOpportunity } from "./use-trade-discovery";
+import type { ValidationResult } from "./use-trade-validation";
+
+/**
+ * Position sizing data
+ */
+export type SizingData = {
+  /** Account balance */
+  accountBalance: number;
+  /** Risk percentage (1-5%) */
+  riskPercentage: number;
+  /** Entry price */
+  entryPrice: number;
+  /** Stop loss price */
+  stopLoss: number;
+  /** Target prices */
+  targets: number[];
+  /** Calculated position size */
+  positionSize: number;
+  /** Risk amount in currency */
+  riskAmount: number;
+  /** Risk/reward ratio */
+  riskRewardRatio: number;
+  /** Distance to stop in points */
+  stopDistance: number;
+  /** Recommendation level */
+  recommendation: "excellent" | "good" | "marginal" | "poor";
+  /** Is the sizing valid */
+  isValid: boolean;
+};
+
+export type UseTradeExecutionOptions = {
+  opportunity: TradeOpportunity | null;
+  validation: ValidationResult;
+  enabled: boolean;
+};
+
+export type UseTradeExecutionResult = {
+  /** Current sizing data */
+  sizing: SizingData;
+  /** Update sizing parameters */
+  updateSizing: (updates: Partial<SizingData>) => void;
+  /** Execute the trade */
+  execute: () => Promise<boolean>;
+  /** Is currently executing */
+  isExecuting: boolean;
+  /** Execution error */
+  error: string | null;
+};
+
+/**
+ * Calculate position size from risk parameters
+ */
+function calculatePositionSize(
+  accountBalance: number,
+  riskPercentage: number,
+  entryPrice: number,
+  stopLoss: number
+): { positionSize: number; riskAmount: number; stopDistance: number } {
+  const riskAmount = accountBalance * (riskPercentage / 100);
+  const stopDistance = Math.abs(entryPrice - stopLoss);
+
+  if (stopDistance === 0) {
+    return { positionSize: 0, riskAmount, stopDistance: 0 };
+  }
+
+  const positionSize = riskAmount / stopDistance;
+  return { positionSize, riskAmount, stopDistance };
+}
+
+/**
+ * Calculate risk/reward ratio
+ */
+function calculateRiskReward(
+  entryPrice: number,
+  stopLoss: number,
+  targets: number[],
+  direction: "long" | "short"
+): number {
+  if (targets.length === 0) return 0;
+
+  const stopDistance = Math.abs(entryPrice - stopLoss);
+  if (stopDistance === 0) return 0;
+
+  // Use first target for R:R calculation
+  const targetDistance =
+    direction === "long"
+      ? targets[0] - entryPrice
+      : entryPrice - targets[0];
+
+  return targetDistance / stopDistance;
+}
+
+/**
+ * Get recommendation based on R:R ratio
+ */
+function getRecommendation(
+  riskRewardRatio: number
+): "excellent" | "good" | "marginal" | "poor" {
+  if (riskRewardRatio >= 3) return "excellent";
+  if (riskRewardRatio >= 2) return "good";
+  if (riskRewardRatio >= 1.5) return "marginal";
+  return "poor";
+}
+
+/**
+ * Hook to manage trade execution
+ */
+export function useTradeExecution({
+  opportunity,
+  validation,
+  enabled,
+}: UseTradeExecutionOptions): UseTradeExecutionResult {
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Initialize sizing from validation suggestions
+  const [sizingOverrides, setSizingOverrides] = useState<Partial<SizingData>>({
+    accountBalance: 10000,
+    riskPercentage: 2,
+  });
+
+  // Calculate full sizing data
+  const sizing = useMemo((): SizingData => {
+    const accountBalance = sizingOverrides.accountBalance ?? 10000;
+    const riskPercentage = sizingOverrides.riskPercentage ?? 2;
+    const entryPrice = sizingOverrides.entryPrice ?? validation.suggestedEntry ?? 0;
+    const stopLoss = sizingOverrides.stopLoss ?? validation.suggestedStop ?? 0;
+    const targets = sizingOverrides.targets ?? validation.suggestedTargets ?? [];
+    const direction = opportunity?.direction ?? "long";
+
+    const { positionSize, riskAmount, stopDistance } = calculatePositionSize(
+      accountBalance,
+      riskPercentage,
+      entryPrice,
+      stopLoss
+    );
+
+    const riskRewardRatio = calculateRiskReward(entryPrice, stopLoss, targets, direction);
+    const recommendation = getRecommendation(riskRewardRatio);
+    const isValid = positionSize > 0 && riskRewardRatio >= 1.5 && targets.length > 0;
+
+    return {
+      accountBalance,
+      riskPercentage,
+      entryPrice,
+      stopLoss,
+      targets,
+      positionSize,
+      riskAmount,
+      riskRewardRatio,
+      stopDistance,
+      recommendation,
+      isValid,
+    };
+  }, [sizingOverrides, validation, opportunity?.direction]);
+
+  // Update sizing
+  const updateSizing = useCallback((updates: Partial<SizingData>) => {
+    setSizingOverrides((prev) => ({ ...prev, ...updates }));
+  }, []);
+
+  // Execute trade and journal it
+  const execute = useCallback(async (): Promise<boolean> => {
+    if (!opportunity || !sizing.isValid) {
+      setError("Invalid trade parameters");
+      return false;
+    }
+
+    setIsExecuting(true);
+    setError(null);
+
+    try {
+      // Create journal entry for the trade
+      // For paper trading, we log the entry - exit will be updated later
+      const entry: JournalEntryRequest = {
+        symbol: opportunity.symbol,
+        direction: opportunity.direction,
+        entry_price: sizing.entryPrice,
+        exit_price: 0, // Will be set when trade is closed
+        stop_loss: sizing.stopLoss,
+        targets: sizing.targets,
+        position_size: sizing.positionSize,
+        entry_time: new Date().toISOString(),
+        exit_time: "", // Will be set when trade is closed
+        timeframe: opportunity.lowerTimeframe,
+        notes: `${opportunity.description}\n\nReasoning: ${opportunity.reasoning}`,
+      };
+
+      await createJournalEntry(entry);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to execute trade";
+      setError(message);
+      return false;
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [opportunity, sizing]);
+
+  return {
+    sizing,
+    updateSizing,
+    execute,
+    isExecuting,
+    error,
+  };
+}
