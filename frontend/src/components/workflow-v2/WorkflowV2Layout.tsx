@@ -95,6 +95,15 @@ export function WorkflowV2Layout({
   const [showSwingMarkers, setShowSwingMarkers] = useState(true);
   const [showFibLevels, setShowFibLevels] = useState(true);
   const [showPivotEditor, setShowPivotEditor] = useState(false);
+  const [showTradeView, setShowTradeView] = useState(false);
+
+  // Reset trade view when opportunity changes or phase goes back to discover
+  useEffect(() => {
+    if (!opportunity || phase === "discover") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: reset on state change
+      setShowTradeView(false);
+    }
+  }, [opportunity, phase]);
 
   // Fetch market data for chart
   const { data: marketData, isLoading: isLoadingData } = useMarketDataSubscription(
@@ -255,11 +264,27 @@ export function WorkflowV2Layout({
     dataMode: "live",
   });
 
-  // Get visible levels based on visibility config
+  // Get visible levels based on visibility config and trade view mode
   const visibleLevels = useMemo(() => {
     if (!showFibLevels) return [];
+
+    // In trade view mode, only show levels for the opportunity's timeframes and direction
+    if (showTradeView && opportunity) {
+      const tradeTimeframes = [opportunity.higherTimeframe, opportunity.lowerTimeframe];
+      const tradeDirection = opportunity.direction;
+
+      return allLevels.filter((level) => {
+        // Must be in one of the trade's timeframes
+        if (!tradeTimeframes.includes(level.timeframe)) return false;
+        // Must match the trade direction
+        if (level.direction !== tradeDirection) return false;
+        // Still respect the visibility config for specific ratios
+        return isLevelVisible(level, visibilityConfig);
+      });
+    }
+
     return allLevels.filter((level) => isLevelVisible(level, visibilityConfig));
-  }, [allLevels, visibilityConfig, showFibLevels]);
+  }, [allLevels, visibilityConfig, showFibLevels, showTradeView, opportunity]);
 
   // Convert levels to price lines
   const strategyPriceLines = useMemo<PriceLine[]>(() => {
@@ -497,6 +522,23 @@ export function WorkflowV2Layout({
                         <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
                       )}
                     </button>
+                    {/* Trade View toggle - only show when opportunity selected */}
+                    {opportunity && phase !== "discover" && (
+                      <button
+                        onClick={() => setShowTradeView(!showTradeView)}
+                        className={cn(
+                          "px-2 py-1 text-xs rounded transition-colors",
+                          showTradeView
+                            ? opportunity.direction === "long"
+                              ? "bg-green-500/20 text-green-400"
+                              : "bg-red-500/20 text-red-400"
+                            : "text-muted-foreground hover:bg-muted"
+                        )}
+                        title={`Toggle trade view (${opportunity.direction.toUpperCase()} ${opportunity.higherTimeframe}→${opportunity.lowerTimeframe})`}
+                      >
+                        Trade
+                      </button>
+                    )}
                   </div>
 
                   {/* Timeframe visibility toggles - only show when Fib is enabled */}
@@ -541,6 +583,20 @@ export function WorkflowV2Layout({
 
                   {/* Status badges */}
                   <div className="flex items-center gap-1 text-xs ml-auto">
+                    {/* Trade view indicator */}
+                    {showTradeView && opportunity && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-[10px] px-1.5 py-0",
+                          opportunity.direction === "long"
+                            ? "border-green-500/50 text-green-400 bg-green-500/10"
+                            : "border-red-500/50 text-red-400 bg-red-500/10"
+                        )}
+                      >
+                        {opportunity.direction.toUpperCase()} {opportunity.higherTimeframe}→{opportunity.lowerTimeframe}
+                      </Badge>
+                    )}
                     {showFibLevels && visibleLevels.length > 0 && (
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                         {visibleLevels.length} Fib
