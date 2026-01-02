@@ -10,9 +10,10 @@ import { useMultiTFLevels } from "./use-multi-tf-levels";
 import type { TradeOpportunity } from "./use-trade-discovery";
 import {
   type StrategyLevel,
-  createDefaultVisibilityConfig,
-  ALL_TIMEFRAMES,
+  type VisibilityConfig,
+  FIBONACCI_RATIOS,
 } from "@/lib/chart-pro/strategy-types";
+import type { Timeframe } from "@/lib/chart-constants";
 
 /**
  * Single validation check result
@@ -65,6 +66,74 @@ export type UseTradeValidationResult = {
   result: ValidationResult;
   isLoading: boolean;
 };
+
+/**
+ * Create visibility config for validation
+ *
+ * Enables only the timeframes, strategies, and directions needed for validation:
+ * - Entry: Lower TF RETRACEMENT in trade direction
+ * - Targets: Higher TF EXTENSION in trade direction
+ */
+function createValidationVisibilityConfig(
+  opportunity: TradeOpportunity
+): VisibilityConfig {
+  const timeframes: Timeframe[] = [
+    opportunity.higherTimeframe,
+    opportunity.lowerTimeframe,
+  ];
+  const direction = opportunity.direction;
+
+  return {
+    timeframes: timeframes.map((tf) => ({
+      timeframe: tf,
+      enabled: true,
+      strategies: [
+        {
+          strategy: "RETRACEMENT" as const,
+          long: {
+            // Enable long retracement on lower TF for long entries
+            enabled:
+              tf === opportunity.lowerTimeframe && direction === "long",
+            ratios: FIBONACCI_RATIOS.RETRACEMENT.map((ratio) => ({
+              ratio,
+              visible: true,
+            })),
+          },
+          short: {
+            // Enable short retracement on lower TF for short entries
+            enabled:
+              tf === opportunity.lowerTimeframe && direction === "short",
+            ratios: FIBONACCI_RATIOS.RETRACEMENT.map((ratio) => ({
+              ratio,
+              visible: true,
+            })),
+          },
+        },
+        {
+          strategy: "EXTENSION" as const,
+          long: {
+            // Enable long extension on higher TF for long targets
+            enabled:
+              tf === opportunity.higherTimeframe && direction === "long",
+            ratios: FIBONACCI_RATIOS.EXTENSION.map((ratio) => ({
+              ratio,
+              visible: true,
+            })),
+          },
+          short: {
+            // Enable short extension on higher TF for short targets
+            enabled:
+              tf === opportunity.higherTimeframe && direction === "short",
+            ratios: FIBONACCI_RATIOS.EXTENSION.map((ratio) => ({
+              ratio,
+              visible: true,
+            })),
+          },
+        },
+      ],
+    })),
+  };
+}
 
 /**
  * Create a validation check
@@ -121,10 +190,19 @@ export function useTradeValidation({
   opportunity,
   enabled,
 }: UseTradeValidationOptions): UseTradeValidationResult {
+  // Create visibility config for this specific opportunity
+  const visibilityConfig = useMemo((): VisibilityConfig => {
+    if (!opportunity) {
+      // Return empty config when no opportunity
+      return { timeframes: [] };
+    }
+    return createValidationVisibilityConfig(opportunity);
+  }, [opportunity]);
+
   // Fetch Fibonacci levels for the opportunity's timeframes
   const { allLevels, isLoading: isLoadingLevels } = useMultiTFLevels({
     symbol: opportunity?.symbol ?? "DJI",
-    visibilityConfig: createDefaultVisibilityConfig(ALL_TIMEFRAMES),
+    visibilityConfig,
     enabled: enabled && opportunity !== null,
   });
 

@@ -46,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { TimeframeSettingsPopover } from "./TimeframeSettingsPopover";
 import { DataSourcePanel, DataSourceIndicator, type DataMode } from "./DataSourcePanel";
 import { TrendAlignmentPanel, TrendIndicatorButton } from "./TrendAlignmentPanel";
+import { LevelTooltip, ConfluenceZoneIndicator, calculateConfluenceZones } from "./LevelTooltip";
 import type { UseTradeDiscoveryResult, TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
 import type { WorkflowPhase } from "@/app/workflow-v2/page";
@@ -99,8 +100,12 @@ export function WorkflowV2Layout({
   const [showPivotEditor, setShowPivotEditor] = useState(false);
   const [showTradeView, setShowTradeView] = useState(false);
   const [showTrendPanel, setShowTrendPanel] = useState(false);
+  const [showConfluenceZones, setShowConfluenceZones] = useState(false);
   const [chartType, setChartType] = useState<ChartType>("bar");
   const [isChartExpanded, setIsChartExpanded] = useState(false);
+
+  // Crosshair tracking for level tooltips
+  const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
 
   // Reset trade view when opportunity changes or phase goes back to discover
   useEffect(() => {
@@ -343,7 +348,7 @@ export function WorkflowV2Layout({
     return allLevels.filter((level) => isLevelVisible(level, visibilityConfig));
   }, [allLevels, visibilityConfig, showFibLevels, showTradeView, opportunity]);
 
-  // Convert levels to price lines
+  // Convert levels to price lines (simplified labels for less clutter)
   const strategyPriceLines = useMemo<PriceLine[]>(() => {
     return visibleLevels.map((level) => ({
       price: level.price,
@@ -351,9 +356,21 @@ export function WorkflowV2Layout({
       lineWidth: level.heat > 50 ? 2 : 1,
       lineStyle: level.strategy === "RETRACEMENT" ? 2 : 1,
       axisLabelVisible: true,
-      title: `${level.timeframe} ${level.label} ${level.direction === "long" ? "L" : "S"}`,
+      // Shorter label: just ratio. Full details shown in tooltip on hover
+      title: level.label,
     }));
   }, [visibleLevels]);
+
+  // Calculate confluence zones (clusters of levels)
+  const confluenceZones = useMemo(() => {
+    if (!showConfluenceZones || visibleLevels.length === 0) return [];
+    return calculateConfluenceZones(visibleLevels, 0.5);
+  }, [visibleLevels, showConfluenceZones]);
+
+  // Crosshair move handler
+  const handleCrosshairMove = useCallback((price: number | null) => {
+    setCrosshairPrice(price);
+  }, []);
 
   // RSI indicator
   const { rsiData, isLoading: isLoadingRSI } = useRSI({
@@ -601,6 +618,18 @@ export function WorkflowV2Layout({
                       Fib
                     </button>
                     <button
+                      onClick={() => setShowConfluenceZones(!showConfluenceZones)}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        showConfluenceZones
+                          ? "bg-purple-500/20 text-purple-400"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                      title="Toggle confluence zones (clusters of Fib levels)"
+                    >
+                      Zones
+                    </button>
+                    <button
                       onClick={() => setShowIndicators(!showIndicators)}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
@@ -795,20 +824,32 @@ export function WorkflowV2Layout({
                 </div>
               </div>
             </CardContent>
-            <CardContent className="flex-1 p-0 overflow-hidden">
+            <CardContent className="flex-1 p-0 overflow-hidden relative">
               {isLoadingData && marketData.length === 0 ? (
                 <Skeleton className="h-full w-full" />
               ) : marketData.length > 0 ? (
-                <CandlestickChart
-                  ref={chartRef}
-                  data={marketData}
-                  chartType={chartType}
-                  markers={chartMarkers}
-                  priceLines={strategyPriceLines}
-                  lineOverlays={swingLineOverlays}
-                  upColor={chartColors.up}
-                  downColor={chartColors.down}
-                />
+                <>
+                  <CandlestickChart
+                    ref={chartRef}
+                    data={marketData}
+                    chartType={chartType}
+                    markers={chartMarkers}
+                    priceLines={strategyPriceLines}
+                    lineOverlays={swingLineOverlays}
+                    upColor={chartColors.up}
+                    downColor={chartColors.down}
+                    onCrosshairMove={handleCrosshairMove}
+                  />
+                  {/* Level tooltip - shows when crosshair is near a Fib level */}
+                  {showFibLevels && (
+                    <LevelTooltip
+                      crosshairPrice={crosshairPrice}
+                      levels={visibleLevels}
+                      formatPrice={formatPrice}
+                      tolerance={0.2}
+                    />
+                  )}
+                </>
               ) : (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
                   No data available
@@ -818,7 +859,7 @@ export function WorkflowV2Layout({
           </Card>
 
           {/* Analysis Panels - horizontal grid layout, doesn't overlay chart */}
-          {(showIndicators || showPivotEditor || showTrendPanel) && (
+          {(showIndicators || showPivotEditor || showTrendPanel || showConfluenceZones) && (
             <div className="shrink-0 grid grid-cols-1 lg:grid-cols-3 gap-2">
               {/* Trend Alignment Panel */}
               {showTrendPanel && (
@@ -904,6 +945,34 @@ export function WorkflowV2Layout({
                   modifiedCount={pivotModifiedCount}
                   isLoading={isLoadingSwings || !isPivotsLoaded}
                 />
+              )}
+
+              {/* Confluence Zones Panel - Shows clusters of Fib levels */}
+              {showConfluenceZones && (
+                <Card className="shrink-0">
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm flex items-center justify-between">
+                      <span>Confluence Zones</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {confluenceZones.length} zones
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 pt-0 max-h-[200px] overflow-y-auto">
+                    {confluenceZones.length > 0 ? (
+                      <ConfluenceZoneIndicator
+                        zones={confluenceZones}
+                        formatPrice={formatPrice}
+                      />
+                    ) : (
+                      <div className="text-xs text-muted-foreground text-center py-4">
+                        No confluence zones found.
+                        <br />
+                        Enable more Fib levels to see clusters.
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               )}
             </div>
           )}
