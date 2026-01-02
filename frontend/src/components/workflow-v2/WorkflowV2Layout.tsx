@@ -35,7 +35,13 @@ import { useTrendAlignment } from "@/hooks/use-trend-alignment";
 import { usePersistedVisibilityConfig } from "@/hooks/use-persisted-visibility-config";
 import { usePersistedSwingSettings } from "@/hooks/use-persisted-swing-settings";
 import { generateSwingLineOverlays } from "@/lib/chart-pro/swing-overlays";
-import { isLevelVisible, DIRECTION_COLORS } from "@/lib/chart-pro/strategy-types";
+import {
+  isLevelVisible,
+  DIRECTION_COLORS,
+  TIMEFRAME_COLORS,
+  FIBONACCI_RATIOS,
+  ALL_STRATEGIES,
+} from "@/lib/chart-pro/strategy-types";
 import { cn } from "@/lib/utils";
 import type { UseTradeDiscoveryResult, TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
@@ -133,6 +139,62 @@ export function WorkflowV2Layout({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Only run when loaded state changes
   }, [isVisibilityLoaded, hasInitializedVisibility]);
+
+  // Check if a timeframe is enabled for Fib levels
+  const isTimeframeEnabled = useCallback((tf: Timeframe): boolean => {
+    return visibilityConfig.timeframes.find(t => t.timeframe === tf)?.enabled ?? false;
+  }, [visibilityConfig]);
+
+  // Toggle timeframe visibility for Fib levels
+  const toggleTimeframeVisibility = useCallback((tf: Timeframe) => {
+    const tfIndex = visibilityConfig.timeframes.findIndex(t => t.timeframe === tf);
+
+    if (tfIndex >= 0) {
+      // Toggle existing timeframe
+      const currentTf = visibilityConfig.timeframes[tfIndex];
+      const isEnabled = currentTf.enabled;
+
+      const newTimeframes = visibilityConfig.timeframes.map((t, idx) => {
+        if (idx !== tfIndex) return t;
+
+        if (isEnabled) {
+          // Disabling - just toggle off
+          return { ...t, enabled: false };
+        } else {
+          // Enabling - enable with all strategies and both directions
+          return {
+            ...t,
+            enabled: true,
+            strategies: t.strategies.map(s => ({
+              ...s,
+              long: { ...s.long, enabled: true },
+              short: { ...s.short, enabled: true },
+            })),
+          };
+        }
+      });
+
+      setVisibilityConfig({ timeframes: newTimeframes });
+    } else {
+      // Add new timeframe config with all strategies enabled
+      const newTfConfig = {
+        timeframe: tf,
+        enabled: true,
+        strategies: ALL_STRATEGIES.map(strategy => ({
+          strategy,
+          long: {
+            enabled: true,
+            ratios: FIBONACCI_RATIOS[strategy].map(ratio => ({ ratio, visible: true })),
+          },
+          short: {
+            enabled: true,
+            ratios: FIBONACCI_RATIOS[strategy].map(ratio => ({ ratio, visible: true })),
+          },
+        })),
+      };
+      setVisibilityConfig({ timeframes: [...visibilityConfig.timeframes, newTfConfig] });
+    }
+  }, [visibilityConfig, setVisibilityConfig]);
 
   // Swing settings (persisted)
   const { getTimeframeSettings } = usePersistedSwingSettings();
@@ -411,6 +473,39 @@ export function WorkflowV2Layout({
                       Ind
                     </button>
                   </div>
+
+                  {/* Timeframe visibility toggles - only show when Fib is enabled */}
+                  {showFibLevels && (
+                    <>
+                      <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
+                      <div className="flex items-center gap-0.5">
+                        {TIMEFRAMES.map((tf) => {
+                          const enabled = isTimeframeEnabled(tf);
+                          const color = TIMEFRAME_COLORS[tf];
+                          return (
+                            <button
+                              key={tf}
+                              onClick={() => toggleTimeframeVisibility(tf)}
+                              className={cn(
+                                "px-1.5 py-0.5 text-[10px] sm:text-xs rounded transition-all",
+                                enabled
+                                  ? "font-medium"
+                                  : "text-muted-foreground/50 hover:text-muted-foreground"
+                              )}
+                              style={{
+                                backgroundColor: enabled ? `${color}20` : undefined,
+                                color: enabled ? color : undefined,
+                                borderBottom: enabled ? `2px solid ${color}` : "2px solid transparent",
+                              }}
+                              title={`Toggle ${tf} Fibonacci levels`}
+                            >
+                              {tf}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
 
                   {/* Status badges */}
                   <div className="flex items-center gap-1 text-xs ml-auto">
