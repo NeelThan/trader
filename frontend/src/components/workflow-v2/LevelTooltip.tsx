@@ -219,15 +219,25 @@ function createZone(levels: StrategyLevel[], index: number): ConfluenceZone {
 
 /**
  * ConfluenceZoneIndicator - Shows zones in a sidebar panel
+ * Click zones to toggle visibility on chart
  */
 type ConfluenceZoneIndicatorProps = {
   zones: ConfluenceZone[];
   formatPrice?: (price: number) => string;
+  /** Set of hidden zone IDs */
+  hiddenZones?: Set<string>;
+  /** Toggle zone visibility */
+  onToggleZone?: (zoneId: string) => void;
+  /** Show all zones */
+  onShowAll?: () => void;
 };
 
 export function ConfluenceZoneIndicator({
   zones,
   formatPrice = (p) => p.toFixed(2),
+  hiddenZones = new Set(),
+  onToggleZone,
+  onShowAll,
 }: ConfluenceZoneIndicatorProps) {
   if (zones.length === 0) return null;
 
@@ -255,23 +265,44 @@ export function ConfluenceZoneIndicator({
     }
   };
 
+  const hasHiddenZones = hiddenZones.size > 0;
+
   return (
     <div className="space-y-2">
+      {/* Show All button when zones are hidden */}
+      {hasHiddenZones && onShowAll && (
+        <button
+          onClick={onShowAll}
+          className="w-full text-[10px] text-blue-400 hover:text-blue-300 py-1 px-2 rounded bg-blue-500/10 hover:bg-blue-500/20 transition-colors"
+        >
+          Show All Zones ({hiddenZones.size} hidden)
+        </button>
+      )}
       {zones.map((zone, index) => {
         const zoneColor = getZoneColor(zone.direction);
         const zoneType = getZoneType(zone.direction);
         const zoneLabel = `Z${index + 1}`;
+        const isHidden = hiddenZones.has(zone.id);
 
         return (
           <div
             key={zone.id}
-            className="flex items-center gap-2 p-2 rounded-md bg-muted/30"
-            style={{ borderLeft: `3px solid ${zoneColor}` }}
+            onClick={() => onToggleZone?.(zone.id)}
+            className={`flex items-center gap-2 p-2 rounded-md transition-all cursor-pointer ${
+              isHidden
+                ? "bg-muted/10 opacity-50 hover:opacity-75"
+                : "bg-muted/30 hover:bg-muted/50"
+            }`}
+            style={{ borderLeft: `3px solid ${isHidden ? "#666" : zoneColor}` }}
+            title={isHidden ? "Click to show on chart" : "Click to hide from chart"}
           >
             {/* Zone number badge */}
             <div
               className="flex items-center justify-center w-6 h-6 rounded text-[10px] font-bold"
-              style={{ backgroundColor: `${zoneColor}30`, color: zoneColor }}
+              style={{
+                backgroundColor: isHidden ? "#66666630" : `${zoneColor}30`,
+                color: isHidden ? "#666" : zoneColor,
+              }}
             >
               {zoneLabel}
             </div>
@@ -279,13 +310,18 @@ export function ConfluenceZoneIndicator({
               <div className="flex items-center gap-2">
                 <span
                   className="text-xs font-medium"
-                  style={{ color: zoneColor }}
+                  style={{ color: isHidden ? "#666" : zoneColor }}
                 >
                   {zoneType}
                 </span>
                 <span className="text-[10px] text-muted-foreground">
                   ({zone.levelCount} levels)
                 </span>
+                {isHidden && (
+                  <span className="text-[8px] text-muted-foreground italic">
+                    hidden
+                  </span>
+                )}
               </div>
               <div className="text-[10px] font-mono text-muted-foreground">
                 {formatPrice(zone.lowPrice)} – {formatPrice(zone.highPrice)}
@@ -293,14 +329,12 @@ export function ConfluenceZoneIndicator({
             </div>
             {/* Strength indicator */}
             <div className="flex flex-col items-end">
-              <div
-                className="w-10 h-1.5 rounded-full bg-muted overflow-hidden"
-              >
+              <div className="w-10 h-1.5 rounded-full bg-muted overflow-hidden">
                 <div
                   className="h-full rounded-full"
                   style={{
                     width: `${zone.strength}%`,
-                    backgroundColor: zoneColor,
+                    backgroundColor: isHidden ? "#666" : zoneColor,
                   }}
                 />
               </div>

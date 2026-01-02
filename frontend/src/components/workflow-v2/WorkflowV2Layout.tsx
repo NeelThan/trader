@@ -106,6 +106,7 @@ export function WorkflowV2Layout({
   const [chartType, setChartType] = useState<ChartType>("bar");
   const [isChartExpanded, setIsChartExpanded] = useState(false);
   const [confluenceTolerance, setConfluenceTolerance] = useState(0.2); // Default 0.2% tolerance
+  const [hiddenZones, setHiddenZones] = useState<Set<string>>(new Set()); // Track hidden zone IDs
 
   // Crosshair tracking for level tooltips
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
@@ -372,13 +373,34 @@ export function WorkflowV2Layout({
     return calculateConfluenceZones(visibleLevels, confluenceTolerance);
   }, [visibleLevels, showConfluenceZones, confluenceTolerance]);
 
+  // Toggle zone visibility
+  const toggleZoneVisibility = useCallback((zoneId: string) => {
+    setHiddenZones((prev) => {
+      const next = new Set(prev);
+      if (next.has(zoneId)) {
+        next.delete(zoneId);
+      } else {
+        next.add(zoneId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Show all zones
+  const showAllZones = useCallback(() => {
+    setHiddenZones(new Set());
+  }, []);
+
   // Confluence zone price lines - creates visual bands on chart
+  // Filters out hidden zones
   const zonePriceLines = useMemo<PriceLine[]>(() => {
     if (!showConfluenceZones || confluenceZones.length === 0) return [];
 
     const lines: PriceLine[] = [];
 
     confluenceZones.forEach((zone, index) => {
+      // Skip hidden zones
+      if (hiddenZones.has(zone.id)) return;
       // Color based on direction bias
       const zoneColor =
         zone.direction === "long"
@@ -427,7 +449,7 @@ export function WorkflowV2Layout({
     });
 
     return lines;
-  }, [confluenceZones, showConfluenceZones]);
+  }, [confluenceZones, showConfluenceZones, hiddenZones]);
 
   // Combine all price lines
   const allPriceLines = useMemo<PriceLine[]>(() => {
@@ -1087,6 +1109,9 @@ export function WorkflowV2Layout({
                       <ConfluenceZoneIndicator
                         zones={confluenceZones}
                         formatPrice={formatPrice}
+                        hiddenZones={hiddenZones}
+                        onToggleZone={toggleZoneVisibility}
+                        onShowAll={showAllZones}
                       />
                     ) : (
                       <div className="text-xs text-muted-foreground text-center py-4">
