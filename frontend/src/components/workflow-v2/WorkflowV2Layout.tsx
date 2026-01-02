@@ -97,7 +97,37 @@ export function WorkflowV2Layout({
   );
 
   // Visibility configuration for Fibonacci levels (persisted)
-  const { visibilityConfig } = usePersistedVisibilityConfig();
+  // Note: Chart Pro config starts with all disabled. We enable common TFs for Workflow V2
+  const { visibilityConfig, setVisibilityConfig, isLoaded: isVisibilityLoaded } = usePersistedVisibilityConfig();
+
+  // Enable sensible defaults for Workflow V2 on first load
+  const [hasInitializedVisibility, setHasInitializedVisibility] = useState(false);
+  if (isVisibilityLoaded && !hasInitializedVisibility) {
+    // Check if any timeframes are enabled
+    const anyEnabled = visibilityConfig.timeframes.some(tf => tf.enabled);
+    if (!anyEnabled) {
+      // Enable 1D, 4H, 1H with both long and short retracements
+      const updatedConfig = {
+        ...visibilityConfig,
+        timeframes: visibilityConfig.timeframes.map(tf => {
+          if (["1D", "4H", "1H"].includes(tf.timeframe)) {
+            return {
+              ...tf,
+              enabled: true,
+              strategies: tf.strategies.map(s => ({
+                ...s,
+                long: { ...s.long, enabled: true },
+                short: { ...s.short, enabled: true },
+              })),
+            };
+          }
+          return tf;
+        }),
+      };
+      setVisibilityConfig(updatedConfig);
+    }
+    setHasInitializedVisibility(true);
+  }
 
   // Swing settings (persisted)
   const { getTimeframeSettings } = usePersistedSwingSettings();
@@ -371,9 +401,9 @@ export function WorkflowV2Layout({
                           ? "bg-primary/20 text-primary"
                           : "text-muted-foreground hover:bg-muted"
                       )}
-                      title="Toggle RSI/MACD indicators"
+                      title="Toggle indicators (RSI & MACD)"
                     >
-                      RSI
+                      Ind
                     </button>
                   </div>
 
