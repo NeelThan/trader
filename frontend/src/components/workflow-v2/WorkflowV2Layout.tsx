@@ -22,13 +22,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CandlestickChart, CandlestickChartHandle, PriceLine, LineOverlay } from "@/components/trading";
-import { RSIPane, MACDChart } from "@/components/chart-pro";
+import { RSIPane, MACDChart, PivotPointsEditor } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
 import { useMultiTFLevels } from "@/hooks/use-multi-tf-levels";
 import { useSwingMarkers } from "@/hooks/use-swing-markers";
 import { useChartMarkers } from "@/hooks/use-chart-markers";
-import { useEditablePivots } from "@/hooks/use-editable-pivots";
+import { usePersistedEditablePivots } from "@/hooks/use-persisted-editable-pivots";
 import { useMACD } from "@/hooks/use-macd";
 import { useRSI } from "@/hooks/use-rsi";
 import { useTrendAlignment } from "@/hooks/use-trend-alignment";
@@ -94,6 +94,7 @@ export function WorkflowV2Layout({
   const [showIndicators, setShowIndicators] = useState(false);
   const [showSwingMarkers, setShowSwingMarkers] = useState(true);
   const [showFibLevels, setShowFibLevels] = useState(true);
+  const [showPivotEditor, setShowPivotEditor] = useState(false);
 
   // Fetch market data for chart
   const { data: marketData, isLoading: isLoadingData } = useMarketDataSubscription(
@@ -215,9 +216,17 @@ export function WorkflowV2Layout({
     useCache: true,
   });
 
-  // Editable pivots (allows adjustment)
+  // Editable pivots with persistence (user modifications survive refresh)
   const apiPivots = useMemo(() => swingResult?.pivots ?? [], [swingResult?.pivots]);
-  const { pivots: editablePivots } = useEditablePivots(apiPivots, timeframe);
+  const {
+    pivots: editablePivots,
+    updatePivotPrice,
+    resetPivot,
+    resetAllPivots,
+    hasModifications: hasPivotModifications,
+    modifiedCount: pivotModifiedCount,
+    isLoaded: isPivotsLoaded,
+  } = usePersistedEditablePivots(apiPivots, symbol, timeframe);
 
   // Swing line overlays
   const swingLineOverlays = useMemo<LineOverlay[]>(() => {
@@ -473,6 +482,21 @@ export function WorkflowV2Layout({
                     >
                       Ind
                     </button>
+                    <button
+                      onClick={() => setShowPivotEditor(!showPivotEditor)}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors relative",
+                        showPivotEditor
+                          ? "bg-primary/20 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                      title="Toggle pivot points editor"
+                    >
+                      Pivot
+                      {hasPivotModifications && (
+                        <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
+                      )}
+                    </button>
                   </div>
 
                   {/* Timeframe visibility toggles - only show when Fib is enabled */}
@@ -663,6 +687,20 @@ export function WorkflowV2Layout({
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* Pivot Points Editor - Editable pivot points with persistence */}
+          {showPivotEditor && (
+            <PivotPointsEditor
+              timeframe={timeframe}
+              pivots={editablePivots}
+              updatePivotPrice={updatePivotPrice}
+              resetPivot={resetPivot}
+              resetAllPivots={resetAllPivots}
+              hasModifications={hasPivotModifications}
+              modifiedCount={pivotModifiedCount}
+              isLoading={isLoadingSwings || !isPivotsLoaded}
+            />
           )}
         </div>
 
