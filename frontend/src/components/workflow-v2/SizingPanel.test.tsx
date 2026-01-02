@@ -8,7 +8,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SizingPanel } from "./SizingPanel";
 import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
-import type { SizingData } from "@/hooks/use-trade-execution";
+import type { SizingData, CapturedValidation } from "@/hooks/use-trade-execution";
+import type { ValidationResult } from "@/hooks/use-trade-validation";
 
 // Mock opportunity
 const mockOpportunity: TradeOpportunity = {
@@ -56,11 +57,35 @@ const createMockSizing = (overrides: Partial<SizingData> = {}): SizingData => ({
   ...overrides,
 });
 
+// Mock validation result
+const mockValidation: ValidationResult = {
+  isLoading: false,
+  overallConfidence: 75,
+  checks: [],
+  fibLevels: [],
+  entryLevels: [],
+  targetLevels: [],
+  suggestedEntry: 42100,
+  suggestedStop: 41800,
+  suggestedTargets: [42700, 43000],
+};
+
+// Mock captured validation
+const mockCapturedValidation: CapturedValidation = {
+  entry: 42100,
+  stop: 41800,
+  targets: [42700, 43000],
+};
+
 describe("SizingPanel", () => {
   const defaultProps = {
     opportunity: mockOpportunity,
     sizing: createMockSizing(),
+    validation: mockValidation,
+    capturedValidation: mockCapturedValidation,
+    hasCapturedSuggestions: true,
     onUpdateSizing: vi.fn(),
+    onRestoreSuggested: vi.fn(),
     onBack: vi.fn(),
     onProceed: vi.fn(),
   };
@@ -227,8 +252,9 @@ describe("SizingPanel", () => {
     it("should show targets", () => {
       render(<SizingPanel {...defaultProps} />);
 
-      expect(screen.getByText(/target 1/i)).toBeInTheDocument();
-      expect(screen.getByText("42700")).toBeInTheDocument();
+      // Targets are labeled as T1, T2, etc.
+      expect(screen.getByText(/T1/)).toBeInTheDocument();
+      expect(screen.getByDisplayValue("42700")).toBeInTheDocument();
     });
 
     it("should call onUpdateSizing when entry changes", () => {
@@ -381,11 +407,11 @@ describe("SizingPanel", () => {
       expect(button).not.toBeDisabled();
     });
 
-    it("should be disabled when sizing is invalid", () => {
+    it("should be disabled when entry or stop not set", () => {
       render(
         <SizingPanel
           {...defaultProps}
-          sizing={createMockSizing({ isValid: false })}
+          sizing={createMockSizing({ entryPrice: 0, stopLoss: 0, isValid: false })}
         />
       );
 
@@ -397,12 +423,12 @@ describe("SizingPanel", () => {
       render(
         <SizingPanel
           {...defaultProps}
-          sizing={createMockSizing({ recommendation: "poor", isValid: false })}
+          sizing={createMockSizing({ recommendation: "poor", riskRewardRatio: 1.2, isValid: false })}
         />
       );
 
       expect(
-        screen.getByText(/r:r ratio must be at least 1.5/i)
+        screen.getByText(/Low R:R ratio/i)
       ).toBeInTheDocument();
     });
   });

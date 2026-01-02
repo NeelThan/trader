@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CandlestickChart, CandlestickChartHandle, PriceLine, LineOverlay, type ChartType } from "@/components/trading";
-import { RSIPane, MACDChart, PivotPointsEditor } from "@/components/chart-pro";
+import { RSIPane, MACDChart, PivotPointsEditor, LevelsTable } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
 import { useMultiTFLevels } from "@/hooks/use-multi-tf-levels";
@@ -103,6 +103,7 @@ export function WorkflowV2Layout({
   const [showConfluenceZones, setShowConfluenceZones] = useState(false);
   const [showFibLabels, setShowFibLabels] = useState(true);
   const [showFibLines, setShowFibLines] = useState(true); // Toggle to hide lines but keep zones
+  const [showLevelsTable, setShowLevelsTable] = useState(false); // Toggle to show Fib levels table
   const [chartType, setChartType] = useState<ChartType>("bar");
   const [isChartExpanded, setIsChartExpanded] = useState(false);
   const [confluenceTolerance, setConfluenceTolerance] = useState(0.2); // Default 0.2% tolerance
@@ -747,6 +748,18 @@ export function WorkflowV2Layout({
                       Zones
                     </button>
                     <button
+                      onClick={() => setShowLevelsTable(!showLevelsTable)}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        showLevelsTable
+                          ? "bg-blue-500/20 text-blue-400"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                      title="Toggle Fib levels table with calculations"
+                    >
+                      Lvl
+                    </button>
+                    <button
                       onClick={() => setShowIndicators(!showIndicators)}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
@@ -976,7 +989,7 @@ export function WorkflowV2Layout({
           </Card>
 
           {/* Analysis Panels - horizontal grid layout, doesn't overlay chart */}
-          {(showIndicators || showPivotEditor || showTrendPanel || showConfluenceZones) && (
+          {(showIndicators || showPivotEditor || showTrendPanel || showConfluenceZones || showLevelsTable) && (
             <div className="shrink-0 grid grid-cols-1 lg:grid-cols-3 gap-2">
               {/* Trend Alignment Panel */}
               {showTrendPanel && (
@@ -1120,6 +1133,26 @@ export function WorkflowV2Layout({
                         Enable more Fib levels to see clusters.
                       </div>
                     )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Levels Table Panel - Shows all Fib levels with calculations */}
+              {showLevelsTable && (
+                <Card className="shrink-0 lg:col-span-3">
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm flex items-center justify-between">
+                      <span>Fibonacci Levels</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {visibleLevels.length} visible
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 pt-0 max-h-[350px] overflow-y-auto">
+                    <LevelsTable
+                      levels={allLevels}
+                      visibilityConfig={visibilityConfig}
+                    />
                   </CardContent>
                 </Card>
               )}
