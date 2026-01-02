@@ -420,7 +420,6 @@ function AddEntryForm({
 }
 
 export default function JournalPage() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [showAddForm, setShowAddForm] = useState(false);
   const [symbolFilter, setSymbolFilter] = useState<string>("");
   const [showWorkflowImport, setShowWorkflowImport] = useState(false);
@@ -472,8 +471,7 @@ export default function JournalPage() {
   };
 
   return (
-    <div className={theme === "dark" ? "dark" : ""}>
-      <div className="min-h-screen bg-background text-foreground p-6">
+    <div className="min-h-screen bg-background text-foreground p-6">
         <div className="max-w-7xl mx-auto space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -485,10 +483,7 @@ export default function JournalPage() {
             </div>
             <div className="flex items-center gap-2">
               <NewTradeButton />
-              <ThemeToggle
-                theme={theme}
-                onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-              />
+              <ThemeToggle />
             </div>
           </div>
 
@@ -705,6 +700,5 @@ export default function JournalPage() {
           </div>
         </div>
       </div>
-    </div>
   );
 }

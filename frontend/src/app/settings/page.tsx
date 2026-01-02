@@ -127,11 +127,9 @@ function SelectSetting<T extends string>({
 
 export default function SettingsPage() {
   const { settings, setSettings, resetSettings } = useSettings();
-  const [pageTheme, setPageTheme] = useState<"dark" | "light">("dark");
 
   return (
-    <div className={pageTheme === "dark" ? "dark" : ""}>
-      <div className="min-h-screen bg-background text-foreground p-6">
+    <div className="min-h-screen bg-background text-foreground p-6">
         <div className="max-w-2xl mx-auto space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -164,10 +162,7 @@ export default function SettingsPage() {
                   </Button>
                 </Link>
               )}
-              <ThemeToggle
-                theme={pageTheme}
-                onToggle={() => setPageTheme(pageTheme === "dark" ? "light" : "dark")}
-              />
+              <ThemeToggle />
             </div>
           </div>
 
@@ -530,6 +525,5 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
-    </div>
   );
 }

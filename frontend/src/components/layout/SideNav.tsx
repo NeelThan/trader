@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useWorkflowManager } from "@/hooks/use-workflow-manager";
 
 type NavItem = {
@@ -31,11 +32,21 @@ const NAV_ITEMS: NavItem[] = [
     href: "/workflow",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
       </svg>
     ),
-    description: "Trading workflow",
+    description: "Start new workflow",
     action: "new-trade",
+  },
+  {
+    label: "Workflows",
+    href: "/workflow",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+      </svg>
+    ),
+    description: "View all workflows",
   },
   {
     label: "Chart",
@@ -239,7 +250,7 @@ export function SideNav() {
         </div>
 
         {/* Navigation */}
-        <nav className="p-2 space-y-1 overflow-y-auto h-[calc(100%-3.5rem)]">
+        <nav className="p-2 space-y-1 overflow-y-auto h-[calc(100%-7rem)]">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
 
@@ -275,7 +286,7 @@ export function SideNav() {
             if (item.action === "new-trade") {
               return (
                 <button
-                  key={item.href}
+                  key={item.label}
                   onClick={handleNewTrade}
                   className={itemClassName}
                   title={isCollapsed ? item.label : undefined}
@@ -287,7 +298,7 @@ export function SideNav() {
 
             return (
               <Link
-                key={item.href}
+                key={item.label}
                 href={item.href}
                 className={itemClassName}
                 title={isCollapsed ? item.label : undefined}
@@ -298,6 +309,26 @@ export function SideNav() {
             );
           })}
         </nav>
+
+        {/* Footer with theme toggle */}
+        <div className="absolute bottom-0 left-0 right-0 p-2 border-t border-border bg-card">
+          <div
+            className={cn(
+              "flex items-center gap-3 px-3 py-2",
+              isCollapsed && "lg:justify-center lg:px-2"
+            )}
+          >
+            <ThemeToggle />
+            <span
+              className={cn(
+                "text-sm text-muted-foreground",
+                isCollapsed && "lg:hidden"
+              )}
+            >
+              Theme
+            </span>
+          </div>
+        </div>
       </aside>
     </>
   );

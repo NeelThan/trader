@@ -22,13 +22,11 @@ import {
 type UnifiedHeaderProps = {
   symbol: MarketSymbol;
   timeframe: Timeframe;
-  theme: "light" | "dark";
   dataSource: DataSource;
   useBackendAPI: boolean;
   isUsingSimulatedData?: boolean; // True when displaying simulated data (rate limited or manual)
   onSymbolChange: (symbol: MarketSymbol) => void;
   onTimeframeChange: (timeframe: Timeframe) => void;
-  onThemeToggle: () => void;
   onDataSourceChange: (source: DataSource) => void;
   onBackendToggle: () => void;
 };
@@ -55,13 +53,11 @@ const TIMEFRAMES: { value: Timeframe; label: string }[] = [
 export function UnifiedHeader({
   symbol,
   timeframe,
-  theme,
   dataSource,
   useBackendAPI,
   isUsingSimulatedData = false,
   onSymbolChange,
   onTimeframeChange,
-  onThemeToggle,
   onDataSourceChange,
   onBackendToggle,
 }: UnifiedHeaderProps) {
@@ -194,7 +190,7 @@ export function UnifiedHeader({
         </div>
 
         {/* Theme Toggle */}
-        <ThemeToggle theme={theme} onToggle={onThemeToggle} />
+        <ThemeToggle />
       </div>
     </div>
   );

@@ -68,11 +68,9 @@ function ComponentDemo({ name, description, children }: { name: string; descript
 export default function ComponentsPage() {
   const [direction, setDirection] = useState<Direction>("buy");
   const [priceValue, setPriceValue] = useState("42350.50");
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   return (
-    <div className={theme === "dark" ? "dark" : ""}>
-      <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground">
         <div className="max-w-5xl mx-auto p-6 space-y-8">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -92,10 +90,7 @@ export default function ComponentsPage() {
               <Link href="/settings">
                 <Button variant="outline" size="sm">Settings</Button>
               </Link>
-              <ThemeToggle
-                theme={theme}
-                onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-              />
+              <ThemeToggle />
             </div>
           </div>
 
@@ -173,7 +168,7 @@ export default function ComponentsPage() {
             </ComponentDemo>
 
             <ComponentDemo name="ThemeToggle" description="Dark/light mode toggle">
-              <ThemeToggle theme={theme} onToggle={() => setTheme(theme === "dark" ? "light" : "dark")} />
+              <ThemeToggle />
             </ComponentDemo>
 
             <ComponentDemo name="Tooltip" description="Contextual information on hover">
@@ -467,7 +462,6 @@ export default function ComponentsPage() {
             </div>
           </Section>
         </div>
-      </div>
     </div>
   );
 }

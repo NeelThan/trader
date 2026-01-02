@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useTheme } from "next-themes";
 import { CandlestickChart, CandlestickChartHandle, ChartType } from "@/components/trading";
 import { useSettings, COLOR_SCHEMES, ColorScheme, DEFAULT_SETTINGS } from "@/hooks/use-settings";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
@@ -25,6 +26,7 @@ import {
 
 export default function ChartPage() {
   const { settings } = useSettings();
+  const { resolvedTheme, setTheme } = useTheme();
   const chartRef = useRef<CandlestickChartHandle>(null);
 
   // Core state
@@ -33,8 +35,10 @@ export default function ChartPage() {
   const [chartType, setChartType] = useState<ChartType>("candlestick");
   const [colorScheme, setColorScheme] = useState<ColorScheme>("blue-red");
   const [dataSource, setDataSource] = useState<DataSource>("yahoo");
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [useBackendAPI, setUseBackendAPI] = useState(true);
+
+  // Theme for chart (derived from next-themes)
+  const theme = resolvedTheme === "light" ? "light" : "dark";
 
   // Fibonacci state
   const [fibVisibility, setFibVisibility] = useState<FibonacciVisibility>({
@@ -105,7 +109,7 @@ export default function ChartPage() {
       }
       setSettingsApplied(true);
     }
-  }, [settings, settingsApplied]);
+  }, [settings, settingsApplied, setTheme]);
 
   // Market data (from centralized store)
   const {
@@ -230,23 +234,20 @@ export default function ChartPage() {
   }), [high, low, pivotA, pivotB, pivotC]);
 
   return (
-    <div className={theme === "dark" ? "dark" : ""}>
-      <div className="min-h-screen bg-background text-foreground">
-        <div className="max-w-7xl mx-auto p-4 space-y-4">
-          {/* Unified Header: Market, Timeframe, Settings, Navigation */}
-          <UnifiedHeader
-            symbol={symbol}
-            timeframe={timeframe}
-            theme={theme}
-            dataSource={dataSource}
-            useBackendAPI={useBackendAPI}
-            isUsingSimulatedData={isUsingSimulatedData}
-            onSymbolChange={setSymbol}
-            onTimeframeChange={setTimeframe}
-            onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-            onDataSourceChange={setDataSource}
-            onBackendToggle={() => setUseBackendAPI(!useBackendAPI)}
-          />
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="max-w-7xl mx-auto p-4 space-y-4">
+        {/* Unified Header: Market, Timeframe, Settings, Navigation */}
+        <UnifiedHeader
+          symbol={symbol}
+          timeframe={timeframe}
+          dataSource={dataSource}
+          useBackendAPI={useBackendAPI}
+          isUsingSimulatedData={isUsingSimulatedData}
+          onSymbolChange={setSymbol}
+          onTimeframeChange={setTimeframe}
+          onDataSourceChange={setDataSource}
+          onBackendToggle={() => setUseBackendAPI(!useBackendAPI)}
+        />
 
           {/* Main Content: Chart + Analysis */}
           <div className="space-y-4">
@@ -355,6 +356,5 @@ export default function ChartPage() {
           </div>
         </div>
       </div>
-    </div>
   );
 }

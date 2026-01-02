@@ -23,7 +23,6 @@ const SYMBOLS: { value: MarketSymbol; label: string }[] = [
 ];
 
 export default function TrendAnalysisPage() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [symbol, setSymbol] = useState<MarketSymbol>("DJI");
   const [hasMounted, setHasMounted] = useState(false);
 
@@ -49,35 +48,31 @@ export default function TrendAnalysisPage() {
   ).length;
 
   return (
-    <div className={theme === "dark" ? "dark" : ""}>
-      <div className="min-h-screen bg-background text-foreground p-6">
-        <div className="max-w-4xl mx-auto space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">Trend Analysis</h1>
-              <p className="text-muted-foreground">
-                Multi-timeframe trend alignment for{" "}
-                {MARKET_CONFIG[symbol].name}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Link href="/chart">
-                <Button variant="outline" size="sm">
-                  Back to Chart
-                </Button>
-              </Link>
-              <Link href="/position-sizing">
-                <Button variant="outline" size="sm">
-                  Position Sizing
-                </Button>
-              </Link>
-              <ThemeToggle
-                theme={theme}
-                onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-              />
-            </div>
+    <div className="min-h-screen bg-background text-foreground p-6">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Trend Analysis</h1>
+            <p className="text-muted-foreground">
+              Multi-timeframe trend alignment for{" "}
+              {MARKET_CONFIG[symbol].name}
+            </p>
           </div>
+          <div className="flex gap-2">
+            <Link href="/chart">
+              <Button variant="outline" size="sm">
+                Back to Chart
+              </Button>
+            </Link>
+            <Link href="/position-sizing">
+              <Button variant="outline" size="sm">
+                Position Sizing
+              </Button>
+            </Link>
+            <ThemeToggle />
+          </div>
+        </div>
 
           {/* Market Selection */}
           <div className="p-4 rounded-lg bg-card border">
@@ -182,6 +177,5 @@ export default function TrendAnalysisPage() {
           </div>
         </div>
       </div>
-    </div>
   );
 }

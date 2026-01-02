@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -42,7 +43,10 @@ export default function TradingViewPage() {
   const scriptLoadedRef = useRef(false);
   const [symbol, setSymbol] = useState<WidgetSymbol>("INDEX:DJI");
   const [interval, setInterval] = useState<Interval>("D");
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const { resolvedTheme } = useTheme();
+
+  // Theme for widget (derived from next-themes)
+  const theme = resolvedTheme === "light" ? "light" : "dark";
 
   // Generate a unique widget ID based on current settings
   const widgetId = `tradingview_widget_${symbol}_${interval}_${theme}`.replace(/[^a-zA-Z0-9_]/g, "_");
@@ -111,29 +115,25 @@ export default function TradingViewPage() {
   }, [symbol, interval, theme, widgetId]);
 
   return (
-    <div className={theme === "dark" ? "dark" : ""}>
-      <div className="min-h-screen bg-background text-foreground p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">TradingView Widget</h1>
-              <p className="text-muted-foreground">
-                Free embeddable TradingView chart with real market data
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Link href="/chart">
-                <Button variant="outline" size="sm">
-                  Custom Chart
-                </Button>
-              </Link>
-              <ThemeToggle
-                theme={theme}
-                onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-              />
-            </div>
+    <div className="min-h-screen bg-background text-foreground p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">TradingView Widget</h1>
+            <p className="text-muted-foreground">
+              Free embeddable TradingView chart with real market data
+            </p>
           </div>
+          <div className="flex gap-2">
+            <Link href="/chart">
+              <Button variant="outline" size="sm">
+                Custom Chart
+              </Button>
+            </Link>
+            <ThemeToggle />
+          </div>
+        </div>
 
           {/* Info Box */}
           <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
@@ -225,6 +225,5 @@ export default function TradingViewPage() {
           </div>
         </div>
       </div>
-    </div>
   );
 }

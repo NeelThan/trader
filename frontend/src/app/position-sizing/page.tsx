@@ -1,48 +1,41 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { PositionSizingCalculator } from "@/components/trading";
 
 export default function PositionSizingPage() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
-
   return (
-    <div className={theme === "dark" ? "dark" : ""}>
-      <div className="min-h-screen bg-background text-foreground p-6">
-        <div className="max-w-4xl mx-auto space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">Position Sizing Calculator</h1>
-              <p className="text-muted-foreground">
-                Calculate optimal position size based on your risk parameters
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Link href="/chart">
-                <Button variant="outline" size="sm">
-                  Chart
-                </Button>
-              </Link>
-              <Link href="/trend-analysis">
-                <Button variant="outline" size="sm">
-                  Trend Analysis
-                </Button>
-              </Link>
-              <Link href="/settings">
-                <Button variant="outline" size="sm">
-                  Settings
-                </Button>
-              </Link>
-              <ThemeToggle
-                theme={theme}
-                onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-              />
-            </div>
+    <div className="min-h-screen bg-background text-foreground p-6">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Position Sizing Calculator</h1>
+            <p className="text-muted-foreground">
+              Calculate optimal position size based on your risk parameters
+            </p>
           </div>
+          <div className="flex gap-2">
+            <Link href="/chart">
+              <Button variant="outline" size="sm">
+                Chart
+              </Button>
+            </Link>
+            <Link href="/trend-analysis">
+              <Button variant="outline" size="sm">
+                Trend Analysis
+              </Button>
+            </Link>
+            <Link href="/settings">
+              <Button variant="outline" size="sm">
+                Settings
+              </Button>
+            </Link>
+            <ThemeToggle />
+          </div>
+        </div>
 
           {/* Calculator */}
           <PositionSizingCalculator />
@@ -73,13 +66,12 @@ export default function PositionSizingPage() {
             </div>
           </div>
 
-          {/* Info */}
-          <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
-            <p className="text-sm text-muted-foreground">
-              Your account settings and trade parameters are saved automatically.
-              The next time you open this page, your settings will be restored.
-            </p>
-          </div>
+        {/* Info */}
+        <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
+          <p className="text-sm text-muted-foreground">
+            Your account settings and trade parameters are saved automatically.
+            The next time you open this page, your settings will be restored.
+          </p>
         </div>
       </div>
     </div>

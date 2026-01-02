@@ -8,15 +8,11 @@ import { MarketSymbol, Timeframe, MARKET_CONFIG, TIMEFRAME_CONFIG } from "@/lib/
 type ChartHeaderProps = {
   symbol: MarketSymbol;
   timeframe: Timeframe;
-  theme: "light" | "dark";
-  onThemeToggle: () => void;
 };
 
 export function ChartHeader({
   symbol,
   timeframe,
-  theme,
-  onThemeToggle,
 }: ChartHeaderProps) {
   return (
     <div className="flex items-center justify-between">
@@ -54,7 +50,7 @@ export function ChartHeader({
             TradingView
           </Button>
         </Link>
-        <ThemeToggle theme={theme} onToggle={onThemeToggle} />
+        <ThemeToggle />
       </div>
     </div>
   );
