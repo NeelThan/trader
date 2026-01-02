@@ -44,6 +44,7 @@ import {
 } from "@/lib/chart-pro/strategy-types";
 import { cn } from "@/lib/utils";
 import { TimeframeSettingsPopover } from "./TimeframeSettingsPopover";
+import { DataSourcePanel, DataSourceIndicator, type DataMode } from "./DataSourcePanel";
 import type { UseTradeDiscoveryResult, TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
 import type { WorkflowPhase } from "@/app/workflow-v2/page";
@@ -105,13 +106,65 @@ export function WorkflowV2Layout({
     }
   }, [opportunity, phase]);
 
+  // Data source mode
+  const [dataMode, setDataMode] = useState<DataMode>("live");
+  const [hasSimulatedData, setHasSimulatedData] = useState(false);
+  const [simulatedDataTimestamp, setSimulatedDataTimestamp] = useState<Date | null>(null);
+
+  // Check for simulated data on mount
+  useEffect(() => {
+    const stored = localStorage.getItem(`workflow-v2-simulated-${symbol}`);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setHasSimulatedData(true);
+        setSimulatedDataTimestamp(new Date(parsed.timestamp));
+      } catch {
+        setHasSimulatedData(false);
+      }
+    } else {
+      setHasSimulatedData(false);
+      setSimulatedDataTimestamp(null);
+    }
+  }, [symbol]);
+
   // Fetch market data for chart
-  const { data: marketData, isLoading: isLoadingData } = useMarketDataSubscription(
+  const {
+    data: marketData,
+    isLoading: isLoadingData,
+    isCached,
+    isRateLimited,
+    isBackendUnavailable,
+    isUsingSimulatedData,
+    countdown,
+    lastUpdated,
+    refreshNow,
+  } = useMarketDataSubscription(
     symbol,
     timeframe,
-    "yahoo",
-    { autoRefresh: true }
+    dataMode === "simulated" ? "simulated" : "yahoo",
+    { autoRefresh: dataMode === "live" }
   );
+
+  // Save current market data as simulated data
+  const handleSaveAsSimulated = useCallback(() => {
+    if (marketData.length === 0) return;
+
+    const simulatedData = {
+      symbol,
+      timeframe,
+      data: marketData,
+      timestamp: Date.now(),
+    };
+
+    localStorage.setItem(
+      `workflow-v2-simulated-${symbol}`,
+      JSON.stringify(simulatedData)
+    );
+
+    setHasSimulatedData(true);
+    setSimulatedDataTimestamp(new Date());
+  }, [marketData, symbol, timeframe]);
 
   // Visibility configuration for Fibonacci levels (persisted)
   // Note: Chart Pro config starts with all disabled. We enable common TFs for Workflow V2
@@ -404,6 +457,17 @@ export function WorkflowV2Layout({
 
           {/* Right section */}
           <div className="flex items-center gap-2">
+            {/* Data source controls */}
+            <DataSourcePanel
+              dataMode={dataMode}
+              onDataModeChange={setDataMode}
+              isRateLimited={isRateLimited}
+              isBackendUnavailable={isBackendUnavailable}
+              onSaveAsSimulated={handleSaveAsSimulated}
+              hasSimulatedData={hasSimulatedData}
+              simulatedDataTimestamp={simulatedDataTimestamp}
+            />
+
             {/* Stats - hide on mobile */}
             <span className="text-xs sm:text-sm text-muted-foreground hidden md:inline">
               {stats.activeCount} active / {stats.totalCount} opportunities
