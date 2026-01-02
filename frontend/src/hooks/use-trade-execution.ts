@@ -129,27 +129,63 @@ export function useTradeExecution({
     riskPercentage: 2,
   });
 
-  // Trade-specific overrides (entry, stop, targets)
+  // Captured validation values - stored when validation provides non-null values
+  // This persists even when validation hook becomes disabled (phase changes)
+  const [capturedValidation, setCapturedValidation] = useState<{
+    entry: number | null;
+    stop: number | null;
+    targets: number[];
+  }>({
+    entry: null,
+    stop: null,
+    targets: [],
+  });
+
+  // Trade-specific overrides (user edits)
   const [tradeOverrides, setTradeOverrides] = useState<{
     entryPrice?: number;
     stopLoss?: number;
     targets?: number[];
   }>({});
 
-  // Reset trade overrides when opportunity or validation changes
-  // This allows the new suggested values to take effect
+  // Capture validation values when they become available
+  // These persist even when validation is disabled (e.g., when moving to sizing phase)
   useEffect(() => {
+    if (validation.suggestedEntry !== null || validation.suggestedStop !== null || validation.suggestedTargets.length > 0) {
+      setCapturedValidation({
+        entry: validation.suggestedEntry,
+        stop: validation.suggestedStop,
+        targets: validation.suggestedTargets,
+      });
+    }
+  }, [validation.suggestedEntry, validation.suggestedStop, validation.suggestedTargets]);
+
+  // Reset captured values and overrides when opportunity changes
+  useEffect(() => {
+    setCapturedValidation({ entry: null, stop: null, targets: [] });
     setTradeOverrides({});
-  }, [opportunity?.id, validation.suggestedEntry, validation.suggestedStop]);
+  }, [opportunity?.id]);
 
   // Calculate full sizing data
   const sizing = useMemo((): SizingData => {
     const { accountBalance, riskPercentage } = accountSettings;
 
-    // Use overrides if user edited, otherwise use validation suggestions
-    const entryPrice = tradeOverrides.entryPrice ?? validation.suggestedEntry ?? 0;
-    const stopLoss = tradeOverrides.stopLoss ?? validation.suggestedStop ?? 0;
-    const targets = tradeOverrides.targets ?? validation.suggestedTargets ?? [];
+    // Priority: User overrides > Captured validation values > Current validation > Fallback
+    const entryPrice =
+      tradeOverrides.entryPrice ??
+      capturedValidation.entry ??
+      validation.suggestedEntry ??
+      0;
+    const stopLoss =
+      tradeOverrides.stopLoss ??
+      capturedValidation.stop ??
+      validation.suggestedStop ??
+      0;
+    const targets =
+      tradeOverrides.targets ??
+      (capturedValidation.targets.length > 0 ? capturedValidation.targets : null) ??
+      validation.suggestedTargets ??
+      [];
     const direction = opportunity?.direction ?? "long";
 
     const { positionSize, riskAmount, stopDistance } = calculatePositionSize(
@@ -176,7 +212,7 @@ export function useTradeExecution({
       recommendation,
       isValid,
     };
-  }, [accountSettings, tradeOverrides, validation, opportunity?.direction]);
+  }, [accountSettings, tradeOverrides, capturedValidation, validation, opportunity?.direction]);
 
   // Update sizing - route to appropriate state based on field
   const updateSizing = useCallback((updates: Partial<SizingData>) => {
