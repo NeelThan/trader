@@ -26,3 +26,11 @@ export type { ManagePanelProps } from "./ManagePanel";
 
 export { WatchlistPanel } from "./WatchlistPanel";
 export type { WatchlistPanelProps } from "./WatchlistPanel";
+
+export { LearnMoreModal } from "./LearnMoreModal";
+export type {
+  LearnMoreModalProps,
+  EducationalTopic,
+  TopicCategory,
+  DiagramType,
+} from "./LearnMoreModal";
