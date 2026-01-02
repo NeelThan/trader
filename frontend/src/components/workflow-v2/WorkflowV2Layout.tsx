@@ -491,7 +491,7 @@ export function WorkflowV2Layout({
           )}
         >
           {/* Main Chart - taller height */}
-          <Card className="flex flex-col min-h-[400px] lg:min-h-[500px]" style={{ flex: isChartExpanded ? "1 1 auto" : "2 1 0" }}>
+          <Card className="flex flex-col min-h-[450px] lg:min-h-[600px]" style={{ flex: isChartExpanded ? "1 1 auto" : "3 1 0" }}>
             <CardContent className="py-2 sm:py-3 shrink-0 border-b">
               <div className="flex flex-col gap-2">
                 {/* Controls Row */}

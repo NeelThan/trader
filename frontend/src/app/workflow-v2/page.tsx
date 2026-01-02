@@ -87,6 +87,7 @@ export default function WorkflowV2Page() {
             opportunities={discovery.opportunities}
             isLoading={discovery.isLoading}
             onSelectOpportunity={handleSelectOpportunity}
+            symbol={symbol}
           />
         );
       case "validate":

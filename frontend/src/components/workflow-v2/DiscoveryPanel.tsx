@@ -7,18 +7,82 @@
  * User clicks an opportunity to enter validation phase.
  */
 
-import { TrendingUp, TrendingDown, Zap, Clock } from "lucide-react";
+import { TrendingUp, TrendingDown, Zap, Clock, FlaskConical } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
+import type { MarketSymbol } from "@/lib/chart-constants";
 
 type DiscoveryPanelProps = {
   opportunities: TradeOpportunity[];
   isLoading: boolean;
   onSelectOpportunity: (opportunity: TradeOpportunity) => void;
+  /** Current symbol for test trades */
+  symbol?: MarketSymbol;
 };
+
+/**
+ * Create a mock trade opportunity for testing the validation flow
+ */
+function createTestOpportunity(symbol: MarketSymbol, direction: "long" | "short"): TradeOpportunity {
+  const isLong = direction === "long";
+  const id = `test-${direction}-${Date.now()}`;
+
+  return {
+    id,
+    symbol,
+    higherTimeframe: "1D",
+    lowerTimeframe: "4H",
+    direction,
+    confidence: 78,
+    tradingStyle: "swing",
+    description: isLong
+      ? "Test: Daily bullish trend with 4H pullback"
+      : "Test: Daily bearish trend with 4H rally",
+    reasoning: isLong
+      ? "Higher timeframe shows bullish structure (HH, HL). Lower timeframe is pulling back to key Fibonacci retracement level (61.8%). RSI showing oversold on 4H."
+      : "Higher timeframe shows bearish structure (LH, LL). Lower timeframe is rallying to key Fibonacci retracement level (50%). RSI showing overbought on 4H.",
+    isActive: true,
+    entryZone: isLong ? "support" : "resistance",
+    signal: {
+      id,
+      type: isLong ? "LONG" : "SHORT",
+      higherTF: "1D",
+      lowerTF: "4H",
+      pairName: "Daily/4H",
+      tradingStyle: "swing",
+      description: isLong ? "Buy pullback on 4H" : "Sell rally on 4H",
+      reasoning: isLong
+        ? "1D is bullish, 4H showing bearish pullback. Look for support levels."
+        : "1D is bearish, 4H showing bullish rally. Look for resistance levels.",
+      confidence: 78,
+      entryZone: isLong ? "support" : "resistance",
+      isActive: true,
+    },
+    higherTrend: {
+      timeframe: "1D",
+      trend: isLong ? "bullish" : "bearish",
+      confidence: 80,
+      swing: { signal: isLong ? "bullish" : "bearish" },
+      rsi: { signal: isLong ? "bullish" : "bearish", value: isLong ? 55 : 45 },
+      macd: { signal: isLong ? "bullish" : "bearish" },
+      isLoading: false,
+      error: null,
+    },
+    lowerTrend: {
+      timeframe: "4H",
+      trend: isLong ? "bearish" : "bullish", // Counter-trend for entry
+      confidence: 65,
+      swing: { signal: isLong ? "bearish" : "bullish" },
+      rsi: { signal: isLong ? "bearish" : "bullish", value: isLong ? 35 : 65 },
+      macd: { signal: isLong ? "bearish" : "bullish" },
+      isLoading: false,
+      error: null,
+    },
+  };
+}
 
 type OpportunityCardProps = {
   opportunity: TradeOpportunity;
@@ -88,9 +152,21 @@ export function DiscoveryPanel({
   opportunities,
   isLoading,
   onSelectOpportunity,
+  symbol = "DJI",
 }: DiscoveryPanelProps) {
   const activeOpportunities = opportunities.filter((o) => o.isActive);
   const waitingOpportunities = opportunities.filter((o) => !o.isActive);
+
+  // Test trade handlers
+  const handleTestLong = () => {
+    const testOpportunity = createTestOpportunity(symbol, "long");
+    onSelectOpportunity(testOpportunity);
+  };
+
+  const handleTestShort = () => {
+    const testOpportunity = createTestOpportunity(symbol, "short");
+    onSelectOpportunity(testOpportunity);
+  };
 
   if (isLoading) {
     return (
@@ -129,6 +205,39 @@ export function DiscoveryPanel({
           {activeOpportunities.length} active
         </Badge>
       </div>
+
+      {/* Test Trade Buttons - for testing validation flow */}
+      <Card className="bg-purple-500/10 border-purple-500/30">
+        <CardContent className="p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <FlaskConical className="w-4 h-4 text-purple-400" />
+            <span className="text-xs font-medium text-purple-300">Test Mode</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground mb-2">
+            Simulate a trade to test the validation and sizing flow
+          </p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleTestLong}
+              className="flex-1 text-xs border-green-500/50 text-green-400 hover:bg-green-500/20"
+            >
+              <TrendingUp className="w-3 h-3 mr-1" />
+              Test LONG
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleTestShort}
+              className="flex-1 text-xs border-red-500/50 text-red-400 hover:bg-red-500/20"
+            >
+              <TrendingDown className="w-3 h-3 mr-1" />
+              Test SHORT
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Active Opportunities */}
       {activeOpportunities.length > 0 && (
