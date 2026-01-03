@@ -7,17 +7,23 @@
  * User clicks an opportunity to enter validation phase.
  */
 
-import { TrendingUp, TrendingDown, Zap, Clock, FlaskConical } from "lucide-react";
+import { TrendingUp, TrendingDown, Zap, Clock, FlaskConical, AlertTriangle, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
-import type { MarketSymbol } from "@/lib/chart-constants";
+import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
 
 type DiscoveryPanelProps = {
   opportunities: TradeOpportunity[];
   isLoading: boolean;
+  /** Has any errors fetching trend data */
+  hasError?: boolean;
+  /** Error messages by timeframe */
+  errors?: { timeframe: Timeframe; error: string }[];
+  /** Refresh callback */
+  onRefresh?: () => void;
   onSelectOpportunity: (opportunity: TradeOpportunity) => void;
   /** Current symbol for test trades */
   symbol?: MarketSymbol;
@@ -151,6 +157,9 @@ function OpportunityCard({ opportunity, onSelect }: OpportunityCardProps) {
 export function DiscoveryPanel({
   opportunities,
   isLoading,
+  hasError = false,
+  errors = [],
+  onRefresh,
   onSelectOpportunity,
   symbol = "DJI",
 }: DiscoveryPanelProps) {
@@ -182,22 +191,60 @@ export function DiscoveryPanel({
     );
   }
 
+  // Show error banner if any timeframes failed
+  const ErrorBanner = hasError ? (
+    <Card className="bg-amber-500/10 border-amber-500/30">
+      <CardContent className="p-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <span className="text-xs font-medium text-amber-300">
+              Some data unavailable
+            </span>
+          </div>
+          {onRefresh && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onRefresh}
+              className="h-6 px-2 text-xs text-amber-400 hover:text-amber-300"
+            >
+              <RefreshCw className="w-3 h-3 mr-1" />
+              Retry
+            </Button>
+          )}
+        </div>
+        {errors.length > 0 && (
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Failed: {errors.map((e) => e.timeframe).join(", ")}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  ) : null;
+
   if (opportunities.length === 0) {
     return (
-      <Card className="bg-muted/20">
-        <CardContent className="py-8 text-center">
-          <Clock className="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-50" />
-          <p className="text-sm text-muted-foreground">No opportunities found</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Waiting for trend alignment...
-          </p>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {ErrorBanner}
+        <Card className="bg-muted/20">
+          <CardContent className="py-8 text-center">
+            <Clock className="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-50" />
+            <p className="text-sm text-muted-foreground">No opportunities found</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Waiting for trend alignment...
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      {/* Error Banner (if any timeframes failed) */}
+      {ErrorBanner}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Trade Opportunities</h2>
