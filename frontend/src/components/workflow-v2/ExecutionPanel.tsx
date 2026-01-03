@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { formatPriceSimple } from "@/lib/format-utils";
 import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { SizingData } from "@/hooks/use-trade-execution";
 import type { ValidationResult } from "@/hooks/use-trade-validation";
@@ -55,13 +56,6 @@ function formatRecommendation(
   recommendation: SizingData["recommendation"]
 ): string {
   return recommendation.charAt(0).toUpperCase() + recommendation.slice(1);
-}
-
-/**
- * Format price to 2 decimal places
- */
-function formatPrice(price: number): string {
-  return price.toFixed(2);
 }
 
 export function ExecutionPanel({
@@ -132,19 +126,19 @@ export function ExecutionPanel({
         <CardContent className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Entry</span>
-            <span className="font-medium">{formatPrice(sizing.entryPrice)}</span>
+            <span className="font-medium">{formatPriceSimple(sizing.entryPrice)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Stop Loss</span>
             <span className="font-medium text-red-400">
-              {formatPrice(sizing.stopLoss)}
+              {formatPriceSimple(sizing.stopLoss)}
             </span>
           </div>
           {sizing.targets.map((target, index) => (
             <div key={index} className="flex justify-between text-sm">
               <span className="text-muted-foreground">Target {index + 1}</span>
               <span className="font-medium text-green-400">
-                {formatPrice(target)}
+                {formatPriceSimple(target)}
               </span>
             </div>
           ))}

@@ -55,6 +55,10 @@ export type UseTradeDiscoveryResult = {
   activeOpportunities: TradeOpportunity[];
   /** Is loading data */
   isLoading: boolean;
+  /** Has any errors */
+  hasError: boolean;
+  /** Error messages by timeframe */
+  errors: { timeframe: Timeframe; error: string }[];
   /** Trend data by timeframe */
   trends: TimeframeTrend[];
   /** Refresh data */
@@ -131,10 +135,21 @@ export function useTradeDiscovery({
     return opportunities.filter((opp) => opp.isActive);
   }, [opportunities]);
 
+  // Collect errors from trends
+  const errors = useMemo(() => {
+    return trends
+      .filter((t) => t.error !== null)
+      .map((t) => ({ timeframe: t.timeframe, error: t.error! }));
+  }, [trends]);
+
+  const hasError = errors.length > 0;
+
   return {
     opportunities,
     activeOpportunities,
     isLoading: isLoadingTrends,
+    hasError,
+    errors,
     trends,
     refresh,
   };

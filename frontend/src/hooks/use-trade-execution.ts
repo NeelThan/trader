@@ -7,6 +7,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { createJournalEntry, type JournalEntryRequest } from "@/lib/api";
+import { withRetry, formatRetryError, DEFAULT_RETRY_CONFIG } from "@/lib/retry";
 import type { TradeOpportunity } from "./use-trade-discovery";
 import type { ValidationResult } from "./use-trade-validation";
 
@@ -36,12 +37,25 @@ export type SizingData = {
   recommendation: "excellent" | "good" | "marginal" | "poor";
   /** Is the sizing valid */
   isValid: boolean;
+  /** Guardrail warnings (position/risk adjustments) */
+  guardrailWarnings: string[];
 };
 
 export type UseTradeExecutionOptions = {
   opportunity: TradeOpportunity | null;
   validation: ValidationResult;
   enabled: boolean;
+  /** Initial account settings (from persisted state) */
+  initialAccountSettings?: {
+    accountBalance: number;
+    riskPercentage: number;
+  };
+  /** Initial sizing overrides (from persisted state) */
+  initialSizingOverrides?: {
+    entryPrice?: number;
+    stopLoss?: number;
+    targets?: number[];
+  };
 };
 
 /**
@@ -60,6 +74,14 @@ export type UseTradeExecutionResult = {
   capturedValidation: CapturedValidation;
   /** Whether there are captured suggested values available */
   hasCapturedSuggestions: boolean;
+  /** User's explicit trade overrides (for persistence) */
+  tradeOverrides: {
+    entryPrice?: number;
+    stopLoss?: number;
+    targets?: number[];
+  };
+  /** Journal entry ID from execution (for updating on close) */
+  journalEntryId: string | null;
   /** Update sizing parameters */
   updateSizing: (updates: Partial<SizingData>) => void;
   /** Restore suggested values from validation */
@@ -73,6 +95,18 @@ export type UseTradeExecutionResult = {
 };
 
 /**
+ * Position sizing guardrails
+ */
+const GUARDRAILS = {
+  /** Maximum allowed risk percentage per trade */
+  maxRiskPercentage: 5,
+  /** Minimum risk percentage (avoid dust trades) */
+  minRiskPercentage: 0.1,
+  /** Maximum position value as percentage of account */
+  maxPositionPercentage: 50,
+};
+
+/**
  * Calculate position size from risk parameters
  */
 function calculatePositionSize(
@@ -80,16 +114,40 @@ function calculatePositionSize(
   riskPercentage: number,
   entryPrice: number,
   stopLoss: number
-): { positionSize: number; riskAmount: number; stopDistance: number } {
-  const riskAmount = accountBalance * (riskPercentage / 100);
+): { positionSize: number; riskAmount: number; stopDistance: number; guardrailWarnings: string[] } {
+  const guardrailWarnings: string[] = [];
+
+  // Apply risk percentage guardrails
+  const clampedRiskPercentage = Math.min(
+    Math.max(riskPercentage, GUARDRAILS.minRiskPercentage),
+    GUARDRAILS.maxRiskPercentage
+  );
+
+  if (riskPercentage > GUARDRAILS.maxRiskPercentage) {
+    guardrailWarnings.push(`Risk capped at ${GUARDRAILS.maxRiskPercentage}% (was ${riskPercentage}%)`);
+  }
+
+  const riskAmount = accountBalance * (clampedRiskPercentage / 100);
   const stopDistance = Math.abs(entryPrice - stopLoss);
 
   if (stopDistance === 0) {
-    return { positionSize: 0, riskAmount, stopDistance: 0 };
+    return { positionSize: 0, riskAmount, stopDistance: 0, guardrailWarnings };
   }
 
-  const positionSize = riskAmount / stopDistance;
-  return { positionSize, riskAmount, stopDistance };
+  let positionSize = riskAmount / stopDistance;
+
+  // Check if position value exceeds maximum percentage of account
+  const positionValue = positionSize * entryPrice;
+  const maxPositionValue = accountBalance * (GUARDRAILS.maxPositionPercentage / 100);
+
+  if (positionValue > maxPositionValue) {
+    positionSize = maxPositionValue / entryPrice;
+    guardrailWarnings.push(
+      `Position size reduced to stay under ${GUARDRAILS.maxPositionPercentage}% of account`
+    );
+  }
+
+  return { positionSize, riskAmount, stopDistance, guardrailWarnings };
 }
 
 /**
@@ -134,14 +192,18 @@ export function useTradeExecution({
   opportunity,
   validation,
   enabled,
+  initialAccountSettings,
+  initialSizingOverrides,
 }: UseTradeExecutionOptions): UseTradeExecutionResult {
   const [isExecuting, setIsExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [journalEntryId, setJournalEntryId] = useState<string | null>(null);
 
   // Initialize sizing - separate account settings from trade-specific values
+  // Use initial values from persisted state if provided
   const [accountSettings, setAccountSettings] = useState({
-    accountBalance: 10000,
-    riskPercentage: 2,
+    accountBalance: initialAccountSettings?.accountBalance ?? 10000,
+    riskPercentage: initialAccountSettings?.riskPercentage ?? 2,
   });
 
   // Captured validation values - stored when validation provides non-null values
@@ -157,11 +219,12 @@ export function useTradeExecution({
   });
 
   // Trade-specific overrides (user edits)
+  // Initialize with persisted overrides if provided
   const [tradeOverrides, setTradeOverrides] = useState<{
     entryPrice?: number;
     stopLoss?: number;
     targets?: number[];
-  }>({});
+  }>(initialSizingOverrides ?? {});
 
   // Capture validation values when they become available
   // These persist even when validation is disabled (e.g., when moving to sizing phase)
@@ -175,10 +238,11 @@ export function useTradeExecution({
     }
   }, [validation.suggestedEntry, validation.suggestedStop, validation.suggestedTargets]);
 
-  // Reset captured values and overrides when opportunity changes
+  // Reset captured values, overrides, and journal entry ID when opportunity changes
   useEffect(() => {
     setCapturedValidation({ entry: null, stop: null, targets: [] });
     setTradeOverrides({});
+    setJournalEntryId(null);
   }, [opportunity?.id]);
 
   // Calculate full sizing data
@@ -203,7 +267,7 @@ export function useTradeExecution({
       [];
     const direction = opportunity?.direction ?? "long";
 
-    const { positionSize, riskAmount, stopDistance } = calculatePositionSize(
+    const { positionSize, riskAmount, stopDistance, guardrailWarnings } = calculatePositionSize(
       accountBalance,
       riskPercentage,
       entryPrice,
@@ -212,9 +276,15 @@ export function useTradeExecution({
 
     const riskRewardRatio = calculateRiskReward(entryPrice, stopLoss, targets, direction);
     const recommendation = getRecommendation(riskRewardRatio);
-    // isValid = basic requirements met (entry and stop set, position size calculated)
-    // This allows proceeding even with poor R:R - user just sees warning
-    const isValid = entryPrice > 0 && stopLoss > 0 && positionSize > 0;
+
+    // Direction validation: stop must be on correct side of entry
+    const isStopOnCorrectSide =
+      entryPrice === 0 ||
+      stopLoss === 0 ||
+      (direction === "long" ? stopLoss < entryPrice : stopLoss > entryPrice);
+
+    // isValid = basic requirements met (entry/stop set, position size calculated, stop on correct side)
+    const isValid = entryPrice > 0 && stopLoss > 0 && positionSize > 0 && isStopOnCorrectSide;
 
     return {
       accountBalance,
@@ -228,6 +298,7 @@ export function useTradeExecution({
       stopDistance,
       recommendation,
       isValid,
+      guardrailWarnings,
     };
   }, [accountSettings, tradeOverrides, capturedValidation, validation, opportunity?.direction]);
 
@@ -262,7 +333,7 @@ export function useTradeExecution({
     setTradeOverrides({});
   }, []);
 
-  // Execute trade and journal it
+  // Execute trade and journal it (with retry logic for network resilience)
   const execute = useCallback(async (): Promise<boolean> => {
     if (!opportunity) {
       setError("No opportunity selected");
@@ -293,11 +364,14 @@ export function useTradeExecution({
         notes: `${opportunity.description}\n\nReasoning: ${opportunity.reasoning}`,
       };
 
-      await createJournalEntry(entry);
+      // Use retry logic for network resilience
+      const response = await withRetry(() => createJournalEntry(entry));
+      // Store the entry ID so we can update it when trade closes
+      setJournalEntryId(response.entry.id);
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to execute trade";
-      setError(message);
+      setError(formatRetryError(message, DEFAULT_RETRY_CONFIG));
       return false;
     } finally {
       setIsExecuting(false);
@@ -314,6 +388,8 @@ export function useTradeExecution({
     sizing,
     capturedValidation,
     hasCapturedSuggestions,
+    tradeOverrides,
+    journalEntryId,
     updateSizing,
     restoreSuggested,
     execute,

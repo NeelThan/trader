@@ -53,6 +53,7 @@ const createMockSizing = (overrides: Partial<SizingData> = {}): SizingData => ({
   stopDistance: 300,
   recommendation: "good",
   isValid: true,
+  guardrailWarnings: [],
   ...overrides,
 });
 

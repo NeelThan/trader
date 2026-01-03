@@ -75,6 +75,12 @@ export function SizingPanel({
   const isHighRisk = sizing.riskPercentage > 3;
   const [newTarget, setNewTarget] = useState("");
 
+  // Direction validation: stop must be on correct side of entry
+  const isStopOnWrongSide =
+    sizing.entryPrice > 0 &&
+    sizing.stopLoss > 0 &&
+    (isLong ? sizing.stopLoss >= sizing.entryPrice : sizing.stopLoss <= sizing.entryPrice);
+
   // Use captured validation values (they persist when validation is disabled)
   const suggestedEntry = capturedValidation.entry ?? validation.suggestedEntry;
   const suggestedStop = capturedValidation.stop ?? validation.suggestedStop;
@@ -364,37 +370,52 @@ export function SizingPanel({
         </CardContent>
       </Card>
 
-      {/* Warnings - informational only, don't block proceeding */}
+      {/* Warnings and Errors */}
       <div className="space-y-2">
+        {isStopOnWrongSide && (
+          <div className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded border border-red-400/30">
+            Stop loss must be {isLong ? "below" : "above"} entry for {isLong ? "long" : "short"} trades.
+          </div>
+        )}
+        {sizing.guardrailWarnings.map((warning, index) => (
+          <div key={index} className="text-sm text-blue-400 bg-blue-400/10 px-3 py-2 rounded border border-blue-400/30">
+            {warning}
+          </div>
+        ))}
         {isHighRisk && (
           <div className="text-sm text-amber-400 bg-amber-400/10 px-3 py-2 rounded">
-            ⚠️ High risk: You are risking more than 3% of your account on this trade.
+            High risk: You are risking more than 3% of your account on this trade.
           </div>
         )}
         {sizing.recommendation === "poor" && sizing.riskRewardRatio > 0 && (
           <div className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded">
-            ⚠️ Low R:R ratio ({sizing.riskRewardRatio.toFixed(2)}). Consider adjusting targets or stop loss.
+            Low R:R ratio ({sizing.riskRewardRatio.toFixed(2)}). Consider adjusting targets or stop loss.
           </div>
         )}
         {sizing.targets.length === 0 && (
           <div className="text-sm text-amber-400 bg-amber-400/10 px-3 py-2 rounded">
-            ⚠️ No targets set. Consider adding at least one profit target.
+            No targets set. Consider adding at least one profit target.
           </div>
         )}
       </div>
 
-      {/* Proceed Button - always enabled if entry/stop are set */}
+      {/* Proceed Button */}
       <div className="space-y-2">
         <Button
           className="w-full"
           onClick={onProceed}
-          disabled={sizing.entryPrice <= 0 || sizing.stopLoss <= 0}
+          disabled={sizing.entryPrice <= 0 || sizing.stopLoss <= 0 || isStopOnWrongSide}
         >
           Proceed to Execution
         </Button>
         {(sizing.entryPrice <= 0 || sizing.stopLoss <= 0) && (
           <p className="text-sm text-muted-foreground text-center">
             Set entry price and stop loss to proceed
+          </p>
+        )}
+        {isStopOnWrongSide && (
+          <p className="text-sm text-muted-foreground text-center">
+            Fix stop loss position to proceed
           </p>
         )}
       </div>

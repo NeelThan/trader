@@ -54,15 +54,17 @@ const createMockSizing = (overrides: Partial<SizingData> = {}): SizingData => ({
   stopDistance: 300,
   recommendation: "good",
   isValid: true,
+  guardrailWarnings: [],
   ...overrides,
 });
 
 // Mock validation result
 const mockValidation: ValidationResult = {
-  isLoading: false,
-  overallConfidence: 75,
   checks: [],
-  fibLevels: [],
+  passedCount: 4,
+  totalCount: 5,
+  isValid: true,
+  passPercentage: 80,
   entryLevels: [],
   targetLevels: [],
   suggestedEntry: 42100,
