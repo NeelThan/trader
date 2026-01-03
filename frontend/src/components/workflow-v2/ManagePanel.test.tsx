@@ -53,13 +53,20 @@ const createMockSizing = (overrides: Partial<SizingData> = {}): SizingData => ({
   stopDistance: 5,
   recommendation: "good",
   isValid: true,
+  guardrailWarnings: [],
   ...overrides,
 });
+
+// Mock the API client
+vi.mock("@/lib/api", () => ({
+  updateJournalEntry: vi.fn().mockResolvedValue({ entry: { id: "test-entry-id" } }),
+}));
 
 describe("ManagePanel", () => {
   const defaultProps = {
     opportunity: mockOpportunity,
     sizing: createMockSizing(),
+    journalEntryId: "test-entry-id",
     onClose: vi.fn(),
   };
 
@@ -472,6 +479,33 @@ describe("ManagePanel", () => {
       expect(
         screen.queryByRole("button", { name: /finish/i })
       ).not.toBeInTheDocument();
+    });
+  });
+
+  // ===========================================================================
+  // Journal Integration
+  // ===========================================================================
+
+  describe("journal integration", () => {
+    it("should show saved to journal after closing", async () => {
+      render(<ManagePanel {...defaultProps} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /start trade/i }));
+      fireEvent.click(screen.getByRole("button", { name: /close trade/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/saved to journal/i)).toBeInTheDocument();
+      });
+    });
+
+    it("should show message when no journal entry linked", () => {
+      const propsWithoutJournal = { ...defaultProps, journalEntryId: null };
+      render(<ManagePanel {...propsWithoutJournal} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /start trade/i }));
+      fireEvent.click(screen.getByRole("button", { name: /close trade/i }));
+
+      expect(screen.getByText(/no journal entry linked/i)).toBeInTheDocument();
     });
   });
 

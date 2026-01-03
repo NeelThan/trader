@@ -7,30 +7,28 @@
 
 "use client";
 
-import { useState } from "react";
-import { Target, Shield, TrendingUp, X, Plus } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Target, Shield, TrendingUp, X, Plus, CheckCircle, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TradeLog } from "@/components/ui/trade-log";
 import { cn } from "@/lib/utils";
+import { formatPriceSimple } from "@/lib/format-utils";
+import { withRetry } from "@/lib/retry";
 import { useTradeManagement } from "@/hooks/use-trade-management";
+import { updateJournalEntry } from "@/lib/api";
 import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { SizingData } from "@/hooks/use-trade-execution";
 
 export type ManagePanelProps = {
   opportunity: TradeOpportunity;
   sizing: SizingData;
+  journalEntryId: string | null;
   onClose: () => void;
 };
-
-/**
- * Format price to 2 decimal places
- */
-function formatPrice(price: number): string {
-  return price.toFixed(2);
-}
 
 /**
  * Format currency amount
@@ -80,10 +78,11 @@ function formatStatus(status: string): string {
   }
 }
 
-export function ManagePanel({ opportunity, sizing, onClose }: ManagePanelProps) {
+export function ManagePanel({ opportunity, sizing, journalEntryId, onClose }: ManagePanelProps) {
   const isLong = opportunity.direction === "long";
   const [noteInput, setNoteInput] = useState("");
   const [priceInput, setPriceInput] = useState(sizing.entryPrice.toString());
+  const [journalUpdateStatus, setJournalUpdateStatus] = useState<"idle" | "updating" | "success" | "error">("idle");
 
   const {
     status,
@@ -92,6 +91,7 @@ export function ManagePanel({ opportunity, sizing, onClose }: ManagePanelProps) 
     rMultiple,
     freeTradeActive,
     trailingEnabled,
+    trailingDistanceR,
     trailingStopPrice,
     effectiveStopPrice,
     tradeLog,
@@ -99,6 +99,7 @@ export function ManagePanel({ opportunity, sizing, onClose }: ManagePanelProps) 
     updateCurrentPrice,
     moveToBreakeven,
     enableTrailingStop,
+    setTrailingDistanceR,
     closeTrade,
     addNote,
   } = useTradeManagement({ opportunity, sizing });
@@ -125,9 +126,45 @@ export function ManagePanel({ opportunity, sizing, onClose }: ManagePanelProps) 
     }
   };
 
-  const handleCloseTrade = () => {
-    closeTrade("Manually closed");
-  };
+  // Update the journal entry with exit data when trade is closed (with retry)
+  const updateJournalOnClose = useCallback(
+    async (exitPrice: number, exitReason: string) => {
+      if (!journalEntryId) {
+        console.warn("No journal entry ID - cannot update journal");
+        return;
+      }
+
+      setJournalUpdateStatus("updating");
+      try {
+        // Compile notes from trade log
+        const tradeNotes = tradeLog
+          .map((entry) => `[${new Date(entry.timestamp).toLocaleTimeString()}] ${entry.note}`)
+          .join("\n");
+
+        // Use retry logic for network resilience
+        await withRetry(() =>
+          updateJournalEntry(journalEntryId, {
+            exit_price: exitPrice,
+            exit_time: new Date().toISOString(),
+            exit_reason: exitReason,
+            notes: tradeNotes || undefined,
+          })
+        );
+        setJournalUpdateStatus("success");
+      } catch (error) {
+        console.error("Failed to update journal entry after retries:", error);
+        setJournalUpdateStatus("error");
+      }
+    },
+    [journalEntryId, tradeLog]
+  );
+
+  const handleCloseTrade = useCallback(() => {
+    const exitReason = "Manually closed";
+    closeTrade(exitReason);
+    // Update the journal with the exit data
+    void updateJournalOnClose(currentPrice, exitReason);
+  }, [closeTrade, currentPrice, updateJournalOnClose]);
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -185,23 +222,23 @@ export function ManagePanel({ opportunity, sizing, onClose }: ManagePanelProps) 
         <CardContent className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Current Price</span>
-            <span className="font-medium">{formatPrice(currentPrice)}</span>
+            <span className="font-medium">{formatPriceSimple(currentPrice)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Entry</span>
-            <span className="font-medium">{formatPrice(sizing.entryPrice)}</span>
+            <span className="font-medium">{formatPriceSimple(sizing.entryPrice)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Stop</span>
             <span className="font-medium text-red-400">
-              {formatPrice(effectiveStopPrice)}
+              {formatPriceSimple(effectiveStopPrice)}
             </span>
           </div>
           {trailingEnabled && trailingStopPrice !== null && (
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Trail:</span>
               <span className="font-medium text-purple-400">
-                {formatPrice(trailingStopPrice)}
+                {formatPriceSimple(trailingStopPrice)}
               </span>
             </div>
           )}
@@ -235,12 +272,44 @@ export function ManagePanel({ opportunity, sizing, onClose }: ManagePanelProps) 
             <div key={index} className="flex justify-between text-sm">
               <span className="text-muted-foreground">Target {index + 1}</span>
               <span className="font-medium text-green-400">
-                {formatPrice(target)}
+                {formatPriceSimple(target)}
               </span>
             </div>
           ))}
         </CardContent>
       </Card>
+
+      {/* Trailing Stop Configuration */}
+      {canManage && !trailingEnabled && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-1">
+              <Settings className="h-4 w-4" />
+              Trailing Stop Distance
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center gap-3">
+            <Input
+              type="number"
+              value={trailingDistanceR}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value);
+                if (!isNaN(value) && value > 0 && value <= 2) {
+                  setTrailingDistanceR(value);
+                }
+              }}
+              min={0.1}
+              max={2}
+              step={0.1}
+              className="w-20"
+            />
+            <span className="text-sm text-muted-foreground">× Risk (R)</span>
+            <div className="flex-1 text-right text-xs text-muted-foreground">
+              Stop trails {trailingDistanceR}R behind price
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Action Buttons */}
       <div className="grid grid-cols-2 gap-2">
@@ -263,7 +332,7 @@ export function ManagePanel({ opportunity, sizing, onClose }: ManagePanelProps) 
           disabled={isPending || isClosed || trailingEnabled}
         >
           <TrendingUp className="mr-1 h-4 w-4" />
-          Trailing
+          Trailing ({trailingDistanceR}R)
         </Button>
         <Button
           variant="destructive"
@@ -295,37 +364,41 @@ export function ManagePanel({ opportunity, sizing, onClose }: ManagePanelProps) 
       </Card>
 
       {/* Trade Log */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Trade Log</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {tradeLog.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No entries yet</p>
-          ) : (
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              {tradeLog.map((entry, index) => (
-                <div
-                  key={index}
-                  className="text-sm border-l-2 border-muted pl-2 py-1"
-                >
-                  <div className="font-medium">{entry.note}</div>
-                  <div className="text-xs text-muted-foreground">
-                    @ {formatPrice(entry.price)} -{" "}
-                    {new Date(entry.timestamp).toLocaleTimeString()}
-                  </div>
-                </div>
-              ))}
+      <TradeLog entries={tradeLog} maxHeight="10rem" />
+
+      {/* Journal Status and Finish Button (only when closed) */}
+      {isClosed && (
+        <div className="space-y-2">
+          {/* Journal save status */}
+          {journalEntryId && (
+            <div className="flex items-center gap-2 text-sm">
+              {journalUpdateStatus === "updating" && (
+                <Badge variant="outline" className="text-blue-400 border-blue-400">
+                  Saving to journal...
+                </Badge>
+              )}
+              {journalUpdateStatus === "success" && (
+                <Badge variant="outline" className="text-green-400 border-green-400">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Saved to journal
+                </Badge>
+              )}
+              {journalUpdateStatus === "error" && (
+                <Badge variant="outline" className="text-red-400 border-red-400">
+                  Failed to save
+                </Badge>
+              )}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Finish Button (only when closed) */}
-      {isClosed && (
-        <Button onClick={onClose} className="w-full">
-          Finish
-        </Button>
+          {!journalEntryId && (
+            <p className="text-xs text-muted-foreground">
+              No journal entry linked (paper trading only)
+            </p>
+          )}
+          <Button onClick={onClose} className="w-full">
+            Finish
+          </Button>
+        </div>
       )}
     </div>
   );

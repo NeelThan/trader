@@ -42,9 +42,16 @@ export type TradeLogEntry = {
   timestamp: string;
 };
 
+/**
+ * Default trailing stop distance as R-multiple (0.5 = 50% of risk)
+ */
+export const DEFAULT_TRAILING_DISTANCE_R = 0.5;
+
 export type UseTradeManagementOptions = {
   opportunity: TradeOpportunity;
   sizing: SizingData;
+  /** Initial trailing stop distance as R-multiple (default: 0.5) */
+  initialTrailingDistanceR?: number;
 };
 
 export type UseTradeManagementResult = {
@@ -62,6 +69,8 @@ export type UseTradeManagementResult = {
   freeTradeActive: boolean;
   /** Whether trailing stop is enabled */
   trailingEnabled: boolean;
+  /** Trailing stop distance as R-multiple */
+  trailingDistanceR: number;
   /** Current trailing stop price */
   trailingStopPrice: number | null;
   /** Effective stop price (original, breakeven, or trailing) */
@@ -76,6 +85,8 @@ export type UseTradeManagementResult = {
   moveToBreakeven: () => void;
   /** Enable trailing stop */
   enableTrailingStop: () => void;
+  /** Set trailing stop distance (R-multiple) */
+  setTrailingDistanceR: (distanceR: number) => void;
   /** Close the trade */
   closeTrade: (reason: string) => void;
   /** Add a note to the trade log */
@@ -88,6 +99,7 @@ export type UseTradeManagementResult = {
 export function useTradeManagement({
   opportunity,
   sizing,
+  initialTrailingDistanceR = DEFAULT_TRAILING_DISTANCE_R,
 }: UseTradeManagementOptions): UseTradeManagementResult {
   const isLong = opportunity.direction === "long";
   const riskPerUnit = Math.abs(sizing.entryPrice - sizing.stopLoss);
@@ -97,6 +109,7 @@ export function useTradeManagement({
   const [currentPrice, setCurrentPrice] = useState(sizing.entryPrice);
   const [freeTradeActive, setFreeTradeActive] = useState(false);
   const [trailingEnabled, setTrailingEnabled] = useState(false);
+  const [trailingDistanceR, setTrailingDistanceR] = useState(initialTrailingDistanceR);
   const [trailingStopPrice, setTrailingStopPrice] = useState<number | null>(null);
   const [tradeLog, setTradeLog] = useState<TradeLogEntry[]>([]);
 
@@ -113,6 +126,8 @@ export function useTradeManagement({
   freeTradeActiveRef.current = freeTradeActive;
   const trailingEnabledRef = useRef(trailingEnabled);
   trailingEnabledRef.current = trailingEnabled;
+  const trailingDistanceRRef = useRef(trailingDistanceR);
+  trailingDistanceRRef.current = trailingDistanceR;
   const trailingStopPriceRef = useRef(trailingStopPrice);
   trailingStopPriceRef.current = trailingStopPrice;
   /* eslint-enable react-hooks/refs */
@@ -218,10 +233,11 @@ export function useTradeManagement({
       // Update trailing stop if enabled
       const isTrailingEnabled = trailingEnabledRef.current;
       const currentTrailingStopPrice = trailingStopPriceRef.current;
+      const currentTrailingDistanceR = trailingDistanceRRef.current;
       if (isTrailingEnabled && currentTrailingStopPrice !== null) {
         const newTrailPrice = isLong
-          ? Math.max(currentTrailingStopPrice, price - riskPerUnit * 0.5)
-          : Math.min(currentTrailingStopPrice, price + riskPerUnit * 0.5);
+          ? Math.max(currentTrailingStopPrice, price - riskPerUnit * currentTrailingDistanceR)
+          : Math.min(currentTrailingStopPrice, price + riskPerUnit * currentTrailingDistanceR);
 
         if (newTrailPrice !== currentTrailingStopPrice) {
           setTrailingStopPrice(newTrailPrice);
@@ -263,17 +279,18 @@ export function useTradeManagement({
   const enableTrailingStop = useCallback(() => {
     if (statusRef.current === "pending" || statusRef.current === "closed") return;
     // Use ref for current price since it may have been updated
+    const currentDistanceR = trailingDistanceRRef.current;
     setCurrentPrice((prevPrice) => {
       const trailPrice = isLong
-        ? prevPrice - riskPerUnit * 0.5
-        : prevPrice + riskPerUnit * 0.5;
+        ? prevPrice - riskPerUnit * currentDistanceR
+        : prevPrice + riskPerUnit * currentDistanceR;
       trailingEnabledRef.current = true; // Update ref immediately
       trailingStopPriceRef.current = trailPrice; // Update ref immediately
       statusRef.current = "trailing"; // Update ref immediately
       setTrailingEnabled(true);
       setTrailingStopPrice(trailPrice);
       setStatus("trailing");
-      addLogEntry("stop_moved", trailPrice, "Trailing stop enabled");
+      addLogEntry("stop_moved", trailPrice, `Trailing stop enabled (${currentDistanceR}R distance)`);
       return prevPrice;
     });
   }, [isLong, riskPerUnit, addLogEntry]);
@@ -312,6 +329,7 @@ export function useTradeManagement({
     rMultiple,
     freeTradeActive,
     trailingEnabled,
+    trailingDistanceR,
     trailingStopPrice,
     effectiveStopPrice,
     tradeLog,
@@ -319,6 +337,7 @@ export function useTradeManagement({
     updateCurrentPrice,
     moveToBreakeven,
     enableTrailingStop,
+    setTrailingDistanceR,
     closeTrade,
     addNote,
   };
