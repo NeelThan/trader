@@ -47,6 +47,7 @@ import { TimeframeSettingsPopover } from "./TimeframeSettingsPopover";
 import { DataSourcePanel, DataSourceIndicator, type DataMode } from "./DataSourcePanel";
 import { TrendAlignmentPanel, TrendIndicatorButton } from "./TrendAlignmentPanel";
 import { LevelTooltip, ConfluenceZoneIndicator, calculateConfluenceZones } from "./LevelTooltip";
+import { RefreshStatusBar } from "@/components/ui/refresh-status-bar";
 import type { UseTradeDiscoveryResult, TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
 import type { WorkflowPhase } from "@/app/workflow-v2/page";
@@ -565,6 +566,26 @@ export function WorkflowV2Layout({
 
           {/* Right section */}
           <div className="flex items-center gap-2">
+            {/* Refresh status indicator */}
+            <RefreshStatusBar
+              countdown={countdown}
+              autoRefreshEnabled={dataMode === "live"}
+              lastUpdated={lastUpdated}
+              isRefreshing={isLoadingData}
+              isCached={isCached}
+              provider={isUsingSimulatedData ? "simulated" : "yahoo"}
+              isBackendUnavailable={isBackendUnavailable}
+              onRefresh={refreshNow}
+              onToggleAutoRefresh={(enabled) => {
+                if (enabled && dataMode !== "live") {
+                  setDataMode("live");
+                } else if (!enabled && dataMode === "live") {
+                  setDataMode("cached");
+                }
+              }}
+              compact
+            />
+
             {/* Data source controls */}
             <DataSourcePanel
               dataMode={dataMode}
@@ -607,7 +628,7 @@ export function WorkflowV2Layout({
           )}
         >
           {/* Main Chart - taller height */}
-          <Card className="flex flex-col min-h-[450px] lg:min-h-[600px]" style={{ flex: isChartExpanded ? "1 1 auto" : "3 1 0" }}>
+          <Card className="flex flex-col min-h-[550px] lg:min-h-[750px]" style={{ flex: isChartExpanded ? "1 1 auto" : "3 1 0" }}>
             <CardContent className="py-2 sm:py-3 shrink-0 border-b">
               <div className="flex flex-col gap-2">
                 {/* Controls Row */}
@@ -990,6 +1011,7 @@ export function WorkflowV2Layout({
                     upColor={chartColors.up}
                     downColor={chartColors.down}
                     onCrosshairMove={handleCrosshairMove}
+                    fillContainer
                   />
                   {/* Level tooltip - shows when crosshair is near a Fib level */}
                   {showFibLevels && (
