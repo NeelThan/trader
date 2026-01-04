@@ -28,7 +28,6 @@ describe("layoutReducer", () => {
       expect(initialLayoutState.panels.tradeView).toBe(false);
       expect(initialLayoutState.panels.trendPanel).toBe(false);
       expect(initialLayoutState.panels.confluenceZones).toBe(false);
-      expect(initialLayoutState.panels.swingSettings).toBe(false);
       expect(initialLayoutState.panels.levelsTable).toBe(false);
       expect(initialLayoutState.panels.chartExpanded).toBe(false);
     });
@@ -113,7 +112,6 @@ describe("layoutReducer", () => {
           pivotEditor: true,
           trendPanel: true,
           confluenceZones: true,
-          swingSettings: true,
           levelsTable: true,
         },
       };
@@ -124,7 +122,6 @@ describe("layoutReducer", () => {
       expect(state.panels.pivotEditor).toBe(false);
       expect(state.panels.trendPanel).toBe(false);
       expect(state.panels.confluenceZones).toBe(false);
-      expect(state.panels.swingSettings).toBe(false);
       expect(state.panels.levelsTable).toBe(false);
     });
 

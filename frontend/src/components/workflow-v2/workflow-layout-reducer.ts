@@ -16,7 +16,7 @@ export type PanelVisibility = {
   sidebar: boolean;
   /** RSI/MACD indicators panel */
   indicators: boolean;
-  /** HH/HL/LH/LL swing markers */
+  /** HH/HL/LH/LL swing markers (settings now in SwingSettingsPopover) */
   swingMarkers: boolean;
   /** Fibonacci price levels */
   fibLevels: boolean;
@@ -28,8 +28,6 @@ export type PanelVisibility = {
   trendPanel: boolean;
   /** Confluence zones panel */
   confluenceZones: boolean;
-  /** Swing settings panel */
-  swingSettings: boolean;
   /** Levels table panel */
   levelsTable: boolean;
   /** Chart expanded to full width */
@@ -72,7 +70,6 @@ export const initialLayoutState: WorkflowLayoutState = {
     tradeView: false,
     trendPanel: false,
     confluenceZones: false,
-    swingSettings: false,
     levelsTable: false,
     chartExpanded: false,
   },
@@ -148,7 +145,6 @@ export function layoutReducer(
           pivotEditor: false,
           trendPanel: false,
           confluenceZones: false,
-          swingSettings: false,
           levelsTable: false,
         },
       };
@@ -297,7 +293,6 @@ export const layoutSelectors = {
       panels.pivotEditor ||
       panels.trendPanel ||
       panels.confluenceZones ||
-      panels.swingSettings ||
       panels.levelsTable
     );
   },
@@ -310,7 +305,6 @@ export const layoutSelectors = {
       panels.pivotEditor,
       panels.trendPanel,
       panels.confluenceZones,
-      panels.swingSettings,
       panels.levelsTable,
     ].filter(Boolean).length;
   },

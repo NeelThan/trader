@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CandlestickChart, CandlestickChartHandle, PriceLine, LineOverlay, type ChartType } from "@/components/trading";
-import { RSIPane, MACDChart, PivotPointsEditor, LevelsTable, SwingSettingsPanel } from "@/components/chart-pro";
+import { RSIPane, MACDChart, PivotPointsEditor, LevelsTable } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
 import { useMultiTFLevels } from "@/hooks/use-multi-tf-levels";
@@ -44,6 +44,7 @@ import {
 } from "@/lib/chart-pro/strategy-types";
 import { cn } from "@/lib/utils";
 import { TimeframeSettingsPopover } from "./TimeframeSettingsPopover";
+import { SwingSettingsPopover } from "./SwingSettingsPopover";
 import { DataSourcePanel, DataSourceIndicator, type DataMode } from "./DataSourcePanel";
 import { TrendAlignmentPanel, TrendIndicatorButton } from "./TrendAlignmentPanel";
 import { LevelTooltip, ConfluenceZoneIndicator, calculateConfluenceZones } from "./LevelTooltip";
@@ -113,7 +114,6 @@ export function WorkflowV2Layout({
   const showFibLabels = chart.fibLabels;
   const showFibLines = chart.fibLines;
   const showLevelsTable = panels.levelsTable;
-  const showSwingSettings = panels.swingSettings;
   const chartType = chart.chartType;
   const isChartExpanded = panels.chartExpanded;
   const confluenceTolerance = chart.confluenceTolerance;
@@ -703,7 +703,7 @@ export function WorkflowV2Layout({
                       )}
                       title="Heikin-Ashi"
                     >
-                      HA
+                      Heikin-Ashi
                     </button>
                   </div>
 
@@ -711,18 +711,20 @@ export function WorkflowV2Layout({
 
                   {/* Feature toggles */}
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => dispatch(layoutActions.togglePanel("swingMarkers"))}
-                      className={cn(
-                        "px-2 py-1 text-xs rounded transition-colors",
-                        showSwingMarkers
-                          ? "bg-primary/20 text-primary"
-                          : "text-muted-foreground hover:bg-muted"
-                      )}
-                      title="Toggle swing markers (HH/HL/LH/LL)"
-                    >
-                      HH/LL
-                    </button>
+                    {/* Swing Settings Popover - combines HH/LL toggle with per-TF settings */}
+                    <SwingSettingsPopover
+                      isVisible={showSwingMarkers}
+                      onToggleVisibility={() => dispatch(layoutActions.togglePanel("swingMarkers"))}
+                      currentTimeframe={timeframe}
+                      getTimeframeSettings={getTimeframeSettings}
+                      updateTimeframeLookback={updateTimeframeLookback}
+                      updateTimeframeEnabled={updateTimeframeEnabled}
+                      updateTimeframeShowLines={updateTimeframeShowLines}
+                      resetToDefaults={resetSwingDefaults}
+                      isLoaded={isSwingSettingsLoaded}
+                      markerCount={chartMarkers.length}
+                      hasModifiedPivots={hasPivotModifications}
+                    />
                     <button
                       onClick={() => dispatch(layoutActions.togglePanel("fibLevels"))}
                       className={cn(
@@ -757,9 +759,9 @@ export function WorkflowV2Layout({
                               ? "bg-primary/20 text-primary"
                               : "text-muted-foreground hover:bg-muted"
                           )}
-                          title="Toggle Fib level labels"
+                          title="Toggle Fibonacci level labels"
                         >
-                          Lbl
+                          Labels
                         </button>
                       </>
                     )}
@@ -783,9 +785,9 @@ export function WorkflowV2Layout({
                           ? "bg-blue-500/20 text-blue-400"
                           : "text-muted-foreground hover:bg-muted"
                       )}
-                      title="Toggle Fib levels table with calculations"
+                      title="Toggle Fibonacci levels table with calculations"
                     >
-                      Lvl
+                      Levels
                     </button>
                     <button
                       onClick={() => dispatch(layoutActions.togglePanel("indicators"))}
@@ -797,7 +799,7 @@ export function WorkflowV2Layout({
                       )}
                       title="Toggle indicators (RSI & MACD)"
                     >
-                      Ind
+                      Indicators
                     </button>
                     <button
                       onClick={() => dispatch(layoutActions.togglePanel("pivotEditor"))}
@@ -813,18 +815,6 @@ export function WorkflowV2Layout({
                       {hasPivotModifications && (
                         <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
                       )}
-                    </button>
-                    <button
-                      onClick={() => dispatch(layoutActions.togglePanel("swingSettings"))}
-                      className={cn(
-                        "px-2 py-1 text-xs rounded transition-colors",
-                        showSwingSettings
-                          ? "bg-orange-500/20 text-orange-400"
-                          : "text-muted-foreground hover:bg-muted"
-                      )}
-                      title="Adjust swing detection lookback per timeframe"
-                    >
-                      Swing
                     </button>
                     {/* Trade View toggle - only show when opportunity selected */}
                     {opportunity && phase !== "discover" && (
@@ -915,7 +905,7 @@ export function WorkflowV2Layout({
                     )}
                     {showFibLevels && visibleLevels.length > 0 && (
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                        {visibleLevels.length} Fib
+                        {visibleLevels.length} Fibonacci
                       </Badge>
                     )}
                     {showSwingMarkers && chartMarkers.length > 0 && (
@@ -1116,24 +1106,6 @@ export function WorkflowV2Layout({
                   modifiedCount={pivotModifiedCount}
                   isLoading={isLoadingSwings || !isPivotsLoaded}
                 />
-              )}
-
-              {/* Swing Settings Panel - Per-timeframe lookback adjustment */}
-              {showSwingSettings && (
-                <Card className="shrink-0">
-                  <CardContent className="p-3">
-                    <SwingSettingsPanel
-                      currentTimeframe={timeframe}
-                      swingConfig={swingConfig}
-                      getTimeframeSettings={getTimeframeSettings}
-                      updateTimeframeLookback={updateTimeframeLookback}
-                      updateTimeframeEnabled={updateTimeframeEnabled}
-                      updateTimeframeShowLines={updateTimeframeShowLines}
-                      resetToDefaults={resetSwingDefaults}
-                      isLoaded={isSwingSettingsLoaded}
-                    />
-                  </CardContent>
-                </Card>
               )}
 
               {/* Confluence Zones Panel - Shows clusters of Fib levels */}
