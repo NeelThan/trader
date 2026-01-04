@@ -236,6 +236,39 @@ export function DiscoveryPanel({
             </p>
           </CardContent>
         </Card>
+
+        {/* Test Trade Buttons - available even when no opportunities */}
+        <Card className="bg-purple-500/10 border-purple-500/30">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <FlaskConical className="w-4 h-4 text-purple-400" />
+              <span className="text-xs font-medium text-purple-300">Test Mode</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground mb-2">
+              Simulate a trade to test the validation and sizing flow
+            </p>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleTestLong}
+                className="flex-1 text-xs border-green-500/50 text-green-400 hover:bg-green-500/20"
+              >
+                <TrendingUp className="w-3 h-3 mr-1" />
+                Test LONG
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleTestShort}
+                className="flex-1 text-xs border-red-500/50 text-red-400 hover:bg-red-500/20"
+              >
+                <TrendingDown className="w-3 h-3 mr-1" />
+                Test SHORT
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }

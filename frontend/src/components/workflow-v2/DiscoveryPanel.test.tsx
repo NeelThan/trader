@@ -141,6 +141,27 @@ describe("DiscoveryPanel", () => {
         screen.queryByText("Trade Opportunities")
       ).not.toBeInTheDocument();
     });
+
+    it("should show test mode buttons when no opportunities", () => {
+      render(<DiscoveryPanel {...defaultProps} opportunities={[]} />);
+
+      expect(screen.getByText("Test Mode")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /test long/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /test short/i })).toBeInTheDocument();
+    });
+
+    it("should create test opportunity from empty state", () => {
+      render(<DiscoveryPanel {...defaultProps} opportunities={[]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /test long/i }));
+
+      expect(defaultProps.onSelectOpportunity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          direction: "long",
+          symbol: "DJI",
+        })
+      );
+    });
   });
 
   // ===========================================================================
