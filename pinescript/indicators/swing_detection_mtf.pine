@@ -25,6 +25,20 @@ TF_15m = "15"
 TF_1m  = "1"
 
 // =============================================================================
+// USER-DEFINED TYPES (UDTs)
+// =============================================================================
+
+// Stores alternating pivot data for ABC pattern detection
+// A = oldest, B = middle, C = most recent (chronological order)
+type TFData
+    float pivotA = na
+    float pivotB = na
+    float pivotC = na
+    string lastType = ""
+    float lastH = na
+    float lastL = na
+
+// =============================================================================
 // GLOBAL SETTINGS
 // =============================================================================
 
@@ -423,6 +437,50 @@ calcExpansion(float a, float b, string dir, float ratio) =>
     rng = math.abs(a - b)
     dir == "down" ? b - (rng * ratio) : b + (rng * ratio)
 
+// Update pivot storage with new swing high/low data
+// When alternating (high→low or low→high): shift pattern (A←B, B←C, C←new)
+// When same type: update C with latest value (keeps ABC current)
+updatePivots(TFData tf, float sh, float sl) =>
+    if not na(sh)
+        tf.lastH := sh
+        if tf.lastType != "high"
+            tf.pivotA := tf.pivotB
+            tf.pivotB := tf.pivotC
+            tf.pivotC := sh
+            tf.lastType := "high"
+        else
+            tf.pivotC := sh
+    if not na(sl)
+        tf.lastL := sl
+        if tf.lastType != "low"
+            tf.pivotA := tf.pivotB
+            tf.pivotB := tf.pivotC
+            tf.pivotC := sl
+            tf.lastType := "low"
+        else
+            tf.pivotC := sl
+
+// Get computed ABC point (auto-detected or manual override)
+getABCPoint(float autoVal, bool useAuto, float manualVal) =>
+    useAuto ? autoVal : (manualVal > 0 ? manualVal : autoVal)
+
+// Draw a single trend table row, returns trend direction ("BULL", "BEAR", "RANG")
+drawTrendRow(table tbl, int row, string tfName, color tfCol, bool autoABC,
+             float pA, float pB, float pC, float rsi, float macdHist, int lb, int fwd) =>
+    t = getTrendSignal(rsi, macdHist)
+    d = getTrendDir(t)
+    c = getTrendCol(d)
+    mode = autoABC ? "" : "*"
+    table.cell(tbl, 0, row, tfName + mode, text_color=tfCol, text_size=size.tiny)
+    table.cell(tbl, 1, row, na(pA) ? "-" : str.tostring(pA, format.mintick), text_color=color.yellow, text_size=size.tiny)
+    table.cell(tbl, 2, row, na(pB) ? "-" : str.tostring(pB, format.mintick), text_color=color.lime, text_size=size.tiny)
+    table.cell(tbl, 3, row, na(pC) ? "-" : str.tostring(pC, format.mintick), text_color=color.aqua, text_size=size.tiny)
+    table.cell(tbl, 4, row, d, text_color=c, text_size=size.tiny)
+    table.cell(tbl, 5, row, str.tostring(rsi, "#.#"), text_color=rsi > 50 ? color.lime : color.red, text_size=size.tiny)
+    table.cell(tbl, 6, row, macdHist > 0 ? "+" : "-", text_color=macdHist > 0 ? color.lime : color.red, text_size=size.tiny)
+    table.cell(tbl, 7, row, str.tostring(lb) + "/" + str.tostring(fwd), text_color=color.gray, text_size=size.tiny)
+    d
+
 // =============================================================================
 // PIVOT DETECTION FUNCTIONS
 // =============================================================================
@@ -479,234 +537,60 @@ getMacdHist(int fast, int slow, int sig) =>
     lookahead=barmerge.lookahead_on)
 
 // =============================================================================
-// PERSISTENT SWING STORAGE (ABC = 3 alternating pivots)
+// PERSISTENT SWING STORAGE (using TFData UDT)
 // =============================================================================
 // For proper ABC projection patterns, we need 3 ALTERNATING pivots:
 // - Long pattern: A=Low, B=High, C=Low (buy on pullback)
 // - Short pattern: A=High, B=Low, C=High (sell on rally)
-// pivotA = oldest, pivotB = middle, pivotC = most recent (chronological order)
 
-// 1M - store last 3 alternating pivots + last pivot type
-var float pivotA1M = na, var float pivotB1M = na, var float pivotC1M = na
-var string lastType1M = ""
-var float lastH1M = na, var float lastL1M = na  // Keep for swing markers
+var TFData tf1M   = TFData.new()
+var TFData tf1W   = TFData.new()
+var TFData tf1D   = TFData.new()
+var TFData tf4H   = TFData.new()
+var TFData tf1H   = TFData.new()
+var TFData tf15m  = TFData.new()
+var TFData tf1min = TFData.new()
 
-// 1W
-var float pivotA1W = na, var float pivotB1W = na, var float pivotC1W = na
-var string lastType1W = ""
-var float lastH1W = na, var float lastL1W = na
-
-// 1D
-var float pivotA1D = na, var float pivotB1D = na, var float pivotC1D = na
-var string lastType1D = ""
-var float lastH1D = na, var float lastL1D = na
-
-// 4H
-var float pivotA4H = na, var float pivotB4H = na, var float pivotC4H = na
-var string lastType4H = ""
-var float lastH4H = na, var float lastL4H = na
-
-// 1H
-var float pivotA1H = na, var float pivotB1H = na, var float pivotC1H = na
-var string lastType1H = ""
-var float lastH1H = na, var float lastL1H = na
-
-// 15m
-var float pivotA15m = na, var float pivotB15m = na, var float pivotC15m = na
-var string lastType15m = ""
-var float lastH15m = na, var float lastL15m = na
-
-// 1m
-var float pivotA1min = na, var float pivotB1min = na, var float pivotC1min = na
-var string lastType1min = ""
-var float lastH1min = na, var float lastL1min = na
-
-// Update stored swings - shift pivots and track alternation
-// When alternating: shift pattern (A←B, B←C, C←new)
-// When same type: update C with latest value (keeps ABC current)
-
-// 1M
-if not na(sh1M)
-    lastH1M := sh1M
-    if lastType1M != "high"  // Alternating - shift pattern
-        pivotA1M := pivotB1M
-        pivotB1M := pivotC1M
-        pivotC1M := sh1M
-        lastType1M := "high"
-    else  // Same type - update C with latest
-        pivotC1M := sh1M
-if not na(sl1M)
-    lastL1M := sl1M
-    if lastType1M != "low"
-        pivotA1M := pivotB1M
-        pivotB1M := pivotC1M
-        pivotC1M := sl1M
-        lastType1M := "low"
-    else
-        pivotC1M := sl1M
-
-// 1W
-if not na(sh1W)
-    lastH1W := sh1W
-    if lastType1W != "high"
-        pivotA1W := pivotB1W
-        pivotB1W := pivotC1W
-        pivotC1W := sh1W
-        lastType1W := "high"
-    else
-        pivotC1W := sh1W
-if not na(sl1W)
-    lastL1W := sl1W
-    if lastType1W != "low"
-        pivotA1W := pivotB1W
-        pivotB1W := pivotC1W
-        pivotC1W := sl1W
-        lastType1W := "low"
-    else
-        pivotC1W := sl1W
-
-// 1D
-if not na(sh1D)
-    lastH1D := sh1D
-    if lastType1D != "high"
-        pivotA1D := pivotB1D
-        pivotB1D := pivotC1D
-        pivotC1D := sh1D
-        lastType1D := "high"
-    else
-        pivotC1D := sh1D
-if not na(sl1D)
-    lastL1D := sl1D
-    if lastType1D != "low"
-        pivotA1D := pivotB1D
-        pivotB1D := pivotC1D
-        pivotC1D := sl1D
-        lastType1D := "low"
-    else
-        pivotC1D := sl1D
-
-// 4H
-if not na(sh4H)
-    lastH4H := sh4H
-    if lastType4H != "high"
-        pivotA4H := pivotB4H
-        pivotB4H := pivotC4H
-        pivotC4H := sh4H
-        lastType4H := "high"
-    else
-        pivotC4H := sh4H
-if not na(sl4H)
-    lastL4H := sl4H
-    if lastType4H != "low"
-        pivotA4H := pivotB4H
-        pivotB4H := pivotC4H
-        pivotC4H := sl4H
-        lastType4H := "low"
-    else
-        pivotC4H := sl4H
-
-// 1H
-if not na(sh1H)
-    lastH1H := sh1H
-    if lastType1H != "high"
-        pivotA1H := pivotB1H
-        pivotB1H := pivotC1H
-        pivotC1H := sh1H
-        lastType1H := "high"
-    else
-        pivotC1H := sh1H
-if not na(sl1H)
-    lastL1H := sl1H
-    if lastType1H != "low"
-        pivotA1H := pivotB1H
-        pivotB1H := pivotC1H
-        pivotC1H := sl1H
-        lastType1H := "low"
-    else
-        pivotC1H := sl1H
-
-// 15m
-if not na(sh15m)
-    lastH15m := sh15m
-    if lastType15m != "high"
-        pivotA15m := pivotB15m
-        pivotB15m := pivotC15m
-        pivotC15m := sh15m
-        lastType15m := "high"
-    else
-        pivotC15m := sh15m
-if not na(sl15m)
-    lastL15m := sl15m
-    if lastType15m != "low"
-        pivotA15m := pivotB15m
-        pivotB15m := pivotC15m
-        pivotC15m := sl15m
-        lastType15m := "low"
-    else
-        pivotC15m := sl15m
-
-// 1m
-if not na(sh1min)
-    lastH1min := sh1min
-    if lastType1min != "high"
-        pivotA1min := pivotB1min
-        pivotB1min := pivotC1min
-        pivotC1min := sh1min
-        lastType1min := "high"
-    else
-        pivotC1min := sh1min
-if not na(sl1min)
-    lastL1min := sl1min
-    if lastType1min != "low"
-        pivotA1min := pivotB1min
-        pivotB1min := pivotC1min
-        pivotC1min := sl1min
-        lastType1min := "low"
-    else
-        pivotC1min := sl1min
+// Update all timeframe pivots
+updatePivots(tf1M,   sh1M,   sl1M)
+updatePivots(tf1W,   sh1W,   sl1W)
+updatePivots(tf1D,   sh1D,   sl1D)
+updatePivots(tf4H,   sh4H,   sl4H)
+updatePivots(tf1H,   sh1H,   sl1H)
+updatePivots(tf15m,  sh15m,  sl15m)
+updatePivots(tf1min, sh1min, sl1min)
 
 // =============================================================================
 // COMPUTED ABC POINTS (auto-detected or manual override)
 // =============================================================================
-// A, B, C are 3 alternating pivots in chronological order:
-// - A = oldest pivot, B = middle pivot, C = most recent pivot
-// - Pattern alternates: High-Low-High (short setup) or Low-High-Low (long setup)
-// Manual override: if autoABC is off and manual value > 0, use manual value
 
-// 1M
-pointA1M = autoABC1M ? pivotA1M : (manualA1M > 0 ? manualA1M : pivotA1M)
-pointB1M = autoABC1M ? pivotB1M : (manualB1M > 0 ? manualB1M : pivotB1M)
-pointC1M = autoABC1M ? pivotC1M : (manualC1M > 0 ? manualC1M : pivotC1M)
+pointA1M   = getABCPoint(tf1M.pivotA,   autoABC1M,   manualA1M)
+pointB1M   = getABCPoint(tf1M.pivotB,   autoABC1M,   manualB1M)
+pointC1M   = getABCPoint(tf1M.pivotC,   autoABC1M,   manualC1M)
 
-// 1W
-pointA1W = autoABC1W ? pivotA1W : (manualA1W > 0 ? manualA1W : pivotA1W)
-pointB1W = autoABC1W ? pivotB1W : (manualB1W > 0 ? manualB1W : pivotB1W)
-pointC1W = autoABC1W ? pivotC1W : (manualC1W > 0 ? manualC1W : pivotC1W)
+pointA1W   = getABCPoint(tf1W.pivotA,   autoABC1W,   manualA1W)
+pointB1W   = getABCPoint(tf1W.pivotB,   autoABC1W,   manualB1W)
+pointC1W   = getABCPoint(tf1W.pivotC,   autoABC1W,   manualC1W)
 
-// 1D
-pointA1D = autoABC1D ? pivotA1D : (manualA1D > 0 ? manualA1D : pivotA1D)
-pointB1D = autoABC1D ? pivotB1D : (manualB1D > 0 ? manualB1D : pivotB1D)
-pointC1D = autoABC1D ? pivotC1D : (manualC1D > 0 ? manualC1D : pivotC1D)
+pointA1D   = getABCPoint(tf1D.pivotA,   autoABC1D,   manualA1D)
+pointB1D   = getABCPoint(tf1D.pivotB,   autoABC1D,   manualB1D)
+pointC1D   = getABCPoint(tf1D.pivotC,   autoABC1D,   manualC1D)
 
-// 4H
-pointA4H = autoABC4H ? pivotA4H : (manualA4H > 0 ? manualA4H : pivotA4H)
-pointB4H = autoABC4H ? pivotB4H : (manualB4H > 0 ? manualB4H : pivotB4H)
-pointC4H = autoABC4H ? pivotC4H : (manualC4H > 0 ? manualC4H : pivotC4H)
+pointA4H   = getABCPoint(tf4H.pivotA,   autoABC4H,   manualA4H)
+pointB4H   = getABCPoint(tf4H.pivotB,   autoABC4H,   manualB4H)
+pointC4H   = getABCPoint(tf4H.pivotC,   autoABC4H,   manualC4H)
 
-// 1H
-pointA1H = autoABC1H ? pivotA1H : (manualA1H > 0 ? manualA1H : pivotA1H)
-pointB1H = autoABC1H ? pivotB1H : (manualB1H > 0 ? manualB1H : pivotB1H)
-pointC1H = autoABC1H ? pivotC1H : (manualC1H > 0 ? manualC1H : pivotC1H)
+pointA1H   = getABCPoint(tf1H.pivotA,   autoABC1H,   manualA1H)
+pointB1H   = getABCPoint(tf1H.pivotB,   autoABC1H,   manualB1H)
+pointC1H   = getABCPoint(tf1H.pivotC,   autoABC1H,   manualC1H)
 
-// 15m
-pointA15m = autoABC15m ? pivotA15m : (manualA15m > 0 ? manualA15m : pivotA15m)
-pointB15m = autoABC15m ? pivotB15m : (manualB15m > 0 ? manualB15m : pivotB15m)
-pointC15m = autoABC15m ? pivotC15m : (manualC15m > 0 ? manualC15m : pivotC15m)
+pointA15m  = getABCPoint(tf15m.pivotA,  autoABC15m,  manualA15m)
+pointB15m  = getABCPoint(tf15m.pivotB,  autoABC15m,  manualB15m)
+pointC15m  = getABCPoint(tf15m.pivotC,  autoABC15m,  manualC15m)
 
-// 1m
-pointA1min = autoABC1min ? pivotA1min : (manualA1min > 0 ? manualA1min : pivotA1min)
-pointB1min = autoABC1min ? pivotB1min : (manualB1min > 0 ? manualB1min : pivotB1min)
-pointC1min = autoABC1min ? pivotC1min : (manualC1min > 0 ? manualC1min : pivotC1min)
+pointA1min = getABCPoint(tf1min.pivotA, autoABC1min, manualA1min)
+pointB1min = getABCPoint(tf1min.pivotB, autoABC1min, manualB1min)
+pointC1min = getABCPoint(tf1min.pivotC, autoABC1min, manualC1min)
 
 // =============================================================================
 // TREND ANALYSIS
@@ -864,34 +748,6 @@ drawABCConnections(float pointA, float pointB, float pointC, color tfColor, bool
                 xloc.bar_index, extend.none, tfColor, line.style_solid, 1)
             array.push(swingConnectLines, lineBC)
 
-// Legacy function for projection drawing (kept for backwards compatibility)
-drawProjectionABC(float pointA, float pointB, float pointC, string tfName, color tfColor, bool showLabel, bool showLine, bool showPrice, int lineLen) =>
-    if not na(pointA) and not na(pointB) and not na(pointC) and showLine
-        // Point A marker (previous high - the starting point of projection)
-        aOffset = math.round(lineLen * 1.2)  // A is further back (older swing)
-        markerLineA = line.new(bar_index - aOffset, pointA, bar_index - lineLen, pointA,
-            xloc.bar_index, extend.none, tfColor, line.style_solid, 1)
-        array.push(swingMarkerLines, markerLineA)
-
-        // Label for point A
-        if showLabel
-            txtA = tfName + " A"
-            if showPrice
-                txtA := txtA + " " + str.tostring(pointA, format.mintick)
-            lblA = label.new(bar_index - aOffset, pointA, txtA,
-                xloc.bar_index, yloc.price, color.new(tfColor, 80), label.style_label_down, tfColor, size.tiny)
-            array.push(swingLabels, lblA)
-
-        // A→B connecting line (diagonal from previous high to current high)
-        lineAB = line.new(bar_index - aOffset, pointA, bar_index - math.round(lineLen * 0.75), pointB,
-            xloc.bar_index, extend.none, tfColor, line.style_solid, 1)
-        array.push(swingConnectLines, lineAB)
-
-        // B→C connecting line (diagonal from current high to current low/pullback)
-        lineBC = line.new(bar_index - math.round(lineLen * 0.75), pointB, bar_index - math.round(lineLen * 0.25), pointC,
-            xloc.bar_index, extend.none, tfColor, line.style_solid, 1)
-        array.push(swingConnectLines, lineBC)
-
 // =============================================================================
 // DRAW ALL LEVELS FOR A TIMEFRAME
 // =============================================================================
@@ -980,7 +836,7 @@ if barstate.islast
     if enable1M and (isValidTFRequest(TF_1M) or hasValidABCData(pointA1M, pointB1M, pointC1M))
         drawABCMarkers(pointA1M, pointB1M, pointC1M, "1M", col1M, showLabels1M, showLines1M, showPrice1M, lineLen1M)
         drawABCConnections(pointA1M, pointB1M, pointC1M, col1M, showLines1M, lineLen1M)
-        drawTFLevels(lastH1M, lastL1M, pointA1M, getSwingDir(lastType1M), "1M", col1M,
+        drawTFLevels(tf1M.lastH, tf1M.lastL, pointA1M, getSwingDir(tf1M.lastType), "1M", col1M,
             showLabels1M, extendFib1M, showPrice1M, lineLen1M,
             ret1M, r1M_R236, r1M_R382, r1M_R500, r1M_R618, r1M_R786,
             ext1M, r1M_E1272, r1M_E1618, r1M_E2000, r1M_E2618,
@@ -991,7 +847,7 @@ if barstate.islast
     if enable1W and (isValidTFRequest(TF_1W) or hasValidABCData(pointA1W, pointB1W, pointC1W))
         drawABCMarkers(pointA1W, pointB1W, pointC1W, "1W", col1W, showLabels1W, showLines1W, showPrice1W, lineLen1W)
         drawABCConnections(pointA1W, pointB1W, pointC1W, col1W, showLines1W, lineLen1W)
-        drawTFLevels(lastH1W, lastL1W, pointA1W, getSwingDir(lastType1W), "1W", col1W,
+        drawTFLevels(tf1W.lastH, tf1W.lastL, pointA1W, getSwingDir(tf1W.lastType), "1W", col1W,
             showLabels1W, extendFib1W, showPrice1W, lineLen1W,
             ret1W, r1W_R236, r1W_R382, r1W_R500, r1W_R618, r1W_R786,
             ext1W, r1W_E1272, r1W_E1618, r1W_E2000, r1W_E2618,
@@ -1002,7 +858,7 @@ if barstate.islast
     if enable1D and (isValidTFRequest(TF_1D) or hasValidABCData(pointA1D, pointB1D, pointC1D))
         drawABCMarkers(pointA1D, pointB1D, pointC1D, "1D", col1D, showLabels1D, showLines1D, showPrice1D, lineLen1D)
         drawABCConnections(pointA1D, pointB1D, pointC1D, col1D, showLines1D, lineLen1D)
-        drawTFLevels(lastH1D, lastL1D, pointA1D, getSwingDir(lastType1D), "1D", col1D,
+        drawTFLevels(tf1D.lastH, tf1D.lastL, pointA1D, getSwingDir(tf1D.lastType), "1D", col1D,
             showLabels1D, extendFib1D, showPrice1D, lineLen1D,
             ret1D, r1D_R236, r1D_R382, r1D_R500, r1D_R618, r1D_R786,
             ext1D, r1D_E1272, r1D_E1618, r1D_E2000, r1D_E2618,
@@ -1013,7 +869,7 @@ if barstate.islast
     if enable4H and (isValidTFRequest(TF_4H) or hasValidABCData(pointA4H, pointB4H, pointC4H))
         drawABCMarkers(pointA4H, pointB4H, pointC4H, "4H", col4H, showLabels4H, showLines4H, showPrice4H, lineLen4H)
         drawABCConnections(pointA4H, pointB4H, pointC4H, col4H, showLines4H, lineLen4H)
-        drawTFLevels(lastH4H, lastL4H, pointA4H, getSwingDir(lastType4H), "4H", col4H,
+        drawTFLevels(tf4H.lastH, tf4H.lastL, pointA4H, getSwingDir(tf4H.lastType), "4H", col4H,
             showLabels4H, extendFib4H, showPrice4H, lineLen4H,
             ret4H, r4H_R236, r4H_R382, r4H_R500, r4H_R618, r4H_R786,
             ext4H, r4H_E1272, r4H_E1618, r4H_E2000, r4H_E2618,
@@ -1024,7 +880,7 @@ if barstate.islast
     if enable1H and (isValidTFRequest(TF_1H) or hasValidABCData(pointA1H, pointB1H, pointC1H))
         drawABCMarkers(pointA1H, pointB1H, pointC1H, "1H", col1H, showLabels1H, showLines1H, showPrice1H, lineLen1H)
         drawABCConnections(pointA1H, pointB1H, pointC1H, col1H, showLines1H, lineLen1H)
-        drawTFLevels(lastH1H, lastL1H, pointA1H, getSwingDir(lastType1H), "1H", col1H,
+        drawTFLevels(tf1H.lastH, tf1H.lastL, pointA1H, getSwingDir(tf1H.lastType), "1H", col1H,
             showLabels1H, extendFib1H, showPrice1H, lineLen1H,
             ret1H, r1H_R236, r1H_R382, r1H_R500, r1H_R618, r1H_R786,
             ext1H, r1H_E1272, r1H_E1618, r1H_E2000, r1H_E2618,
@@ -1035,7 +891,7 @@ if barstate.islast
     if enable15m and (isValidTFRequest(TF_15m) or hasValidABCData(pointA15m, pointB15m, pointC15m))
         drawABCMarkers(pointA15m, pointB15m, pointC15m, "15m", col15m, showLabels15m, showLines15m, showPrice15m, lineLen15m)
         drawABCConnections(pointA15m, pointB15m, pointC15m, col15m, showLines15m, lineLen15m)
-        drawTFLevels(lastH15m, lastL15m, pointA15m, getSwingDir(lastType15m), "15m", col15m,
+        drawTFLevels(tf15m.lastH, tf15m.lastL, pointA15m, getSwingDir(tf15m.lastType), "15m", col15m,
             showLabels15m, extendFib15m, showPrice15m, lineLen15m,
             ret15m, r15m_R236, r15m_R382, r15m_R500, r15m_R618, r15m_R786,
             ext15m, r15m_E1272, r15m_E1618, r15m_E2000, r15m_E2618,
@@ -1046,7 +902,7 @@ if barstate.islast
     if enable1min and (isValidTFRequest(TF_1m) or hasValidABCData(pointA1min, pointB1min, pointC1min))
         drawABCMarkers(pointA1min, pointB1min, pointC1min, "1m", col1min, showLabels1min, showLines1min, showPrice1min, lineLen1min)
         drawABCConnections(pointA1min, pointB1min, pointC1min, col1min, showLines1min, lineLen1min)
-        drawTFLevels(lastH1min, lastL1min, pointA1min, getSwingDir(lastType1min), "1m", col1min,
+        drawTFLevels(tf1min.lastH, tf1min.lastL, pointA1min, getSwingDir(tf1min.lastType), "1m", col1min,
             showLabels1min, extendFib1min, showPrice1min, lineLen1min,
             ret1min, r1min_R236, r1min_R382, r1min_R500, r1min_R618, r1min_R786,
             ext1min, r1min_E1272, r1min_E1618, r1min_E2000, r1min_E2618,
@@ -1074,130 +930,47 @@ if barstate.islast and showTrendPanel
     bearCount = 0
     row = 1
 
-    // 1M
+    // Draw each enabled timeframe row
     if enable1M
-        t1M = getTrendSignal(rsi1M, mh1M)
-        d1M = getTrendDir(t1M)
-        c1M = getTrendCol(d1M)
-        abcMode1M = autoABC1M ? "" : "*"  // Show * if manual override
-        table.cell(trendTbl, 0, row, "1M" + abcMode1M, text_color=col1M, text_size=size.tiny)
-        table.cell(trendTbl, 1, row, na(pointA1M) ? "-" : str.tostring(pointA1M, format.mintick), text_color=color.yellow, text_size=size.tiny)
-        table.cell(trendTbl, 2, row, na(pointB1M) ? "-" : str.tostring(pointB1M, format.mintick), text_color=color.lime, text_size=size.tiny)
-        table.cell(trendTbl, 3, row, na(pointC1M) ? "-" : str.tostring(pointC1M, format.mintick), text_color=color.aqua, text_size=size.tiny)
-        table.cell(trendTbl, 4, row, d1M, text_color=c1M, text_size=size.tiny)
-        table.cell(trendTbl, 5, row, str.tostring(rsi1M, "#.#"), text_color=rsi1M > 50 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 6, row, mh1M > 0 ? "+" : "-", text_color=mh1M > 0 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 7, row, str.tostring(lb1M) + "/" + str.tostring(fwd1M), text_color=color.gray, text_size=size.tiny)
-        bullCount += d1M == "BULL" ? 1 : 0
-        bearCount += d1M == "BEAR" ? 1 : 0
+        d = drawTrendRow(trendTbl, row, "1M", col1M, autoABC1M, pointA1M, pointB1M, pointC1M, rsi1M, mh1M, lb1M, fwd1M)
+        bullCount += d == "BULL" ? 1 : 0
+        bearCount += d == "BEAR" ? 1 : 0
         row += 1
 
-    // 1W
     if enable1W
-        t1W = getTrendSignal(rsi1W, mh1W)
-        d1W = getTrendDir(t1W)
-        c1W = getTrendCol(d1W)
-        abcMode1W = autoABC1W ? "" : "*"
-        table.cell(trendTbl, 0, row, "1W" + abcMode1W, text_color=col1W, text_size=size.tiny)
-        table.cell(trendTbl, 1, row, na(pointA1W) ? "-" : str.tostring(pointA1W, format.mintick), text_color=color.yellow, text_size=size.tiny)
-        table.cell(trendTbl, 2, row, na(pointB1W) ? "-" : str.tostring(pointB1W, format.mintick), text_color=color.lime, text_size=size.tiny)
-        table.cell(trendTbl, 3, row, na(pointC1W) ? "-" : str.tostring(pointC1W, format.mintick), text_color=color.aqua, text_size=size.tiny)
-        table.cell(trendTbl, 4, row, d1W, text_color=c1W, text_size=size.tiny)
-        table.cell(trendTbl, 5, row, str.tostring(rsi1W, "#.#"), text_color=rsi1W > 50 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 6, row, mh1W > 0 ? "+" : "-", text_color=mh1W > 0 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 7, row, str.tostring(lb1W) + "/" + str.tostring(fwd1W), text_color=color.gray, text_size=size.tiny)
-        bullCount += d1W == "BULL" ? 1 : 0
-        bearCount += d1W == "BEAR" ? 1 : 0
+        d = drawTrendRow(trendTbl, row, "1W", col1W, autoABC1W, pointA1W, pointB1W, pointC1W, rsi1W, mh1W, lb1W, fwd1W)
+        bullCount += d == "BULL" ? 1 : 0
+        bearCount += d == "BEAR" ? 1 : 0
         row += 1
 
-    // 1D
     if enable1D
-        t1D = getTrendSignal(rsi1D, mh1D)
-        d1D = getTrendDir(t1D)
-        c1D = getTrendCol(d1D)
-        abcMode1D = autoABC1D ? "" : "*"
-        table.cell(trendTbl, 0, row, "1D" + abcMode1D, text_color=col1D, text_size=size.tiny)
-        table.cell(trendTbl, 1, row, na(pointA1D) ? "-" : str.tostring(pointA1D, format.mintick), text_color=color.yellow, text_size=size.tiny)
-        table.cell(trendTbl, 2, row, na(pointB1D) ? "-" : str.tostring(pointB1D, format.mintick), text_color=color.lime, text_size=size.tiny)
-        table.cell(trendTbl, 3, row, na(pointC1D) ? "-" : str.tostring(pointC1D, format.mintick), text_color=color.aqua, text_size=size.tiny)
-        table.cell(trendTbl, 4, row, d1D, text_color=c1D, text_size=size.tiny)
-        table.cell(trendTbl, 5, row, str.tostring(rsi1D, "#.#"), text_color=rsi1D > 50 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 6, row, mh1D > 0 ? "+" : "-", text_color=mh1D > 0 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 7, row, str.tostring(lb1D) + "/" + str.tostring(fwd1D), text_color=color.gray, text_size=size.tiny)
-        bullCount += d1D == "BULL" ? 1 : 0
-        bearCount += d1D == "BEAR" ? 1 : 0
+        d = drawTrendRow(trendTbl, row, "1D", col1D, autoABC1D, pointA1D, pointB1D, pointC1D, rsi1D, mh1D, lb1D, fwd1D)
+        bullCount += d == "BULL" ? 1 : 0
+        bearCount += d == "BEAR" ? 1 : 0
         row += 1
 
-    // 4H
     if enable4H
-        t4H = getTrendSignal(rsi4H, mh4H)
-        d4H = getTrendDir(t4H)
-        c4H = getTrendCol(d4H)
-        abcMode4H = autoABC4H ? "" : "*"
-        table.cell(trendTbl, 0, row, "4H" + abcMode4H, text_color=col4H, text_size=size.tiny)
-        table.cell(trendTbl, 1, row, na(pointA4H) ? "-" : str.tostring(pointA4H, format.mintick), text_color=color.yellow, text_size=size.tiny)
-        table.cell(trendTbl, 2, row, na(pointB4H) ? "-" : str.tostring(pointB4H, format.mintick), text_color=color.lime, text_size=size.tiny)
-        table.cell(trendTbl, 3, row, na(pointC4H) ? "-" : str.tostring(pointC4H, format.mintick), text_color=color.aqua, text_size=size.tiny)
-        table.cell(trendTbl, 4, row, d4H, text_color=c4H, text_size=size.tiny)
-        table.cell(trendTbl, 5, row, str.tostring(rsi4H, "#.#"), text_color=rsi4H > 50 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 6, row, mh4H > 0 ? "+" : "-", text_color=mh4H > 0 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 7, row, str.tostring(lb4H) + "/" + str.tostring(fwd4H), text_color=color.gray, text_size=size.tiny)
-        bullCount += d4H == "BULL" ? 1 : 0
-        bearCount += d4H == "BEAR" ? 1 : 0
+        d = drawTrendRow(trendTbl, row, "4H", col4H, autoABC4H, pointA4H, pointB4H, pointC4H, rsi4H, mh4H, lb4H, fwd4H)
+        bullCount += d == "BULL" ? 1 : 0
+        bearCount += d == "BEAR" ? 1 : 0
         row += 1
 
-    // 1H
     if enable1H
-        t1H = getTrendSignal(rsi1H, mh1H)
-        d1H = getTrendDir(t1H)
-        c1H = getTrendCol(d1H)
-        abcMode1H = autoABC1H ? "" : "*"
-        table.cell(trendTbl, 0, row, "1H" + abcMode1H, text_color=col1H, text_size=size.tiny)
-        table.cell(trendTbl, 1, row, na(pointA1H) ? "-" : str.tostring(pointA1H, format.mintick), text_color=color.yellow, text_size=size.tiny)
-        table.cell(trendTbl, 2, row, na(pointB1H) ? "-" : str.tostring(pointB1H, format.mintick), text_color=color.lime, text_size=size.tiny)
-        table.cell(trendTbl, 3, row, na(pointC1H) ? "-" : str.tostring(pointC1H, format.mintick), text_color=color.aqua, text_size=size.tiny)
-        table.cell(trendTbl, 4, row, d1H, text_color=c1H, text_size=size.tiny)
-        table.cell(trendTbl, 5, row, str.tostring(rsi1H, "#.#"), text_color=rsi1H > 50 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 6, row, mh1H > 0 ? "+" : "-", text_color=mh1H > 0 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 7, row, str.tostring(lb1H) + "/" + str.tostring(fwd1H), text_color=color.gray, text_size=size.tiny)
-        bullCount += d1H == "BULL" ? 1 : 0
-        bearCount += d1H == "BEAR" ? 1 : 0
+        d = drawTrendRow(trendTbl, row, "1H", col1H, autoABC1H, pointA1H, pointB1H, pointC1H, rsi1H, mh1H, lb1H, fwd1H)
+        bullCount += d == "BULL" ? 1 : 0
+        bearCount += d == "BEAR" ? 1 : 0
         row += 1
 
-    // 15m
     if enable15m
-        t15m = getTrendSignal(rsi15m, mh15m)
-        d15m = getTrendDir(t15m)
-        c15m = getTrendCol(d15m)
-        abcMode15m = autoABC15m ? "" : "*"
-        table.cell(trendTbl, 0, row, "15m" + abcMode15m, text_color=col15m, text_size=size.tiny)
-        table.cell(trendTbl, 1, row, na(pointA15m) ? "-" : str.tostring(pointA15m, format.mintick), text_color=color.yellow, text_size=size.tiny)
-        table.cell(trendTbl, 2, row, na(pointB15m) ? "-" : str.tostring(pointB15m, format.mintick), text_color=color.lime, text_size=size.tiny)
-        table.cell(trendTbl, 3, row, na(pointC15m) ? "-" : str.tostring(pointC15m, format.mintick), text_color=color.aqua, text_size=size.tiny)
-        table.cell(trendTbl, 4, row, d15m, text_color=c15m, text_size=size.tiny)
-        table.cell(trendTbl, 5, row, str.tostring(rsi15m, "#.#"), text_color=rsi15m > 50 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 6, row, mh15m > 0 ? "+" : "-", text_color=mh15m > 0 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 7, row, str.tostring(lb15m) + "/" + str.tostring(fwd15m), text_color=color.gray, text_size=size.tiny)
-        bullCount += d15m == "BULL" ? 1 : 0
-        bearCount += d15m == "BEAR" ? 1 : 0
+        d = drawTrendRow(trendTbl, row, "15m", col15m, autoABC15m, pointA15m, pointB15m, pointC15m, rsi15m, mh15m, lb15m, fwd15m)
+        bullCount += d == "BULL" ? 1 : 0
+        bearCount += d == "BEAR" ? 1 : 0
         row += 1
 
-    // 1m
     if enable1min
-        t1min = getTrendSignal(rsi1min, mh1min)
-        d1min = getTrendDir(t1min)
-        c1min = getTrendCol(d1min)
-        abcMode1min = autoABC1min ? "" : "*"
-        table.cell(trendTbl, 0, row, "1m" + abcMode1min, text_color=col1min, text_size=size.tiny)
-        table.cell(trendTbl, 1, row, na(pointA1min) ? "-" : str.tostring(pointA1min, format.mintick), text_color=color.yellow, text_size=size.tiny)
-        table.cell(trendTbl, 2, row, na(pointB1min) ? "-" : str.tostring(pointB1min, format.mintick), text_color=color.lime, text_size=size.tiny)
-        table.cell(trendTbl, 3, row, na(pointC1min) ? "-" : str.tostring(pointC1min, format.mintick), text_color=color.aqua, text_size=size.tiny)
-        table.cell(trendTbl, 4, row, d1min, text_color=c1min, text_size=size.tiny)
-        table.cell(trendTbl, 5, row, str.tostring(rsi1min, "#.#"), text_color=rsi1min > 50 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 6, row, mh1min > 0 ? "+" : "-", text_color=mh1min > 0 ? color.lime : color.red, text_size=size.tiny)
-        table.cell(trendTbl, 7, row, str.tostring(lb1min) + "/" + str.tostring(fwd1min), text_color=color.gray, text_size=size.tiny)
-        bullCount += d1min == "BULL" ? 1 : 0
-        bearCount += d1min == "BEAR" ? 1 : 0
+        d = drawTrendRow(trendTbl, row, "1m", col1min, autoABC1min, pointA1min, pointB1min, pointC1min, rsi1min, mh1min, lb1min, fwd1min)
+        bullCount += d == "BULL" ? 1 : 0
+        bearCount += d == "BEAR" ? 1 : 0
         row += 1
 
     // Overall
