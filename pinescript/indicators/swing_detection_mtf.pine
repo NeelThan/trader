@@ -1,0 +1,1216 @@
+// Multi-Timeframe Swing Detection & Fibonacci Levels
+// Shows swing highs/lows and Fibonacci levels from ALL timeframes on one chart
+// Matches Workflow V2 backend algorithm (trader/pivots.py, trader/fibonacci.py)
+//
+// Features:
+// - View swing points from 1M, 1W, 1D, 4H, 1H, 15m, 1m on any chart
+// - Per-timeframe lookback settings
+// - Per-timeframe Fibonacci level controls
+// - Per-timeframe ratio selection
+// - Combined trend analysis across all timeframes
+
+//@version=6
+indicator("MTF Swing Detection & Fibonacci", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// =============================================================================
+// TIMEFRAME DEFINITIONS
+// =============================================================================
+
+TF_1M  = "1M"
+TF_1W  = "1W"
+TF_1D  = "1D"
+TF_4H  = "240"
+TF_1H  = "60"
+TF_15m = "15"
+TF_1m  = "1"
+
+// =============================================================================
+// GLOBAL SETTINGS
+// =============================================================================
+
+grpGlobal = "Global Display"
+showTrendPanel = input.bool(true, "Show Trend Panel", group=grpGlobal)
+
+grpTrend = "Trend Detection"
+rsiPeriod = input.int(14, "RSI Period", minval=2, maxval=50, group=grpTrend)
+macdFast = input.int(12, "MACD Fast", minval=2, maxval=50, group=grpTrend)
+macdSlow = input.int(26, "MACD Slow", minval=2, maxval=100, group=grpTrend)
+macdSignalPeriod = input.int(9, "MACD Signal", minval=2, maxval=50, group=grpTrend)
+
+// =============================================================================
+// LINE LENGTH BY TIMEFRAME (higher TF = longer lines for visibility when stacked)
+// =============================================================================
+// Solid lines = Swing High/Low markers (the detected pivot points)
+// Dashed lines = Fibonacci levels (retracement, extension, projection, expansion)
+// High/Low in table = The actual swing high/low prices detected for that timeframe
+
+lineLen1M   = 100  // Monthly - longest (most important levels)
+lineLen1W   = 85   // Weekly
+lineLen1D   = 70   // Daily
+lineLen4H   = 55   // 4 Hour
+lineLen1H   = 40   // 1 Hour
+lineLen15m  = 25   // 15 Minute
+lineLen1min = 10   // 1 Minute - shortest
+
+// =============================================================================
+// 1M MONTHLY (All settings in one collapsible group)
+// =============================================================================
+
+grp1M = "═══ 1M MONTHLY ═══"
+enable1M = input.bool(true, "Enable", group=grp1M, inline="1m1")
+col1M = input.color(color.purple, "", group=grp1M, inline="1m1")
+lb1M = input.int(3, "Left", minval=1, maxval=20, group=grp1M, inline="1m1", tooltip="Bars to left for pivot confirmation")
+fwd1M = input.int(3, "Right", minval=1, maxval=20, group=grp1M, inline="1m1", tooltip="Bars to right for pivot confirmation")
+showLabels1M = input.bool(true, "Labels", group=grp1M, inline="1m2")
+showLines1M = input.bool(true, "Lines", group=grp1M, inline="1m2")
+showPrice1M = input.bool(true, "Price", group=grp1M, inline="1m2")
+extendFib1M = input.bool(true, "Extend", group=grp1M, inline="1m2")
+// Retracement
+ret1M = input.bool(true, "Retracement", group=grp1M, inline="1mr0")
+r1M_R236 = input.bool(false, "23.6", group=grp1M, inline="1mr1")
+r1M_R382 = input.bool(true, "38.2", group=grp1M, inline="1mr1")
+r1M_R500 = input.bool(true, "50", group=grp1M, inline="1mr1")
+r1M_R618 = input.bool(true, "61.8", group=grp1M, inline="1mr1")
+r1M_R786 = input.bool(true, "78.6", group=grp1M, inline="1mr1")
+// Extension
+ext1M = input.bool(true, "Extension", group=grp1M, inline="1me0")
+r1M_E1272 = input.bool(true, "127.2", group=grp1M, inline="1me1")
+r1M_E1618 = input.bool(true, "161.8", group=grp1M, inline="1me1")
+r1M_E2000 = input.bool(false, "200", group=grp1M, inline="1me1")
+r1M_E2618 = input.bool(false, "261.8", group=grp1M, inline="1me1")
+// Projection
+proj1M = input.bool(false, "Projection", group=grp1M, inline="1mp0")
+r1M_P618 = input.bool(true, "61.8", group=grp1M, inline="1mp1")
+r1M_P786 = input.bool(true, "78.6", group=grp1M, inline="1mp1")
+r1M_P1000 = input.bool(true, "100", group=grp1M, inline="1mp1")
+r1M_P1272 = input.bool(true, "127.2", group=grp1M, inline="1mp1")
+r1M_P1618 = input.bool(false, "161.8", group=grp1M, inline="1mp1")
+// Expansion
+exp1M = input.bool(false, "Expansion", group=grp1M, inline="1mx0")
+r1M_X382 = input.bool(true, "38.2", group=grp1M, inline="1mx1")
+r1M_X500 = input.bool(true, "50", group=grp1M, inline="1mx1")
+r1M_X618 = input.bool(true, "61.8", group=grp1M, inline="1mx1")
+r1M_X1000 = input.bool(true, "100", group=grp1M, inline="1mx1")
+r1M_X1618 = input.bool(false, "161.8", group=grp1M, inline="1mx1")
+// ABC Points (for Projection/Expansion)
+autoABC1M = input.bool(true, "Auto ABC", group=grp1M, inline="1mabc", tooltip="Use auto-detected pivots for A, B, C points")
+manualA1M = input.float(0.0, "A", group=grp1M, inline="1mabc")
+manualB1M = input.float(0.0, "B", group=grp1M, inline="1mabc")
+manualC1M = input.float(0.0, "C", group=grp1M, inline="1mabc")
+
+// =============================================================================
+// 1W WEEKLY (All settings in one collapsible group)
+// =============================================================================
+
+grp1W = "═══ 1W WEEKLY ═══"
+enable1W = input.bool(true, "Enable", group=grp1W, inline="1w1")
+col1W = input.color(color.blue, "", group=grp1W, inline="1w1")
+lb1W = input.int(3, "Left", minval=1, maxval=20, group=grp1W, inline="1w1", tooltip="Bars to left for pivot confirmation")
+fwd1W = input.int(3, "Right", minval=1, maxval=20, group=grp1W, inline="1w1", tooltip="Bars to right for pivot confirmation")
+showLabels1W = input.bool(true, "Labels", group=grp1W, inline="1w2")
+showLines1W = input.bool(true, "Lines", group=grp1W, inline="1w2")
+showPrice1W = input.bool(true, "Price", group=grp1W, inline="1w2")
+extendFib1W = input.bool(true, "Extend", group=grp1W, inline="1w2")
+// Retracement
+ret1W = input.bool(true, "Retracement", group=grp1W, inline="1wr0")
+r1W_R236 = input.bool(false, "23.6", group=grp1W, inline="1wr1")
+r1W_R382 = input.bool(true, "38.2", group=grp1W, inline="1wr1")
+r1W_R500 = input.bool(true, "50", group=grp1W, inline="1wr1")
+r1W_R618 = input.bool(true, "61.8", group=grp1W, inline="1wr1")
+r1W_R786 = input.bool(true, "78.6", group=grp1W, inline="1wr1")
+// Extension
+ext1W = input.bool(true, "Extension", group=grp1W, inline="1we0")
+r1W_E1272 = input.bool(true, "127.2", group=grp1W, inline="1we1")
+r1W_E1618 = input.bool(true, "161.8", group=grp1W, inline="1we1")
+r1W_E2000 = input.bool(false, "200", group=grp1W, inline="1we1")
+r1W_E2618 = input.bool(false, "261.8", group=grp1W, inline="1we1")
+// Projection
+proj1W = input.bool(false, "Projection", group=grp1W, inline="1wp0")
+r1W_P618 = input.bool(true, "61.8", group=grp1W, inline="1wp1")
+r1W_P786 = input.bool(true, "78.6", group=grp1W, inline="1wp1")
+r1W_P1000 = input.bool(true, "100", group=grp1W, inline="1wp1")
+r1W_P1272 = input.bool(true, "127.2", group=grp1W, inline="1wp1")
+r1W_P1618 = input.bool(false, "161.8", group=grp1W, inline="1wp1")
+// Expansion
+exp1W = input.bool(false, "Expansion", group=grp1W, inline="1wx0")
+r1W_X382 = input.bool(true, "38.2", group=grp1W, inline="1wx1")
+r1W_X500 = input.bool(true, "50", group=grp1W, inline="1wx1")
+r1W_X618 = input.bool(true, "61.8", group=grp1W, inline="1wx1")
+r1W_X1000 = input.bool(true, "100", group=grp1W, inline="1wx1")
+r1W_X1618 = input.bool(false, "161.8", group=grp1W, inline="1wx1")
+// ABC Points (for Projection/Expansion)
+autoABC1W = input.bool(true, "Auto ABC", group=grp1W, inline="1wabc", tooltip="Use auto-detected pivots for A, B, C points")
+manualA1W = input.float(0.0, "A", group=grp1W, inline="1wabc")
+manualB1W = input.float(0.0, "B", group=grp1W, inline="1wabc")
+manualC1W = input.float(0.0, "C", group=grp1W, inline="1wabc")
+
+// =============================================================================
+// 1D DAILY (All settings in one collapsible group)
+// =============================================================================
+
+grp1D = "═══ 1D DAILY ═══"
+enable1D = input.bool(true, "Enable", group=grp1D, inline="1d1")
+col1D = input.color(color.teal, "", group=grp1D, inline="1d1")
+lb1D = input.int(5, "Left", minval=1, maxval=20, group=grp1D, inline="1d1", tooltip="Bars to left for pivot confirmation")
+fwd1D = input.int(5, "Right", minval=1, maxval=20, group=grp1D, inline="1d1", tooltip="Bars to right for pivot confirmation")
+showLabels1D = input.bool(true, "Labels", group=grp1D, inline="1d2")
+showLines1D = input.bool(true, "Lines", group=grp1D, inline="1d2")
+showPrice1D = input.bool(true, "Price", group=grp1D, inline="1d2")
+extendFib1D = input.bool(true, "Extend", group=grp1D, inline="1d2")
+// Retracement
+ret1D = input.bool(true, "Retracement", group=grp1D, inline="1dr0")
+r1D_R236 = input.bool(false, "23.6", group=grp1D, inline="1dr1")
+r1D_R382 = input.bool(true, "38.2", group=grp1D, inline="1dr1")
+r1D_R500 = input.bool(true, "50", group=grp1D, inline="1dr1")
+r1D_R618 = input.bool(true, "61.8", group=grp1D, inline="1dr1")
+r1D_R786 = input.bool(true, "78.6", group=grp1D, inline="1dr1")
+// Extension
+ext1D = input.bool(true, "Extension", group=grp1D, inline="1de0")
+r1D_E1272 = input.bool(true, "127.2", group=grp1D, inline="1de1")
+r1D_E1618 = input.bool(true, "161.8", group=grp1D, inline="1de1")
+r1D_E2000 = input.bool(false, "200", group=grp1D, inline="1de1")
+r1D_E2618 = input.bool(false, "261.8", group=grp1D, inline="1de1")
+// Projection
+proj1D = input.bool(false, "Projection", group=grp1D, inline="1dp0")
+r1D_P618 = input.bool(true, "61.8", group=grp1D, inline="1dp1")
+r1D_P786 = input.bool(true, "78.6", group=grp1D, inline="1dp1")
+r1D_P1000 = input.bool(true, "100", group=grp1D, inline="1dp1")
+r1D_P1272 = input.bool(true, "127.2", group=grp1D, inline="1dp1")
+r1D_P1618 = input.bool(false, "161.8", group=grp1D, inline="1dp1")
+// Expansion
+exp1D = input.bool(false, "Expansion", group=grp1D, inline="1dx0")
+r1D_X382 = input.bool(true, "38.2", group=grp1D, inline="1dx1")
+r1D_X500 = input.bool(true, "50", group=grp1D, inline="1dx1")
+r1D_X618 = input.bool(true, "61.8", group=grp1D, inline="1dx1")
+r1D_X1000 = input.bool(true, "100", group=grp1D, inline="1dx1")
+r1D_X1618 = input.bool(false, "161.8", group=grp1D, inline="1dx1")
+// ABC Points (for Projection/Expansion)
+autoABC1D = input.bool(true, "Auto ABC", group=grp1D, inline="1dabc", tooltip="Use auto-detected pivots for A, B, C points")
+manualA1D = input.float(0.0, "A", group=grp1D, inline="1dabc")
+manualB1D = input.float(0.0, "B", group=grp1D, inline="1dabc")
+manualC1D = input.float(0.0, "C", group=grp1D, inline="1dabc")
+
+// =============================================================================
+// 4H FOUR HOUR (All settings in one collapsible group)
+// =============================================================================
+
+grp4H = "═══ 4H FOUR HOUR ═══"
+enable4H = input.bool(true, "Enable", group=grp4H, inline="4h1")
+col4H = input.color(color.green, "", group=grp4H, inline="4h1")
+lb4H = input.int(5, "Left", minval=1, maxval=20, group=grp4H, inline="4h1", tooltip="Bars to left for pivot confirmation")
+fwd4H = input.int(5, "Right", minval=1, maxval=20, group=grp4H, inline="4h1", tooltip="Bars to right for pivot confirmation")
+showLabels4H = input.bool(true, "Labels", group=grp4H, inline="4h2")
+showLines4H = input.bool(true, "Lines", group=grp4H, inline="4h2")
+showPrice4H = input.bool(true, "Price", group=grp4H, inline="4h2")
+extendFib4H = input.bool(true, "Extend", group=grp4H, inline="4h2")
+// Retracement
+ret4H = input.bool(true, "Retracement", group=grp4H, inline="4hr0")
+r4H_R236 = input.bool(false, "23.6", group=grp4H, inline="4hr1")
+r4H_R382 = input.bool(true, "38.2", group=grp4H, inline="4hr1")
+r4H_R500 = input.bool(true, "50", group=grp4H, inline="4hr1")
+r4H_R618 = input.bool(true, "61.8", group=grp4H, inline="4hr1")
+r4H_R786 = input.bool(true, "78.6", group=grp4H, inline="4hr1")
+// Extension
+ext4H = input.bool(true, "Extension", group=grp4H, inline="4he0")
+r4H_E1272 = input.bool(true, "127.2", group=grp4H, inline="4he1")
+r4H_E1618 = input.bool(true, "161.8", group=grp4H, inline="4he1")
+r4H_E2000 = input.bool(false, "200", group=grp4H, inline="4he1")
+r4H_E2618 = input.bool(false, "261.8", group=grp4H, inline="4he1")
+// Projection
+proj4H = input.bool(false, "Projection", group=grp4H, inline="4hp0")
+r4H_P618 = input.bool(true, "61.8", group=grp4H, inline="4hp1")
+r4H_P786 = input.bool(true, "78.6", group=grp4H, inline="4hp1")
+r4H_P1000 = input.bool(true, "100", group=grp4H, inline="4hp1")
+r4H_P1272 = input.bool(true, "127.2", group=grp4H, inline="4hp1")
+r4H_P1618 = input.bool(false, "161.8", group=grp4H, inline="4hp1")
+// Expansion
+exp4H = input.bool(false, "Expansion", group=grp4H, inline="4hx0")
+r4H_X382 = input.bool(true, "38.2", group=grp4H, inline="4hx1")
+r4H_X500 = input.bool(true, "50", group=grp4H, inline="4hx1")
+r4H_X618 = input.bool(true, "61.8", group=grp4H, inline="4hx1")
+r4H_X1000 = input.bool(true, "100", group=grp4H, inline="4hx1")
+r4H_X1618 = input.bool(false, "161.8", group=grp4H, inline="4hx1")
+// ABC Points (for Projection/Expansion)
+autoABC4H = input.bool(true, "Auto ABC", group=grp4H, inline="4habc", tooltip="Use auto-detected pivots for A, B, C points")
+manualA4H = input.float(0.0, "A", group=grp4H, inline="4habc")
+manualB4H = input.float(0.0, "B", group=grp4H, inline="4habc")
+manualC4H = input.float(0.0, "C", group=grp4H, inline="4habc")
+
+// =============================================================================
+// 1H ONE HOUR (All settings in one collapsible group)
+// =============================================================================
+
+grp1H = "═══ 1H ONE HOUR ═══"
+enable1H = input.bool(true, "Enable", group=grp1H, inline="1h1")
+col1H = input.color(color.orange, "", group=grp1H, inline="1h1")
+lb1H = input.int(5, "Left", minval=1, maxval=20, group=grp1H, inline="1h1", tooltip="Bars to left for pivot confirmation")
+fwd1H = input.int(5, "Right", minval=1, maxval=20, group=grp1H, inline="1h1", tooltip="Bars to right for pivot confirmation")
+showLabels1H = input.bool(true, "Labels", group=grp1H, inline="1h2")
+showLines1H = input.bool(true, "Lines", group=grp1H, inline="1h2")
+showPrice1H = input.bool(true, "Price", group=grp1H, inline="1h2")
+extendFib1H = input.bool(true, "Extend", group=grp1H, inline="1h2")
+// Retracement
+ret1H = input.bool(true, "Retracement", group=grp1H, inline="1hr0")
+r1H_R236 = input.bool(false, "23.6", group=grp1H, inline="1hr1")
+r1H_R382 = input.bool(true, "38.2", group=grp1H, inline="1hr1")
+r1H_R500 = input.bool(true, "50", group=grp1H, inline="1hr1")
+r1H_R618 = input.bool(true, "61.8", group=grp1H, inline="1hr1")
+r1H_R786 = input.bool(true, "78.6", group=grp1H, inline="1hr1")
+// Extension
+ext1H = input.bool(true, "Extension", group=grp1H, inline="1he0")
+r1H_E1272 = input.bool(true, "127.2", group=grp1H, inline="1he1")
+r1H_E1618 = input.bool(true, "161.8", group=grp1H, inline="1he1")
+r1H_E2000 = input.bool(false, "200", group=grp1H, inline="1he1")
+r1H_E2618 = input.bool(false, "261.8", group=grp1H, inline="1he1")
+// Projection
+proj1H = input.bool(false, "Projection", group=grp1H, inline="1hp0")
+r1H_P618 = input.bool(true, "61.8", group=grp1H, inline="1hp1")
+r1H_P786 = input.bool(true, "78.6", group=grp1H, inline="1hp1")
+r1H_P1000 = input.bool(true, "100", group=grp1H, inline="1hp1")
+r1H_P1272 = input.bool(true, "127.2", group=grp1H, inline="1hp1")
+r1H_P1618 = input.bool(false, "161.8", group=grp1H, inline="1hp1")
+// Expansion
+exp1H = input.bool(false, "Expansion", group=grp1H, inline="1hx0")
+r1H_X382 = input.bool(true, "38.2", group=grp1H, inline="1hx1")
+r1H_X500 = input.bool(true, "50", group=grp1H, inline="1hx1")
+r1H_X618 = input.bool(true, "61.8", group=grp1H, inline="1hx1")
+r1H_X1000 = input.bool(true, "100", group=grp1H, inline="1hx1")
+r1H_X1618 = input.bool(false, "161.8", group=grp1H, inline="1hx1")
+// ABC Points (for Projection/Expansion)
+autoABC1H = input.bool(true, "Auto ABC", group=grp1H, inline="1habc", tooltip="Use auto-detected pivots for A, B, C points")
+manualA1H = input.float(0.0, "A", group=grp1H, inline="1habc")
+manualB1H = input.float(0.0, "B", group=grp1H, inline="1habc")
+manualC1H = input.float(0.0, "C", group=grp1H, inline="1habc")
+
+// =============================================================================
+// 15m FIFTEEN MIN (All settings in one collapsible group)
+// =============================================================================
+
+grp15m = "═══ 15m FIFTEEN MIN ═══"
+enable15m = input.bool(false, "Enable", group=grp15m, inline="15m1")
+col15m = input.color(color.red, "", group=grp15m, inline="15m1")
+lb15m = input.int(5, "Left", minval=1, maxval=20, group=grp15m, inline="15m1", tooltip="Bars to left for pivot confirmation")
+fwd15m = input.int(5, "Right", minval=1, maxval=20, group=grp15m, inline="15m1", tooltip="Bars to right for pivot confirmation")
+showLabels15m = input.bool(true, "Labels", group=grp15m, inline="15m2")
+showLines15m = input.bool(true, "Lines", group=grp15m, inline="15m2")
+showPrice15m = input.bool(true, "Price", group=grp15m, inline="15m2")
+extendFib15m = input.bool(true, "Extend", group=grp15m, inline="15m2")
+// Retracement
+ret15m = input.bool(true, "Retracement", group=grp15m, inline="15mr0")
+r15m_R236 = input.bool(false, "23.6", group=grp15m, inline="15mr1")
+r15m_R382 = input.bool(true, "38.2", group=grp15m, inline="15mr1")
+r15m_R500 = input.bool(true, "50", group=grp15m, inline="15mr1")
+r15m_R618 = input.bool(true, "61.8", group=grp15m, inline="15mr1")
+r15m_R786 = input.bool(true, "78.6", group=grp15m, inline="15mr1")
+// Extension
+ext15m = input.bool(true, "Extension", group=grp15m, inline="15me0")
+r15m_E1272 = input.bool(true, "127.2", group=grp15m, inline="15me1")
+r15m_E1618 = input.bool(true, "161.8", group=grp15m, inline="15me1")
+r15m_E2000 = input.bool(false, "200", group=grp15m, inline="15me1")
+r15m_E2618 = input.bool(false, "261.8", group=grp15m, inline="15me1")
+// Projection
+proj15m = input.bool(false, "Projection", group=grp15m, inline="15mp0")
+r15m_P618 = input.bool(true, "61.8", group=grp15m, inline="15mp1")
+r15m_P786 = input.bool(true, "78.6", group=grp15m, inline="15mp1")
+r15m_P1000 = input.bool(true, "100", group=grp15m, inline="15mp1")
+r15m_P1272 = input.bool(true, "127.2", group=grp15m, inline="15mp1")
+r15m_P1618 = input.bool(false, "161.8", group=grp15m, inline="15mp1")
+// Expansion
+exp15m = input.bool(false, "Expansion", group=grp15m, inline="15mx0")
+r15m_X382 = input.bool(true, "38.2", group=grp15m, inline="15mx1")
+r15m_X500 = input.bool(true, "50", group=grp15m, inline="15mx1")
+r15m_X618 = input.bool(true, "61.8", group=grp15m, inline="15mx1")
+r15m_X1000 = input.bool(true, "100", group=grp15m, inline="15mx1")
+r15m_X1618 = input.bool(false, "161.8", group=grp15m, inline="15mx1")
+// ABC Points (for Projection/Expansion)
+autoABC15m = input.bool(true, "Auto ABC", group=grp15m, inline="15mabc", tooltip="Use auto-detected pivots for A, B, C points")
+manualA15m = input.float(0.0, "A", group=grp15m, inline="15mabc")
+manualB15m = input.float(0.0, "B", group=grp15m, inline="15mabc")
+manualC15m = input.float(0.0, "C", group=grp15m, inline="15mabc")
+
+// =============================================================================
+// 1m ONE MIN (All settings in one collapsible group)
+// =============================================================================
+
+grp1min = "═══ 1m ONE MIN ═══"
+enable1min = input.bool(false, "Enable", group=grp1min, inline="1min1")
+col1min = input.color(color.gray, "", group=grp1min, inline="1min1")
+lb1min = input.int(5, "Left", minval=1, maxval=20, group=grp1min, inline="1min1", tooltip="Bars to left for pivot confirmation")
+fwd1min = input.int(5, "Right", minval=1, maxval=20, group=grp1min, inline="1min1", tooltip="Bars to right for pivot confirmation")
+showLabels1min = input.bool(true, "Labels", group=grp1min, inline="1min2")
+showLines1min = input.bool(true, "Lines", group=grp1min, inline="1min2")
+showPrice1min = input.bool(true, "Price", group=grp1min, inline="1min2")
+extendFib1min = input.bool(true, "Extend", group=grp1min, inline="1min2")
+// Retracement
+ret1min = input.bool(true, "Retracement", group=grp1min, inline="1minr0")
+r1min_R236 = input.bool(false, "23.6", group=grp1min, inline="1minr1")
+r1min_R382 = input.bool(true, "38.2", group=grp1min, inline="1minr1")
+r1min_R500 = input.bool(true, "50", group=grp1min, inline="1minr1")
+r1min_R618 = input.bool(true, "61.8", group=grp1min, inline="1minr1")
+r1min_R786 = input.bool(true, "78.6", group=grp1min, inline="1minr1")
+// Extension
+ext1min = input.bool(true, "Extension", group=grp1min, inline="1mine0")
+r1min_E1272 = input.bool(true, "127.2", group=grp1min, inline="1mine1")
+r1min_E1618 = input.bool(true, "161.8", group=grp1min, inline="1mine1")
+r1min_E2000 = input.bool(false, "200", group=grp1min, inline="1mine1")
+r1min_E2618 = input.bool(false, "261.8", group=grp1min, inline="1mine1")
+// Projection
+proj1min = input.bool(false, "Projection", group=grp1min, inline="1minp0")
+r1min_P618 = input.bool(true, "61.8", group=grp1min, inline="1minp1")
+r1min_P786 = input.bool(true, "78.6", group=grp1min, inline="1minp1")
+r1min_P1000 = input.bool(true, "100", group=grp1min, inline="1minp1")
+r1min_P1272 = input.bool(true, "127.2", group=grp1min, inline="1minp1")
+r1min_P1618 = input.bool(false, "161.8", group=grp1min, inline="1minp1")
+// Expansion
+exp1min = input.bool(false, "Expansion", group=grp1min, inline="1minx0")
+r1min_X382 = input.bool(true, "38.2", group=grp1min, inline="1minx1")
+r1min_X500 = input.bool(true, "50", group=grp1min, inline="1minx1")
+r1min_X618 = input.bool(true, "61.8", group=grp1min, inline="1minx1")
+r1min_X1000 = input.bool(true, "100", group=grp1min, inline="1minx1")
+r1min_X1618 = input.bool(false, "161.8", group=grp1min, inline="1minx1")
+// ABC Points (for Projection/Expansion)
+autoABC1min = input.bool(true, "Auto ABC", group=grp1min, inline="1minabc", tooltip="Use auto-detected pivots for A, B, C points")
+manualA1min = input.float(0.0, "A", group=grp1min, inline="1minabc")
+manualB1min = input.float(0.0, "B", group=grp1min, inline="1minabc")
+manualC1min = input.float(0.0, "C", group=grp1min, inline="1minabc")
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+// Check if we have valid ABC data for a timeframe (at least one point exists)
+hasValidABCData(float pA, float pB, float pC) =>
+    not na(pA) or not na(pB) or not na(pC)
+
+// Convert lastType to swing direction for Fibonacci calculations
+// "low" = swing ended LOW = DOWN direction = BUY setup
+// "high" = swing ended HIGH = UP direction = SELL setup
+getSwingDir(string lastType) =>
+    lastType == "low" ? "down" : (lastType == "high" ? "up" : "down")
+
+// Check if current TF can request target TF data
+// Returns true for same/higher TF targets (always allowed)
+// Returns true for lower TF targets only on low TF charts (Pine Script limit)
+isValidTFRequest(string targetTF) =>
+    currentMins = timeframe.in_seconds() / 60
+    targetMins = switch targetTF
+        "1M" => 43200
+        "1W" => 10080
+        "1D" => 1440
+        "240" => 240
+        "60" => 60
+        "15" => 15
+        "1" => 1
+        => 1440
+    // Allow if current TF <= target TF (requesting same or higher TF)
+    // Monthly can be 28-31 days so use >= comparison with some tolerance
+    currentMins <= targetMins * 1.1  // 10% tolerance for month variations
+
+// Fibonacci calculations
+calcRetracement(float h, float l, string dir, float ratio) =>
+    rng = h - l
+    dir == "down" ? h - (rng * ratio) : l + (rng * ratio)
+
+calcExtension(float h, float l, string dir, float ratio) =>
+    rng = h - l
+    dir == "down" ? h - (rng * ratio) : l + (rng * ratio)
+
+calcProjection(float a, float b, float c, string dir, float ratio) =>
+    swing = math.abs(a - b)
+    dir == "down" ? c - (swing * ratio) : c + (swing * ratio)
+
+calcExpansion(float a, float b, string dir, float ratio) =>
+    rng = math.abs(a - b)
+    dir == "down" ? b - (rng * ratio) : b + (rng * ratio)
+
+// =============================================================================
+// PIVOT DETECTION FUNCTIONS
+// =============================================================================
+
+// Use Pine's built-in pivot functions for more reliable MTF detection
+// lb = left bars (lookback), rb = right bars (forward confirmation)
+getPivotHigh(int lb, int rb) =>
+    ta.pivothigh(high, lb, rb)
+
+getPivotLow(int lb, int rb) =>
+    ta.pivotlow(low, lb, rb)
+
+getMacdHist(int fast, int slow, int sig) =>
+    [macdLine, signalLine, histLine] = ta.macd(close, fast, slow, sig)
+    histLine
+
+// =============================================================================
+// MULTI-TIMEFRAME DATA REQUESTS
+// =============================================================================
+
+// 1M
+[sh1M, sl1M, rsi1M, mh1M] = request.security(syminfo.tickerid, TF_1M,
+    [getPivotHigh(lb1M, fwd1M), getPivotLow(lb1M, fwd1M), ta.rsi(close, rsiPeriod), getMacdHist(macdFast, macdSlow, macdSignalPeriod)],
+    lookahead=barmerge.lookahead_on)
+
+// 1W
+[sh1W, sl1W, rsi1W, mh1W] = request.security(syminfo.tickerid, TF_1W,
+    [getPivotHigh(lb1W, fwd1W), getPivotLow(lb1W, fwd1W), ta.rsi(close, rsiPeriod), getMacdHist(macdFast, macdSlow, macdSignalPeriod)],
+    lookahead=barmerge.lookahead_on)
+
+// 1D
+[sh1D, sl1D, rsi1D, mh1D] = request.security(syminfo.tickerid, TF_1D,
+    [getPivotHigh(lb1D, fwd1D), getPivotLow(lb1D, fwd1D), ta.rsi(close, rsiPeriod), getMacdHist(macdFast, macdSlow, macdSignalPeriod)],
+    lookahead=barmerge.lookahead_on)
+
+// 4H
+[sh4H, sl4H, rsi4H, mh4H] = request.security(syminfo.tickerid, TF_4H,
+    [getPivotHigh(lb4H, fwd4H), getPivotLow(lb4H, fwd4H), ta.rsi(close, rsiPeriod), getMacdHist(macdFast, macdSlow, macdSignalPeriod)],
+    lookahead=barmerge.lookahead_on)
+
+// 1H
+[sh1H, sl1H, rsi1H, mh1H] = request.security(syminfo.tickerid, TF_1H,
+    [getPivotHigh(lb1H, fwd1H), getPivotLow(lb1H, fwd1H), ta.rsi(close, rsiPeriod), getMacdHist(macdFast, macdSlow, macdSignalPeriod)],
+    lookahead=barmerge.lookahead_on)
+
+// 15m
+[sh15m, sl15m, rsi15m, mh15m] = request.security(syminfo.tickerid, TF_15m,
+    [getPivotHigh(lb15m, fwd15m), getPivotLow(lb15m, fwd15m), ta.rsi(close, rsiPeriod), getMacdHist(macdFast, macdSlow, macdSignalPeriod)],
+    lookahead=barmerge.lookahead_on)
+
+// 1m
+[sh1min, sl1min, rsi1min, mh1min] = request.security(syminfo.tickerid, TF_1m,
+    [getPivotHigh(lb1min, fwd1min), getPivotLow(lb1min, fwd1min), ta.rsi(close, rsiPeriod), getMacdHist(macdFast, macdSlow, macdSignalPeriod)],
+    lookahead=barmerge.lookahead_on)
+
+// =============================================================================
+// PERSISTENT SWING STORAGE (ABC = 3 alternating pivots)
+// =============================================================================
+// For proper ABC projection patterns, we need 3 ALTERNATING pivots:
+// - Long pattern: A=Low, B=High, C=Low (buy on pullback)
+// - Short pattern: A=High, B=Low, C=High (sell on rally)
+// pivotA = oldest, pivotB = middle, pivotC = most recent (chronological order)
+
+// 1M - store last 3 alternating pivots + last pivot type
+var float pivotA1M = na, var float pivotB1M = na, var float pivotC1M = na
+var string lastType1M = ""
+var float lastH1M = na, var float lastL1M = na  // Keep for swing markers
+
+// 1W
+var float pivotA1W = na, var float pivotB1W = na, var float pivotC1W = na
+var string lastType1W = ""
+var float lastH1W = na, var float lastL1W = na
+
+// 1D
+var float pivotA1D = na, var float pivotB1D = na, var float pivotC1D = na
+var string lastType1D = ""
+var float lastH1D = na, var float lastL1D = na
+
+// 4H
+var float pivotA4H = na, var float pivotB4H = na, var float pivotC4H = na
+var string lastType4H = ""
+var float lastH4H = na, var float lastL4H = na
+
+// 1H
+var float pivotA1H = na, var float pivotB1H = na, var float pivotC1H = na
+var string lastType1H = ""
+var float lastH1H = na, var float lastL1H = na
+
+// 15m
+var float pivotA15m = na, var float pivotB15m = na, var float pivotC15m = na
+var string lastType15m = ""
+var float lastH15m = na, var float lastL15m = na
+
+// 1m
+var float pivotA1min = na, var float pivotB1min = na, var float pivotC1min = na
+var string lastType1min = ""
+var float lastH1min = na, var float lastL1min = na
+
+// Update stored swings - shift pivots and track alternation
+// When alternating: shift pattern (A←B, B←C, C←new)
+// When same type: update C with latest value (keeps ABC current)
+
+// 1M
+if not na(sh1M)
+    lastH1M := sh1M
+    if lastType1M != "high"  // Alternating - shift pattern
+        pivotA1M := pivotB1M
+        pivotB1M := pivotC1M
+        pivotC1M := sh1M
+        lastType1M := "high"
+    else  // Same type - update C with latest
+        pivotC1M := sh1M
+if not na(sl1M)
+    lastL1M := sl1M
+    if lastType1M != "low"
+        pivotA1M := pivotB1M
+        pivotB1M := pivotC1M
+        pivotC1M := sl1M
+        lastType1M := "low"
+    else
+        pivotC1M := sl1M
+
+// 1W
+if not na(sh1W)
+    lastH1W := sh1W
+    if lastType1W != "high"
+        pivotA1W := pivotB1W
+        pivotB1W := pivotC1W
+        pivotC1W := sh1W
+        lastType1W := "high"
+    else
+        pivotC1W := sh1W
+if not na(sl1W)
+    lastL1W := sl1W
+    if lastType1W != "low"
+        pivotA1W := pivotB1W
+        pivotB1W := pivotC1W
+        pivotC1W := sl1W
+        lastType1W := "low"
+    else
+        pivotC1W := sl1W
+
+// 1D
+if not na(sh1D)
+    lastH1D := sh1D
+    if lastType1D != "high"
+        pivotA1D := pivotB1D
+        pivotB1D := pivotC1D
+        pivotC1D := sh1D
+        lastType1D := "high"
+    else
+        pivotC1D := sh1D
+if not na(sl1D)
+    lastL1D := sl1D
+    if lastType1D != "low"
+        pivotA1D := pivotB1D
+        pivotB1D := pivotC1D
+        pivotC1D := sl1D
+        lastType1D := "low"
+    else
+        pivotC1D := sl1D
+
+// 4H
+if not na(sh4H)
+    lastH4H := sh4H
+    if lastType4H != "high"
+        pivotA4H := pivotB4H
+        pivotB4H := pivotC4H
+        pivotC4H := sh4H
+        lastType4H := "high"
+    else
+        pivotC4H := sh4H
+if not na(sl4H)
+    lastL4H := sl4H
+    if lastType4H != "low"
+        pivotA4H := pivotB4H
+        pivotB4H := pivotC4H
+        pivotC4H := sl4H
+        lastType4H := "low"
+    else
+        pivotC4H := sl4H
+
+// 1H
+if not na(sh1H)
+    lastH1H := sh1H
+    if lastType1H != "high"
+        pivotA1H := pivotB1H
+        pivotB1H := pivotC1H
+        pivotC1H := sh1H
+        lastType1H := "high"
+    else
+        pivotC1H := sh1H
+if not na(sl1H)
+    lastL1H := sl1H
+    if lastType1H != "low"
+        pivotA1H := pivotB1H
+        pivotB1H := pivotC1H
+        pivotC1H := sl1H
+        lastType1H := "low"
+    else
+        pivotC1H := sl1H
+
+// 15m
+if not na(sh15m)
+    lastH15m := sh15m
+    if lastType15m != "high"
+        pivotA15m := pivotB15m
+        pivotB15m := pivotC15m
+        pivotC15m := sh15m
+        lastType15m := "high"
+    else
+        pivotC15m := sh15m
+if not na(sl15m)
+    lastL15m := sl15m
+    if lastType15m != "low"
+        pivotA15m := pivotB15m
+        pivotB15m := pivotC15m
+        pivotC15m := sl15m
+        lastType15m := "low"
+    else
+        pivotC15m := sl15m
+
+// 1m
+if not na(sh1min)
+    lastH1min := sh1min
+    if lastType1min != "high"
+        pivotA1min := pivotB1min
+        pivotB1min := pivotC1min
+        pivotC1min := sh1min
+        lastType1min := "high"
+    else
+        pivotC1min := sh1min
+if not na(sl1min)
+    lastL1min := sl1min
+    if lastType1min != "low"
+        pivotA1min := pivotB1min
+        pivotB1min := pivotC1min
+        pivotC1min := sl1min
+        lastType1min := "low"
+    else
+        pivotC1min := sl1min
+
+// =============================================================================
+// COMPUTED ABC POINTS (auto-detected or manual override)
+// =============================================================================
+// A, B, C are 3 alternating pivots in chronological order:
+// - A = oldest pivot, B = middle pivot, C = most recent pivot
+// - Pattern alternates: High-Low-High (short setup) or Low-High-Low (long setup)
+// Manual override: if autoABC is off and manual value > 0, use manual value
+
+// 1M
+pointA1M = autoABC1M ? pivotA1M : (manualA1M > 0 ? manualA1M : pivotA1M)
+pointB1M = autoABC1M ? pivotB1M : (manualB1M > 0 ? manualB1M : pivotB1M)
+pointC1M = autoABC1M ? pivotC1M : (manualC1M > 0 ? manualC1M : pivotC1M)
+
+// 1W
+pointA1W = autoABC1W ? pivotA1W : (manualA1W > 0 ? manualA1W : pivotA1W)
+pointB1W = autoABC1W ? pivotB1W : (manualB1W > 0 ? manualB1W : pivotB1W)
+pointC1W = autoABC1W ? pivotC1W : (manualC1W > 0 ? manualC1W : pivotC1W)
+
+// 1D
+pointA1D = autoABC1D ? pivotA1D : (manualA1D > 0 ? manualA1D : pivotA1D)
+pointB1D = autoABC1D ? pivotB1D : (manualB1D > 0 ? manualB1D : pivotB1D)
+pointC1D = autoABC1D ? pivotC1D : (manualC1D > 0 ? manualC1D : pivotC1D)
+
+// 4H
+pointA4H = autoABC4H ? pivotA4H : (manualA4H > 0 ? manualA4H : pivotA4H)
+pointB4H = autoABC4H ? pivotB4H : (manualB4H > 0 ? manualB4H : pivotB4H)
+pointC4H = autoABC4H ? pivotC4H : (manualC4H > 0 ? manualC4H : pivotC4H)
+
+// 1H
+pointA1H = autoABC1H ? pivotA1H : (manualA1H > 0 ? manualA1H : pivotA1H)
+pointB1H = autoABC1H ? pivotB1H : (manualB1H > 0 ? manualB1H : pivotB1H)
+pointC1H = autoABC1H ? pivotC1H : (manualC1H > 0 ? manualC1H : pivotC1H)
+
+// 15m
+pointA15m = autoABC15m ? pivotA15m : (manualA15m > 0 ? manualA15m : pivotA15m)
+pointB15m = autoABC15m ? pivotB15m : (manualB15m > 0 ? manualB15m : pivotB15m)
+pointC15m = autoABC15m ? pivotC15m : (manualC15m > 0 ? manualC15m : pivotC15m)
+
+// 1m
+pointA1min = autoABC1min ? pivotA1min : (manualA1min > 0 ? manualA1min : pivotA1min)
+pointB1min = autoABC1min ? pivotB1min : (manualB1min > 0 ? manualB1min : pivotB1min)
+pointC1min = autoABC1min ? pivotC1min : (manualC1min > 0 ? manualC1min : pivotC1min)
+
+// =============================================================================
+// TREND ANALYSIS
+// =============================================================================
+
+getTrendSignal(float rsiVal, float macdHistVal) =>
+    rsiSig = rsiVal >= 60 ? 1.0 : (rsiVal <= 40 ? -1.0 : (rsiVal > 50 ? 0.5 : (rsiVal < 50 ? -0.5 : 0.0)))
+    macdSig = macdHistVal > 0 ? 1.0 : (macdHistVal < 0 ? -1.0 : 0.0)
+    (rsiSig * 0.5) + (macdSig * 0.5)
+
+getTrendDir(float score) =>
+    score >= 0.3 ? "BULL" : (score <= -0.3 ? "BEAR" : "RANG")
+
+getTrendCol(string trend) =>
+    trend == "BULL" ? color.lime : (trend == "BEAR" ? color.red : color.gray)
+
+// =============================================================================
+// DRAWING ARRAYS
+// =============================================================================
+
+var array<line> fibLines = array.new<line>()
+var array<label> fibLabels = array.new<label>()
+var array<label> swingLabels = array.new<label>()
+var array<line> swingMarkerLines = array.new<line>()
+var array<line> swingConnectLines = array.new<line>()
+
+clearDrawings() =>
+    for ln in fibLines
+        line.delete(ln)
+    array.clear(fibLines)
+    for lb in fibLabels
+        label.delete(lb)
+    array.clear(fibLabels)
+    for lb in swingLabels
+        label.delete(lb)
+    array.clear(swingLabels)
+    for ln in swingMarkerLines
+        line.delete(ln)
+    array.clear(swingMarkerLines)
+    for ln in swingConnectLines
+        line.delete(ln)
+    array.clear(swingConnectLines)
+
+// Draw single Fib level (with per-TF settings)
+drawFib(float price, string tfName, string ratioText, string fibType, color tfColor, bool showLabel, bool extendLine, bool showPrice, int lineLen) =>
+    if not na(price)
+        extStyle = extendLine ? extend.right : extend.none
+        newLine = line.new(bar_index - lineLen, price, bar_index, price,
+            xloc.bar_index, extStyle, tfColor, line.style_dashed, 1)
+        array.push(fibLines, newLine)
+
+        if showLabel
+            txt = tfName + " " + fibType + " " + ratioText
+            if showPrice
+                txt := txt + " " + str.tostring(price, format.mintick)
+            newLbl = label.new(bar_index, price, txt,
+                xloc.bar_index, yloc.price, color.new(tfColor, 80), label.style_label_left, tfColor, size.tiny)
+            array.push(fibLabels, newLbl)
+
+// Draw swing marker (horizontal line + label) with per-TF settings
+drawSwing(float price, string tfName, bool isHigh, color tfColor, bool showLabel, bool showLine, bool showPrice, int lineLen) =>
+    if not na(price)
+        // Draw horizontal marker line at the swing level (short line for visibility)
+        if showLine
+            lineWidth = 2
+            markerLine = line.new(bar_index - lineLen, price, bar_index, price,
+                xloc.bar_index, extend.none, tfColor, line.style_solid, lineWidth)
+            array.push(swingMarkerLines, markerLine)
+
+        // Draw label if enabled
+        if showLabel
+            txt = tfName + (isHigh ? " H" : " L")
+            if showPrice
+                txt := txt + " " + str.tostring(price, format.mintick)
+            style = isHigh ? label.style_label_down : label.style_label_up
+            newLbl = label.new(bar_index, price, txt,
+                xloc.bar_index, yloc.price, color.new(tfColor, 70), style, tfColor, size.small)
+            array.push(swingLabels, newLbl)
+
+// Draw connecting line between swing high and swing low
+drawSwingConnection(float highPrice, float lowPrice, color tfColor, bool showLine, int lineLen) =>
+    if not na(highPrice) and not na(lowPrice) and showLine
+        // Draw diagonal line from high to low (offset positions based on line length)
+        startOffset = math.round(lineLen * 0.75)
+        endOffset = math.round(lineLen * 0.25)
+        connectLine = line.new(bar_index - startOffset, highPrice, bar_index - endOffset, lowPrice,
+            xloc.bar_index, extend.none, tfColor, line.style_dotted, 1)
+        array.push(swingConnectLines, connectLine)
+
+// Draw ABC swing markers with solid lines for all 3 points
+// A = oldest pivot, B = middle pivot, C = most recent pivot (alternating pattern)
+drawABCMarkers(float pointA, float pointB, float pointC, string tfName, color tfColor, bool showLabel, bool showLine, bool showPrice, int lineLen) =>
+    if showLine
+        // Point A marker (oldest - furthest back)
+        if not na(pointA)
+            aOffset = math.round(lineLen * 1.5)
+            aEndOffset = math.round(lineLen * 1.2)
+            markerLineA = line.new(bar_index - aOffset, pointA, bar_index - aEndOffset, pointA,
+                xloc.bar_index, extend.none, tfColor, line.style_solid, 2)
+            array.push(swingMarkerLines, markerLineA)
+            if showLabel
+                txtA = tfName + " A"
+                if showPrice
+                    txtA := txtA + " " + str.tostring(pointA, format.mintick)
+                lblA = label.new(bar_index - aOffset, pointA, txtA,
+                    xloc.bar_index, yloc.price, color.new(tfColor, 80), label.style_label_left, tfColor, size.small)
+                array.push(swingLabels, lblA)
+
+        // Point B marker (middle)
+        if not na(pointB)
+            bOffset = math.round(lineLen * 0.9)
+            bEndOffset = math.round(lineLen * 0.6)
+            markerLineB = line.new(bar_index - bOffset, pointB, bar_index - bEndOffset, pointB,
+                xloc.bar_index, extend.none, tfColor, line.style_solid, 2)
+            array.push(swingMarkerLines, markerLineB)
+            if showLabel
+                txtB = tfName + " B"
+                if showPrice
+                    txtB := txtB + " " + str.tostring(pointB, format.mintick)
+                lblB = label.new(bar_index - bOffset, pointB, txtB,
+                    xloc.bar_index, yloc.price, color.new(tfColor, 80), label.style_label_left, tfColor, size.small)
+                array.push(swingLabels, lblB)
+
+        // Point C marker (most recent - closest to current bar)
+        if not na(pointC)
+            cOffset = math.round(lineLen * 0.4)
+            cEndOffset = math.round(lineLen * 0.1)
+            markerLineC = line.new(bar_index - cOffset, pointC, bar_index - cEndOffset, pointC,
+                xloc.bar_index, extend.none, tfColor, line.style_solid, 2)
+            array.push(swingMarkerLines, markerLineC)
+            if showLabel
+                txtC = tfName + " C"
+                if showPrice
+                    txtC := txtC + " " + str.tostring(pointC, format.mintick)
+                lblC = label.new(bar_index - cOffset, pointC, txtC,
+                    xloc.bar_index, yloc.price, color.new(tfColor, 80), label.style_label_left, tfColor, size.small)
+                array.push(swingLabels, lblC)
+
+// Draw ABC connecting lines (A→B→C diagonal lines)
+drawABCConnections(float pointA, float pointB, float pointC, color tfColor, bool showLine, int lineLen) =>
+    if showLine
+        aOffset = math.round(lineLen * 1.35)
+        bOffset = math.round(lineLen * 0.75)
+        cOffset = math.round(lineLen * 0.25)
+
+        // A→B connecting line
+        if not na(pointA) and not na(pointB)
+            lineAB = line.new(bar_index - aOffset, pointA, bar_index - bOffset, pointB,
+                xloc.bar_index, extend.none, tfColor, line.style_solid, 1)
+            array.push(swingConnectLines, lineAB)
+
+        // B→C connecting line
+        if not na(pointB) and not na(pointC)
+            lineBC = line.new(bar_index - bOffset, pointB, bar_index - cOffset, pointC,
+                xloc.bar_index, extend.none, tfColor, line.style_solid, 1)
+            array.push(swingConnectLines, lineBC)
+
+// Legacy function for projection drawing (kept for backwards compatibility)
+drawProjectionABC(float pointA, float pointB, float pointC, string tfName, color tfColor, bool showLabel, bool showLine, bool showPrice, int lineLen) =>
+    if not na(pointA) and not na(pointB) and not na(pointC) and showLine
+        // Point A marker (previous high - the starting point of projection)
+        aOffset = math.round(lineLen * 1.2)  // A is further back (older swing)
+        markerLineA = line.new(bar_index - aOffset, pointA, bar_index - lineLen, pointA,
+            xloc.bar_index, extend.none, tfColor, line.style_solid, 1)
+        array.push(swingMarkerLines, markerLineA)
+
+        // Label for point A
+        if showLabel
+            txtA = tfName + " A"
+            if showPrice
+                txtA := txtA + " " + str.tostring(pointA, format.mintick)
+            lblA = label.new(bar_index - aOffset, pointA, txtA,
+                xloc.bar_index, yloc.price, color.new(tfColor, 80), label.style_label_down, tfColor, size.tiny)
+            array.push(swingLabels, lblA)
+
+        // A→B connecting line (diagonal from previous high to current high)
+        lineAB = line.new(bar_index - aOffset, pointA, bar_index - math.round(lineLen * 0.75), pointB,
+            xloc.bar_index, extend.none, tfColor, line.style_solid, 1)
+        array.push(swingConnectLines, lineAB)
+
+        // B→C connecting line (diagonal from current high to current low/pullback)
+        lineBC = line.new(bar_index - math.round(lineLen * 0.75), pointB, bar_index - math.round(lineLen * 0.25), pointC,
+            xloc.bar_index, extend.none, tfColor, line.style_solid, 1)
+        array.push(swingConnectLines, lineBC)
+
+// =============================================================================
+// DRAW ALL LEVELS FOR A TIMEFRAME
+// =============================================================================
+
+// Per-TF Fib drawing with separate strategy ratios
+// swingDir: "down" = last pivot was LOW (BUY setup), "up" = last pivot was HIGH (SELL setup)
+drawTFLevels(
+    float swingH, float swingL, float prevH, string swingDir,
+    string tfName, color tfColor,
+    bool showLabel, bool extendLine, bool showPrice, int lineLen,
+    bool showRet, bool rR236, bool rR382, bool rR500, bool rR618, bool rR786,
+    bool showExt, bool rE1272, bool rE1618, bool rE2000, bool rE2618,
+    bool showProj, bool rP618, bool rP786, bool rP1000, bool rP1272, bool rP1618,
+    bool showExp, bool rX382, bool rX500, bool rX618, bool rX1000, bool rX1618) =>
+
+    if not na(swingH) and not na(swingL)
+        rangeH = math.max(swingH, swingL)
+        rangeL = math.min(swingH, swingL)
+        // Use the passed direction based on which pivot came last:
+        // "down" = last was LOW = BUY setup (levels below for entry, above for targets)
+        // "up" = last was HIGH = SELL setup (levels above for entry, below for targets)
+        dir = swingDir
+
+        // RETRACEMENT
+        if showRet
+            if rR236
+                drawFib(calcRetracement(rangeH, rangeL, dir, 0.236), tfName, "23.6%", "R", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rR382
+                drawFib(calcRetracement(rangeH, rangeL, dir, 0.382), tfName, "38.2%", "R", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rR500
+                drawFib(calcRetracement(rangeH, rangeL, dir, 0.500), tfName, "50%", "R", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rR618
+                drawFib(calcRetracement(rangeH, rangeL, dir, 0.618), tfName, "61.8%", "R", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rR786
+                drawFib(calcRetracement(rangeH, rangeL, dir, 0.786), tfName, "78.6%", "R", tfColor, showLabel, extendLine, showPrice, lineLen)
+
+        // EXTENSION
+        if showExt
+            if rE1272
+                drawFib(calcExtension(rangeH, rangeL, dir, 1.272), tfName, "127.2%", "E", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rE1618
+                drawFib(calcExtension(rangeH, rangeL, dir, 1.618), tfName, "161.8%", "E", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rE2000
+                drawFib(calcExtension(rangeH, rangeL, dir, 2.000), tfName, "200%", "E", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rE2618
+                drawFib(calcExtension(rangeH, rangeL, dir, 2.618), tfName, "261.8%", "E", tfColor, showLabel, extendLine, showPrice, lineLen)
+
+        // PROJECTION (needs 3 points: prevH, swingH, swingL as A, B, C)
+        if showProj and not na(prevH)
+            pointA = prevH
+            pointB = swingH
+            pointC = swingL
+            if rP618
+                drawFib(calcProjection(pointA, pointB, pointC, dir, 0.618), tfName, "61.8%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rP786
+                drawFib(calcProjection(pointA, pointB, pointC, dir, 0.786), tfName, "78.6%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rP1000
+                drawFib(calcProjection(pointA, pointB, pointC, dir, 1.000), tfName, "100%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rP1272
+                drawFib(calcProjection(pointA, pointB, pointC, dir, 1.272), tfName, "127.2%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rP1618
+                drawFib(calcProjection(pointA, pointB, pointC, dir, 1.618), tfName, "161.8%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+
+        // EXPANSION (from swingH to swingL)
+        if showExp
+            if rX382
+                drawFib(calcExpansion(swingH, swingL, dir, 0.382), tfName, "38.2%", "X", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rX500
+                drawFib(calcExpansion(swingH, swingL, dir, 0.500), tfName, "50%", "X", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rX618
+                drawFib(calcExpansion(swingH, swingL, dir, 0.618), tfName, "61.8%", "X", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rX1000
+                drawFib(calcExpansion(swingH, swingL, dir, 1.000), tfName, "100%", "X", tfColor, showLabel, extendLine, showPrice, lineLen)
+            if rX1618
+                drawFib(calcExpansion(swingH, swingL, dir, 1.618), tfName, "161.8%", "X", tfColor, showLabel, extendLine, showPrice, lineLen)
+
+// =============================================================================
+// MAIN DRAWING LOGIC
+// =============================================================================
+
+if barstate.islast
+    clearDrawings()
+
+    // 1M (longest lines - highest TF)
+    // Draw if TF request is valid OR if we have data (handles same-TF edge cases)
+    if enable1M and (isValidTFRequest(TF_1M) or hasValidABCData(pointA1M, pointB1M, pointC1M))
+        drawABCMarkers(pointA1M, pointB1M, pointC1M, "1M", col1M, showLabels1M, showLines1M, showPrice1M, lineLen1M)
+        drawABCConnections(pointA1M, pointB1M, pointC1M, col1M, showLines1M, lineLen1M)
+        drawTFLevels(lastH1M, lastL1M, pointA1M, getSwingDir(lastType1M), "1M", col1M,
+            showLabels1M, extendFib1M, showPrice1M, lineLen1M,
+            ret1M, r1M_R236, r1M_R382, r1M_R500, r1M_R618, r1M_R786,
+            ext1M, r1M_E1272, r1M_E1618, r1M_E2000, r1M_E2618,
+            proj1M, r1M_P618, r1M_P786, r1M_P1000, r1M_P1272, r1M_P1618,
+            exp1M, r1M_X382, r1M_X500, r1M_X618, r1M_X1000, r1M_X1618)
+
+    // 1W
+    if enable1W and (isValidTFRequest(TF_1W) or hasValidABCData(pointA1W, pointB1W, pointC1W))
+        drawABCMarkers(pointA1W, pointB1W, pointC1W, "1W", col1W, showLabels1W, showLines1W, showPrice1W, lineLen1W)
+        drawABCConnections(pointA1W, pointB1W, pointC1W, col1W, showLines1W, lineLen1W)
+        drawTFLevels(lastH1W, lastL1W, pointA1W, getSwingDir(lastType1W), "1W", col1W,
+            showLabels1W, extendFib1W, showPrice1W, lineLen1W,
+            ret1W, r1W_R236, r1W_R382, r1W_R500, r1W_R618, r1W_R786,
+            ext1W, r1W_E1272, r1W_E1618, r1W_E2000, r1W_E2618,
+            proj1W, r1W_P618, r1W_P786, r1W_P1000, r1W_P1272, r1W_P1618,
+            exp1W, r1W_X382, r1W_X500, r1W_X618, r1W_X1000, r1W_X1618)
+
+    // 1D
+    if enable1D and (isValidTFRequest(TF_1D) or hasValidABCData(pointA1D, pointB1D, pointC1D))
+        drawABCMarkers(pointA1D, pointB1D, pointC1D, "1D", col1D, showLabels1D, showLines1D, showPrice1D, lineLen1D)
+        drawABCConnections(pointA1D, pointB1D, pointC1D, col1D, showLines1D, lineLen1D)
+        drawTFLevels(lastH1D, lastL1D, pointA1D, getSwingDir(lastType1D), "1D", col1D,
+            showLabels1D, extendFib1D, showPrice1D, lineLen1D,
+            ret1D, r1D_R236, r1D_R382, r1D_R500, r1D_R618, r1D_R786,
+            ext1D, r1D_E1272, r1D_E1618, r1D_E2000, r1D_E2618,
+            proj1D, r1D_P618, r1D_P786, r1D_P1000, r1D_P1272, r1D_P1618,
+            exp1D, r1D_X382, r1D_X500, r1D_X618, r1D_X1000, r1D_X1618)
+
+    // 4H
+    if enable4H and (isValidTFRequest(TF_4H) or hasValidABCData(pointA4H, pointB4H, pointC4H))
+        drawABCMarkers(pointA4H, pointB4H, pointC4H, "4H", col4H, showLabels4H, showLines4H, showPrice4H, lineLen4H)
+        drawABCConnections(pointA4H, pointB4H, pointC4H, col4H, showLines4H, lineLen4H)
+        drawTFLevels(lastH4H, lastL4H, pointA4H, getSwingDir(lastType4H), "4H", col4H,
+            showLabels4H, extendFib4H, showPrice4H, lineLen4H,
+            ret4H, r4H_R236, r4H_R382, r4H_R500, r4H_R618, r4H_R786,
+            ext4H, r4H_E1272, r4H_E1618, r4H_E2000, r4H_E2618,
+            proj4H, r4H_P618, r4H_P786, r4H_P1000, r4H_P1272, r4H_P1618,
+            exp4H, r4H_X382, r4H_X500, r4H_X618, r4H_X1000, r4H_X1618)
+
+    // 1H
+    if enable1H and (isValidTFRequest(TF_1H) or hasValidABCData(pointA1H, pointB1H, pointC1H))
+        drawABCMarkers(pointA1H, pointB1H, pointC1H, "1H", col1H, showLabels1H, showLines1H, showPrice1H, lineLen1H)
+        drawABCConnections(pointA1H, pointB1H, pointC1H, col1H, showLines1H, lineLen1H)
+        drawTFLevels(lastH1H, lastL1H, pointA1H, getSwingDir(lastType1H), "1H", col1H,
+            showLabels1H, extendFib1H, showPrice1H, lineLen1H,
+            ret1H, r1H_R236, r1H_R382, r1H_R500, r1H_R618, r1H_R786,
+            ext1H, r1H_E1272, r1H_E1618, r1H_E2000, r1H_E2618,
+            proj1H, r1H_P618, r1H_P786, r1H_P1000, r1H_P1272, r1H_P1618,
+            exp1H, r1H_X382, r1H_X500, r1H_X618, r1H_X1000, r1H_X1618)
+
+    // 15m
+    if enable15m and (isValidTFRequest(TF_15m) or hasValidABCData(pointA15m, pointB15m, pointC15m))
+        drawABCMarkers(pointA15m, pointB15m, pointC15m, "15m", col15m, showLabels15m, showLines15m, showPrice15m, lineLen15m)
+        drawABCConnections(pointA15m, pointB15m, pointC15m, col15m, showLines15m, lineLen15m)
+        drawTFLevels(lastH15m, lastL15m, pointA15m, getSwingDir(lastType15m), "15m", col15m,
+            showLabels15m, extendFib15m, showPrice15m, lineLen15m,
+            ret15m, r15m_R236, r15m_R382, r15m_R500, r15m_R618, r15m_R786,
+            ext15m, r15m_E1272, r15m_E1618, r15m_E2000, r15m_E2618,
+            proj15m, r15m_P618, r15m_P786, r15m_P1000, r15m_P1272, r15m_P1618,
+            exp15m, r15m_X382, r15m_X500, r15m_X618, r15m_X1000, r15m_X1618)
+
+    // 1m (shortest lines - lowest TF)
+    if enable1min and (isValidTFRequest(TF_1m) or hasValidABCData(pointA1min, pointB1min, pointC1min))
+        drawABCMarkers(pointA1min, pointB1min, pointC1min, "1m", col1min, showLabels1min, showLines1min, showPrice1min, lineLen1min)
+        drawABCConnections(pointA1min, pointB1min, pointC1min, col1min, showLines1min, lineLen1min)
+        drawTFLevels(lastH1min, lastL1min, pointA1min, getSwingDir(lastType1min), "1m", col1min,
+            showLabels1min, extendFib1min, showPrice1min, lineLen1min,
+            ret1min, r1min_R236, r1min_R382, r1min_R500, r1min_R618, r1min_R786,
+            ext1min, r1min_E1272, r1min_E1618, r1min_E2000, r1min_E2618,
+            proj1min, r1min_P618, r1min_P786, r1min_P1000, r1min_P1272, r1min_P1618,
+            exp1min, r1min_X382, r1min_X500, r1min_X618, r1min_X1000, r1min_X1618)
+
+// =============================================================================
+// TREND ALIGNMENT TABLE
+// =============================================================================
+
+var table trendTbl = table.new(position.top_right, 10, 10, bgcolor=color.new(color.black, 80), border_width=1)
+
+if barstate.islast and showTrendPanel
+    // Header
+    table.cell(trendTbl, 0, 0, "TF", text_color=color.white, text_size=size.small)
+    table.cell(trendTbl, 1, 0, "A", text_color=color.yellow, text_size=size.small, tooltip="Point A (oldest alternating pivot)")
+    table.cell(trendTbl, 2, 0, "B", text_color=color.lime, text_size=size.small, tooltip="Point B (middle alternating pivot)")
+    table.cell(trendTbl, 3, 0, "C", text_color=color.aqua, text_size=size.small, tooltip="Point C (most recent alternating pivot)")
+    table.cell(trendTbl, 4, 0, "Trend", text_color=color.white, text_size=size.small)
+    table.cell(trendTbl, 5, 0, "RSI", text_color=color.white, text_size=size.small)
+    table.cell(trendTbl, 6, 0, "MACD", text_color=color.white, text_size=size.small)
+    table.cell(trendTbl, 7, 0, "L/R", text_color=color.white, text_size=size.small, tooltip="Left/Right bars for pivot detection")
+
+    bullCount = 0
+    bearCount = 0
+    row = 1
+
+    // 1M
+    if enable1M
+        t1M = getTrendSignal(rsi1M, mh1M)
+        d1M = getTrendDir(t1M)
+        c1M = getTrendCol(d1M)
+        abcMode1M = autoABC1M ? "" : "*"  // Show * if manual override
+        table.cell(trendTbl, 0, row, "1M" + abcMode1M, text_color=col1M, text_size=size.tiny)
+        table.cell(trendTbl, 1, row, na(pointA1M) ? "-" : str.tostring(pointA1M, format.mintick), text_color=color.yellow, text_size=size.tiny)
+        table.cell(trendTbl, 2, row, na(pointB1M) ? "-" : str.tostring(pointB1M, format.mintick), text_color=color.lime, text_size=size.tiny)
+        table.cell(trendTbl, 3, row, na(pointC1M) ? "-" : str.tostring(pointC1M, format.mintick), text_color=color.aqua, text_size=size.tiny)
+        table.cell(trendTbl, 4, row, d1M, text_color=c1M, text_size=size.tiny)
+        table.cell(trendTbl, 5, row, str.tostring(rsi1M, "#.#"), text_color=rsi1M > 50 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 6, row, mh1M > 0 ? "+" : "-", text_color=mh1M > 0 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 7, row, str.tostring(lb1M) + "/" + str.tostring(fwd1M), text_color=color.gray, text_size=size.tiny)
+        bullCount += d1M == "BULL" ? 1 : 0
+        bearCount += d1M == "BEAR" ? 1 : 0
+        row += 1
+
+    // 1W
+    if enable1W
+        t1W = getTrendSignal(rsi1W, mh1W)
+        d1W = getTrendDir(t1W)
+        c1W = getTrendCol(d1W)
+        abcMode1W = autoABC1W ? "" : "*"
+        table.cell(trendTbl, 0, row, "1W" + abcMode1W, text_color=col1W, text_size=size.tiny)
+        table.cell(trendTbl, 1, row, na(pointA1W) ? "-" : str.tostring(pointA1W, format.mintick), text_color=color.yellow, text_size=size.tiny)
+        table.cell(trendTbl, 2, row, na(pointB1W) ? "-" : str.tostring(pointB1W, format.mintick), text_color=color.lime, text_size=size.tiny)
+        table.cell(trendTbl, 3, row, na(pointC1W) ? "-" : str.tostring(pointC1W, format.mintick), text_color=color.aqua, text_size=size.tiny)
+        table.cell(trendTbl, 4, row, d1W, text_color=c1W, text_size=size.tiny)
+        table.cell(trendTbl, 5, row, str.tostring(rsi1W, "#.#"), text_color=rsi1W > 50 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 6, row, mh1W > 0 ? "+" : "-", text_color=mh1W > 0 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 7, row, str.tostring(lb1W) + "/" + str.tostring(fwd1W), text_color=color.gray, text_size=size.tiny)
+        bullCount += d1W == "BULL" ? 1 : 0
+        bearCount += d1W == "BEAR" ? 1 : 0
+        row += 1
+
+    // 1D
+    if enable1D
+        t1D = getTrendSignal(rsi1D, mh1D)
+        d1D = getTrendDir(t1D)
+        c1D = getTrendCol(d1D)
+        abcMode1D = autoABC1D ? "" : "*"
+        table.cell(trendTbl, 0, row, "1D" + abcMode1D, text_color=col1D, text_size=size.tiny)
+        table.cell(trendTbl, 1, row, na(pointA1D) ? "-" : str.tostring(pointA1D, format.mintick), text_color=color.yellow, text_size=size.tiny)
+        table.cell(trendTbl, 2, row, na(pointB1D) ? "-" : str.tostring(pointB1D, format.mintick), text_color=color.lime, text_size=size.tiny)
+        table.cell(trendTbl, 3, row, na(pointC1D) ? "-" : str.tostring(pointC1D, format.mintick), text_color=color.aqua, text_size=size.tiny)
+        table.cell(trendTbl, 4, row, d1D, text_color=c1D, text_size=size.tiny)
+        table.cell(trendTbl, 5, row, str.tostring(rsi1D, "#.#"), text_color=rsi1D > 50 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 6, row, mh1D > 0 ? "+" : "-", text_color=mh1D > 0 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 7, row, str.tostring(lb1D) + "/" + str.tostring(fwd1D), text_color=color.gray, text_size=size.tiny)
+        bullCount += d1D == "BULL" ? 1 : 0
+        bearCount += d1D == "BEAR" ? 1 : 0
+        row += 1
+
+    // 4H
+    if enable4H
+        t4H = getTrendSignal(rsi4H, mh4H)
+        d4H = getTrendDir(t4H)
+        c4H = getTrendCol(d4H)
+        abcMode4H = autoABC4H ? "" : "*"
+        table.cell(trendTbl, 0, row, "4H" + abcMode4H, text_color=col4H, text_size=size.tiny)
+        table.cell(trendTbl, 1, row, na(pointA4H) ? "-" : str.tostring(pointA4H, format.mintick), text_color=color.yellow, text_size=size.tiny)
+        table.cell(trendTbl, 2, row, na(pointB4H) ? "-" : str.tostring(pointB4H, format.mintick), text_color=color.lime, text_size=size.tiny)
+        table.cell(trendTbl, 3, row, na(pointC4H) ? "-" : str.tostring(pointC4H, format.mintick), text_color=color.aqua, text_size=size.tiny)
+        table.cell(trendTbl, 4, row, d4H, text_color=c4H, text_size=size.tiny)
+        table.cell(trendTbl, 5, row, str.tostring(rsi4H, "#.#"), text_color=rsi4H > 50 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 6, row, mh4H > 0 ? "+" : "-", text_color=mh4H > 0 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 7, row, str.tostring(lb4H) + "/" + str.tostring(fwd4H), text_color=color.gray, text_size=size.tiny)
+        bullCount += d4H == "BULL" ? 1 : 0
+        bearCount += d4H == "BEAR" ? 1 : 0
+        row += 1
+
+    // 1H
+    if enable1H
+        t1H = getTrendSignal(rsi1H, mh1H)
+        d1H = getTrendDir(t1H)
+        c1H = getTrendCol(d1H)
+        abcMode1H = autoABC1H ? "" : "*"
+        table.cell(trendTbl, 0, row, "1H" + abcMode1H, text_color=col1H, text_size=size.tiny)
+        table.cell(trendTbl, 1, row, na(pointA1H) ? "-" : str.tostring(pointA1H, format.mintick), text_color=color.yellow, text_size=size.tiny)
+        table.cell(trendTbl, 2, row, na(pointB1H) ? "-" : str.tostring(pointB1H, format.mintick), text_color=color.lime, text_size=size.tiny)
+        table.cell(trendTbl, 3, row, na(pointC1H) ? "-" : str.tostring(pointC1H, format.mintick), text_color=color.aqua, text_size=size.tiny)
+        table.cell(trendTbl, 4, row, d1H, text_color=c1H, text_size=size.tiny)
+        table.cell(trendTbl, 5, row, str.tostring(rsi1H, "#.#"), text_color=rsi1H > 50 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 6, row, mh1H > 0 ? "+" : "-", text_color=mh1H > 0 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 7, row, str.tostring(lb1H) + "/" + str.tostring(fwd1H), text_color=color.gray, text_size=size.tiny)
+        bullCount += d1H == "BULL" ? 1 : 0
+        bearCount += d1H == "BEAR" ? 1 : 0
+        row += 1
+
+    // 15m
+    if enable15m
+        t15m = getTrendSignal(rsi15m, mh15m)
+        d15m = getTrendDir(t15m)
+        c15m = getTrendCol(d15m)
+        abcMode15m = autoABC15m ? "" : "*"
+        table.cell(trendTbl, 0, row, "15m" + abcMode15m, text_color=col15m, text_size=size.tiny)
+        table.cell(trendTbl, 1, row, na(pointA15m) ? "-" : str.tostring(pointA15m, format.mintick), text_color=color.yellow, text_size=size.tiny)
+        table.cell(trendTbl, 2, row, na(pointB15m) ? "-" : str.tostring(pointB15m, format.mintick), text_color=color.lime, text_size=size.tiny)
+        table.cell(trendTbl, 3, row, na(pointC15m) ? "-" : str.tostring(pointC15m, format.mintick), text_color=color.aqua, text_size=size.tiny)
+        table.cell(trendTbl, 4, row, d15m, text_color=c15m, text_size=size.tiny)
+        table.cell(trendTbl, 5, row, str.tostring(rsi15m, "#.#"), text_color=rsi15m > 50 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 6, row, mh15m > 0 ? "+" : "-", text_color=mh15m > 0 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 7, row, str.tostring(lb15m) + "/" + str.tostring(fwd15m), text_color=color.gray, text_size=size.tiny)
+        bullCount += d15m == "BULL" ? 1 : 0
+        bearCount += d15m == "BEAR" ? 1 : 0
+        row += 1
+
+    // 1m
+    if enable1min
+        t1min = getTrendSignal(rsi1min, mh1min)
+        d1min = getTrendDir(t1min)
+        c1min = getTrendCol(d1min)
+        abcMode1min = autoABC1min ? "" : "*"
+        table.cell(trendTbl, 0, row, "1m" + abcMode1min, text_color=col1min, text_size=size.tiny)
+        table.cell(trendTbl, 1, row, na(pointA1min) ? "-" : str.tostring(pointA1min, format.mintick), text_color=color.yellow, text_size=size.tiny)
+        table.cell(trendTbl, 2, row, na(pointB1min) ? "-" : str.tostring(pointB1min, format.mintick), text_color=color.lime, text_size=size.tiny)
+        table.cell(trendTbl, 3, row, na(pointC1min) ? "-" : str.tostring(pointC1min, format.mintick), text_color=color.aqua, text_size=size.tiny)
+        table.cell(trendTbl, 4, row, d1min, text_color=c1min, text_size=size.tiny)
+        table.cell(trendTbl, 5, row, str.tostring(rsi1min, "#.#"), text_color=rsi1min > 50 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 6, row, mh1min > 0 ? "+" : "-", text_color=mh1min > 0 ? color.lime : color.red, text_size=size.tiny)
+        table.cell(trendTbl, 7, row, str.tostring(lb1min) + "/" + str.tostring(fwd1min), text_color=color.gray, text_size=size.tiny)
+        bullCount += d1min == "BULL" ? 1 : 0
+        bearCount += d1min == "BEAR" ? 1 : 0
+        row += 1
+
+    // Overall
+    totalEnabled = (enable1M ? 1 : 0) + (enable1W ? 1 : 0) + (enable1D ? 1 : 0) +
+                   (enable4H ? 1 : 0) + (enable1H ? 1 : 0) + (enable15m ? 1 : 0) + (enable1min ? 1 : 0)
+    overallDir = bullCount > bearCount ? "BULLISH" : (bearCount > bullCount ? "BEARISH" : "MIXED")
+    overallCol = bullCount > bearCount ? color.lime : (bearCount > bullCount ? color.red : color.gray)
+
+    table.cell(trendTbl, 0, row, "ALL", text_color=color.white, text_size=size.small, bgcolor=color.new(overallCol, 60))
+    table.cell(trendTbl, 1, row, "", text_size=size.tiny)
+    table.cell(trendTbl, 2, row, "", text_size=size.tiny)
+    table.cell(trendTbl, 3, row, "", text_size=size.tiny)
+    table.cell(trendTbl, 4, row, overallDir, text_color=overallCol, text_size=size.small, bgcolor=color.new(overallCol, 80))
+    table.cell(trendTbl, 5, row, str.tostring(bullCount) + "/" + str.tostring(totalEnabled), text_color=color.white, text_size=size.tiny)
+    table.cell(trendTbl, 6, row, "Bull", text_color=color.white, text_size=size.tiny)
+    table.cell(trendTbl, 7, row, "", text_size=size.tiny)

@@ -128,6 +128,19 @@ export function WorkflowV2Layout({
     }
   }, [opportunity, phase]);
 
+  // Close Fib-dependent panels when Fib is disabled
+  useEffect(() => {
+    if (!showFibLevels) {
+      // Close zones and table panels since they depend on Fib being enabled
+      if (panels.confluenceZones) {
+        dispatch(layoutActions.setPanel("confluenceZones", false));
+      }
+      if (panels.levelsTable) {
+        dispatch(layoutActions.setPanel("levelsTable", false));
+      }
+    }
+  }, [showFibLevels, panels.confluenceZones, panels.levelsTable]);
+
   // Data source mode
   const [dataMode, setDataMode] = useState<DataMode>("live");
   const [hasSimulatedData, setHasSimulatedData] = useState(false);
@@ -1158,7 +1171,7 @@ export function WorkflowV2Layout({
               )}
 
               {/* Confluence Zones Panel - Shows clusters of Fib levels */}
-              {showConfluenceZones && (
+              {showFibLevels && showConfluenceZones && (
                 <Card className="shrink-0">
                   <CardHeader className="py-2 px-3">
                     <CardTitle className="text-sm flex items-center justify-between">
@@ -1218,7 +1231,7 @@ export function WorkflowV2Layout({
               )}
 
               {/* Levels Table Panel - Shows all Fib levels with calculations */}
-              {showLevelsTable && (
+              {showFibLevels && showLevelsTable && (
                 <Card className="shrink-0 lg:col-span-3">
                   <CardHeader className="py-2 px-3">
                     <CardTitle className="text-sm flex items-center justify-between">
