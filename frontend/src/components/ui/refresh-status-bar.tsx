@@ -184,7 +184,7 @@ export function RefreshStatusBar({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 text-xs",
+        "flex items-center gap-3 text-xs bg-muted/50 px-2 py-1 rounded-md",
         className
       )}
     >
