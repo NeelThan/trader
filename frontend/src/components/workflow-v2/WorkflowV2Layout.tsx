@@ -582,7 +582,6 @@ export function WorkflowV2Layout({
                   setDataMode("cached");
                 }
               }}
-              compact
             />
 
             {/* Data source controls */}
