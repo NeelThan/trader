@@ -721,6 +721,22 @@ export function WorkflowV2Layout({
                     </button>
                     {showSwingMarkers && (
                       <>
+                        {/* Pivot toggle - only shows when Swing is enabled */}
+                        <button
+                          onClick={() => dispatch(layoutActions.togglePanel("pivotEditor"))}
+                          className={cn(
+                            "px-1.5 py-0.5 text-[10px] rounded transition-colors relative",
+                            showPivotEditor
+                              ? "bg-amber-500/20 text-amber-400 font-medium"
+                              : "text-muted-foreground/70 hover:text-muted-foreground"
+                          )}
+                          title="Edit pivot points"
+                        >
+                          Pivot
+                          {hasPivotModifications && (
+                            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-amber-500 rounded-full" />
+                          )}
+                        </button>
                         <div className="h-4 w-px bg-border/50 mx-0.5" />
                         {TIMEFRAMES.map((tf) => {
                           const tfSettings = getTimeframeSettings(tf);
@@ -844,6 +860,31 @@ export function WorkflowV2Layout({
                             </TimeframeSettingsPopover>
                           );
                         })}
+                        <div className="h-4 w-px bg-border/50 mx-0.5" />
+                        <button
+                          onClick={() => dispatch(layoutActions.togglePanel("confluenceZones"))}
+                          className={cn(
+                            "px-1.5 py-0.5 text-[10px] rounded transition-colors",
+                            showConfluenceZones
+                              ? "bg-purple-500/20 text-purple-400 font-medium"
+                              : "text-muted-foreground/50 hover:text-muted-foreground"
+                          )}
+                          title="Toggle confluence zones"
+                        >
+                          Zones
+                        </button>
+                        <button
+                          onClick={() => dispatch(layoutActions.togglePanel("levelsTable"))}
+                          className={cn(
+                            "px-1.5 py-0.5 text-[10px] rounded transition-colors",
+                            showLevelsTable
+                              ? "bg-blue-500/20 text-blue-400 font-medium"
+                              : "text-muted-foreground/50 hover:text-muted-foreground"
+                          )}
+                          title="Toggle levels table"
+                        >
+                          Table
+                        </button>
                       </>
                     )}
                   </div>
@@ -852,30 +893,6 @@ export function WorkflowV2Layout({
 
                   {/* Other toggles */}
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => dispatch(layoutActions.togglePanel("confluenceZones"))}
-                      className={cn(
-                        "px-2 py-1 text-xs rounded transition-colors",
-                        showConfluenceZones
-                          ? "bg-purple-500/20 text-purple-400"
-                          : "text-muted-foreground hover:bg-muted"
-                      )}
-                      title="Toggle confluence zones"
-                    >
-                      Zones
-                    </button>
-                    <button
-                      onClick={() => dispatch(layoutActions.togglePanel("levelsTable"))}
-                      className={cn(
-                        "px-2 py-1 text-xs rounded transition-colors",
-                        showLevelsTable
-                          ? "bg-blue-500/20 text-blue-400"
-                          : "text-muted-foreground hover:bg-muted"
-                      )}
-                      title="Toggle levels table"
-                    >
-                      Table
-                    </button>
                     <button
                       onClick={() => dispatch(layoutActions.togglePanel("indicators"))}
                       className={cn(
@@ -887,21 +904,6 @@ export function WorkflowV2Layout({
                       title="Toggle RSI & MACD"
                     >
                       RSI
-                    </button>
-                    <button
-                      onClick={() => dispatch(layoutActions.togglePanel("pivotEditor"))}
-                      className={cn(
-                        "px-2 py-1 text-xs rounded transition-colors relative",
-                        showPivotEditor
-                          ? "bg-primary/20 text-primary"
-                          : "text-muted-foreground hover:bg-muted"
-                      )}
-                      title="Edit pivot points"
-                    >
-                      Pivot
-                      {hasPivotModifications && (
-                        <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
-                      )}
                     </button>
                     {/* Trade View toggle - only show when opportunity selected */}
                     {opportunity && phase !== "discover" && (
