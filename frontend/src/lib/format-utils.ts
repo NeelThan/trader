@@ -60,6 +60,14 @@ export function formatPrice(price: number): string {
 }
 
 /**
+ * Format price with simple 2 decimal places
+ * Use for consistent display when precision isn't critical
+ */
+export function formatPriceSimple(price: number): string {
+  return price.toFixed(2);
+}
+
+/**
  * Format price with symbol-aware precision
  * Uses appropriate decimal places for each market
  */

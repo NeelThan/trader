@@ -157,7 +157,6 @@ export function WorkflowV2Layout({
     isCached,
     isRateLimited,
     isBackendUnavailable,
-    isUsingSimulatedData,
     countdown,
     lastUpdated,
     refreshNow,
@@ -571,6 +570,7 @@ export function WorkflowV2Layout({
               countdown={countdown}
               lastUpdated={lastUpdated}
               isRefreshing={isLoadingData}
+              isCached={isCached}
               onRefresh={refreshNow}
               isRateLimited={isRateLimited}
               isBackendUnavailable={isBackendUnavailable}
