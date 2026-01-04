@@ -71,6 +71,30 @@ function formatCountdown(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+/**
+ * Status icon based on current state
+ */
+function StatusIcon({
+  isRefreshing,
+  isBackendUnavailable,
+  provider,
+}: {
+  isRefreshing: boolean;
+  isBackendUnavailable: boolean;
+  provider: string | null;
+}) {
+  if (isRefreshing) {
+    return <RefreshCw className="h-3 w-3 animate-spin" />;
+  }
+  if (isBackendUnavailable) {
+    return <WifiOff className="h-3 w-3" />;
+  }
+  if (provider === "simulated" || provider === "fallback") {
+    return <AlertTriangle className="h-3 w-3" />;
+  }
+  return <Wifi className="h-3 w-3" />;
+}
+
 export function RefreshStatusBar({
   countdown,
   autoRefreshEnabled,
@@ -101,20 +125,6 @@ export function RefreshStatusBar({
     return "text-green-400";
   };
 
-  // Determine status icon
-  const StatusIcon = () => {
-    if (isRefreshing) {
-      return <RefreshCw className="h-3 w-3 animate-spin" />;
-    }
-    if (isBackendUnavailable) {
-      return <WifiOff className="h-3 w-3" />;
-    }
-    if (provider === "simulated" || provider === "fallback") {
-      return <AlertTriangle className="h-3 w-3" />;
-    }
-    return <Wifi className="h-3 w-3" />;
-  };
-
   if (compact) {
     return (
       <TooltipProvider>
@@ -138,7 +148,11 @@ export function RefreshStatusBar({
           <TooltipContent side="bottom" className="text-xs">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <StatusIcon />
+                <StatusIcon
+                  isRefreshing={isRefreshing}
+                  isBackendUnavailable={isBackendUnavailable}
+                  provider={provider}
+                />
                 <span>
                   {isRefreshing
                     ? "Refreshing..."
@@ -176,7 +190,11 @@ export function RefreshStatusBar({
     >
       {/* Status indicator */}
       <div className={cn("flex items-center gap-1.5", getStatusColor())}>
-        <StatusIcon />
+        <StatusIcon
+          isRefreshing={isRefreshing}
+          isBackendUnavailable={isBackendUnavailable}
+          provider={provider}
+        />
         <span className="hidden sm:inline">
           {isRefreshing
             ? "Refreshing..."
