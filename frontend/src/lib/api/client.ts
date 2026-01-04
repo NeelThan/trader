@@ -24,6 +24,7 @@ import type {
   PivotDetectRequest,
   PivotDetectResponse,
   JournalEntryRequest,
+  JournalEntryUpdateRequest,
   JournalEntryResponse,
   JournalEntriesResponse,
   JournalAnalyticsResponse,
@@ -228,6 +229,22 @@ export async function deleteJournalEntry(
   });
 }
 
+export async function updateJournalEntry(
+  entryId: string,
+  request: JournalEntryUpdateRequest
+): Promise<JournalEntryResponse> {
+  return fetchAPI<JournalEntryResponse>(`/journal/entry/${entryId}`, {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+}
+
+export async function getJournalEntry(
+  entryId: string
+): Promise<JournalEntryResponse> {
+  return fetchAPI<JournalEntryResponse>(`/journal/entry/${entryId}`);
+}
+
 // Workflow API
 
 export async function assessTrend(
@@ -300,6 +317,7 @@ export type {
   TradeDirection,
   TradeOutcome,
   JournalEntryRequest,
+  JournalEntryUpdateRequest,
   JournalEntryData,
   JournalEntryResponse,
   JournalEntriesResponse,

@@ -27,6 +27,7 @@ from trader.journal import (
     JournalEntry,
     calculate_analytics,
     create_journal_entry,
+    update_journal_entry,
 )
 from trader.market_data import MarketDataService
 from trader.pivots import (
@@ -424,6 +425,20 @@ class JournalAnalyticsResponse(BaseModel):
     """Response model for journal analytics."""
 
     analytics: JournalAnalyticsData
+
+
+class JournalEntryUpdateRequest(BaseModel):
+    """Request model for updating a journal entry.
+
+    All fields are optional - only provided fields will be updated.
+    P&L and R-multiple are recalculated when price fields change.
+    """
+
+    exit_price: float | None = None
+    exit_time: str | None = None
+    exit_reason: str | None = None
+    stop_loss: float | None = None
+    notes: str | None = None
 
 
 class MACDRequest(BaseModel):
@@ -861,6 +876,48 @@ async def create_entry(request: JournalEntryRequest) -> JournalEntryResponse:
         workflow_id=request.workflow_id,
     )
     _journal_entries.append(entry)
+    return JournalEntryResponse(entry=_entry_to_data(entry))
+
+
+@app.put("/journal/entry/{entry_id}", response_model=JournalEntryResponse)
+async def update_entry(
+    entry_id: str, request: JournalEntryUpdateRequest
+) -> JournalEntryResponse:
+    """Update an existing journal entry.
+
+    Updates the specified fields and recalculates P&L and R-multiple
+    when price fields change.
+    """
+    global _journal_entries
+
+    # Find the entry
+    entry_index = next(
+        (i for i, e in enumerate(_journal_entries) if e.id == entry_id), None
+    )
+    if entry_index is None:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    # Update the entry
+    updated_entry = update_journal_entry(
+        _journal_entries[entry_index],
+        exit_price=request.exit_price,
+        exit_time=request.exit_time,
+        exit_reason=request.exit_reason,
+        stop_loss=request.stop_loss,
+        notes=request.notes,
+    )
+
+    # Replace in list
+    _journal_entries[entry_index] = updated_entry
+    return JournalEntryResponse(entry=_entry_to_data(updated_entry))
+
+
+@app.get("/journal/entry/{entry_id}", response_model=JournalEntryResponse)
+async def get_entry(entry_id: str) -> JournalEntryResponse:
+    """Get a single journal entry by ID."""
+    entry = next((e for e in _journal_entries if e.id == entry_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Entry not found")
     return JournalEntryResponse(entry=_entry_to_data(entry))
 
 

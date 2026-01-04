@@ -1042,6 +1042,123 @@ class TestJournalEndpoints:
         response = await client.delete("/journal/entry/nonexistent_id")
         assert response.status_code == 404
 
+    async def test_update_journal_entry_exit_data(self, client: AsyncClient) -> None:
+        """PUT /journal/entry/{id} updates exit data and recalculates P&L."""
+        # Create an entry with no exit data (simulating paper trade start)
+        create_response = await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "DJI",
+                "direction": "long",
+                "entry_price": 48000.0,
+                "exit_price": 0,  # No exit yet
+                "stop_loss": 47500.0,
+                "position_size": 10,
+                "entry_time": "2024-12-31T10:00:00Z",
+                "exit_time": "",
+            },
+        )
+        entry_id = create_response.json()["entry"]["id"]
+
+        # Update with exit data
+        update_response = await client.put(
+            f"/journal/entry/{entry_id}",
+            json={
+                "exit_price": 48500.0,
+                "exit_time": "2024-12-31T14:00:00Z",
+                "exit_reason": "target_hit",
+            },
+        )
+
+        assert update_response.status_code == 200
+        data = update_response.json()["entry"]
+        assert data["exit_price"] == 48500.0
+        assert data["exit_time"] == "2024-12-31T14:00:00Z"
+        assert data["exit_reason"] == "target_hit"
+        # P&L recalculated: (48500 - 48000) * 10 = 5000
+        assert data["pnl"] == 5000.0
+        # R = 500 / 500 = 1.0R
+        assert data["r_multiple"] == 1.0
+        assert data["outcome"] == "win"
+        # ID preserved
+        assert data["id"] == entry_id
+
+    async def test_update_journal_entry_notes_only(self, client: AsyncClient) -> None:
+        """PUT /journal/entry/{id} can update notes without changing prices."""
+        # Create an entry
+        create_response = await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "SPX",
+                "direction": "short",
+                "entry_price": 6000.0,
+                "exit_price": 5900.0,
+                "stop_loss": 6100.0,
+                "position_size": 5,
+                "entry_time": "2024-12-31T10:00:00Z",
+                "exit_time": "2024-12-31T14:00:00Z",
+                "notes": "Initial note",
+            },
+        )
+        entry_id = create_response.json()["entry"]["id"]
+        original_pnl = create_response.json()["entry"]["pnl"]
+
+        # Update only notes
+        update_response = await client.put(
+            f"/journal/entry/{entry_id}",
+            json={"notes": "Updated with more details"},
+        )
+
+        assert update_response.status_code == 200
+        data = update_response.json()["entry"]
+        assert data["notes"] == "Updated with more details"
+        assert data["pnl"] == original_pnl  # Unchanged
+
+    async def test_update_nonexistent_entry_returns_404(
+        self, client: AsyncClient
+    ) -> None:
+        """PUT /journal/entry/{id} returns 404 for nonexistent entry."""
+        response = await client.put(
+            "/journal/entry/nonexistent_id",
+            json={"notes": "test"},
+        )
+        assert response.status_code == 404
+
+    async def test_get_single_journal_entry(self, client: AsyncClient) -> None:
+        """GET /journal/entry/{id} returns a single entry."""
+        # Create an entry
+        create_response = await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "BTCUSD",
+                "direction": "long",
+                "entry_price": 50000.0,
+                "exit_price": 55000.0,
+                "stop_loss": 48000.0,
+                "position_size": 0.5,
+                "entry_time": "2024-12-31T10:00:00Z",
+                "exit_time": "2024-12-31T14:00:00Z",
+                "notes": "Crypto trade",
+            },
+        )
+        entry_id = create_response.json()["entry"]["id"]
+
+        # Get the entry by ID
+        get_response = await client.get(f"/journal/entry/{entry_id}")
+
+        assert get_response.status_code == 200
+        data = get_response.json()["entry"]
+        assert data["id"] == entry_id
+        assert data["symbol"] == "BTCUSD"
+        assert data["notes"] == "Crypto trade"
+
+    async def test_get_nonexistent_entry_returns_404(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /journal/entry/{id} returns 404 for nonexistent entry."""
+        response = await client.get("/journal/entry/nonexistent_id")
+        assert response.status_code == 404
+
 
 class TestMACDEndpoint:
     """Tests for MACD indicator endpoint."""

@@ -401,3 +401,105 @@ class TestEdgeCases:
         )
 
         assert entry.pnl == 0.0
+
+
+class TestUpdateJournalEntry:
+    """Tests for updating existing journal entries."""
+
+    def test_updates_exit_price(self) -> None:
+        """Update exit price recalculates P&L and R-multiple."""
+        from trader.journal import update_journal_entry
+
+        entry = create_journal_entry(
+            symbol="DJI",
+            direction="long",
+            entry_price=48000.0,
+            exit_price=0.0,  # Not set initially
+            stop_loss=47500.0,
+            position_size=10,
+            entry_time="2024-12-31T10:00:00Z",
+            exit_time="",
+        )
+
+        # Update with exit data
+        updated = update_journal_entry(
+            entry,
+            exit_price=48500.0,
+            exit_time="2024-12-31T14:00:00Z",
+            exit_reason="target_hit",
+        )
+
+        assert updated.exit_price == 48500.0
+        assert updated.exit_time == "2024-12-31T14:00:00Z"
+        assert updated.exit_reason == "target_hit"
+        # P&L recalculated: (48500 - 48000) * 10 = 5000
+        assert updated.pnl == 5000.0
+        # R-multiple: 500 / 500 = 1.0R
+        assert updated.r_multiple == 1.0
+        assert updated.outcome == TradeOutcome.WIN
+
+    def test_updates_notes(self) -> None:
+        """Update notes without changing other fields."""
+        from trader.journal import update_journal_entry
+
+        entry = create_journal_entry(
+            symbol="DJI",
+            direction="long",
+            entry_price=48000.0,
+            exit_price=48500.0,
+            stop_loss=47500.0,
+            position_size=10,
+            entry_time="2024-12-31T10:00:00Z",
+            exit_time="2024-12-31T14:00:00Z",
+            notes="Initial note",
+        )
+
+        updated = update_journal_entry(entry, notes="Updated note")
+
+        assert updated.notes == "Updated note"
+        # Other fields unchanged
+        assert updated.exit_price == 48500.0
+        assert updated.pnl == 5000.0
+
+    def test_preserves_id(self) -> None:
+        """Update preserves original entry ID."""
+        from trader.journal import update_journal_entry
+
+        entry = create_journal_entry(
+            symbol="DJI",
+            direction="long",
+            entry_price=48000.0,
+            exit_price=48500.0,
+            stop_loss=47500.0,
+            position_size=10,
+            entry_time="2024-12-31T10:00:00Z",
+            exit_time="2024-12-31T14:00:00Z",
+        )
+        original_id = entry.id
+
+        updated = update_journal_entry(entry, notes="New note")
+
+        assert updated.id == original_id
+
+    def test_updates_stop_loss_recalculates_r(self) -> None:
+        """Updating stop loss recalculates R-multiple."""
+        from trader.journal import update_journal_entry
+
+        entry = create_journal_entry(
+            symbol="DJI",
+            direction="long",
+            entry_price=48000.0,
+            exit_price=49000.0,  # +1000 profit
+            stop_loss=47500.0,   # 500 risk = 2R
+            position_size=10,
+            entry_time="2024-12-31T10:00:00Z",
+            exit_time="2024-12-31T14:00:00Z",
+        )
+        assert entry.r_multiple == 2.0
+
+        # Change stop to 47000 = 1000 risk
+        updated = update_journal_entry(entry, stop_loss=47000.0)
+
+        # Now R = 1000 profit / 1000 risk = 1R
+        assert updated.r_multiple == 1.0
+        assert updated.stop_loss == 47000.0

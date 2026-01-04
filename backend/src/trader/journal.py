@@ -235,6 +235,66 @@ def create_journal_entry(
     )
 
 
+def update_journal_entry(
+    entry: JournalEntry,
+    exit_price: float | None = None,
+    exit_time: str | None = None,
+    exit_reason: str | None = None,
+    stop_loss: float | None = None,
+    notes: str | None = None,
+) -> JournalEntry:
+    """Update an existing journal entry with new values.
+
+    Recalculates P&L and R-multiple when price fields change.
+
+    Args:
+        entry: The existing journal entry to update.
+        exit_price: New exit price (optional).
+        exit_time: New exit time (optional).
+        exit_reason: Reason for exit (optional).
+        stop_loss: New stop loss (optional).
+        notes: Updated notes (optional).
+
+    Returns:
+        Updated journal entry with recalculated metrics.
+    """
+    # Apply updates, falling back to original values
+    new_exit_price = exit_price if exit_price is not None else entry.exit_price
+    new_exit_time = exit_time if exit_time is not None else entry.exit_time
+    new_exit_reason = exit_reason if exit_reason is not None else entry.exit_reason
+    new_stop_loss = stop_loss if stop_loss is not None else entry.stop_loss
+    new_notes = notes if notes is not None else entry.notes
+
+    # Recalculate metrics with updated values
+    pnl = _calculate_pnl(
+        entry.direction, entry.entry_price, new_exit_price, entry.position_size
+    )
+    r_multiple = _calculate_r_multiple(
+        entry.direction, entry.entry_price, new_exit_price, new_stop_loss
+    )
+    outcome = _determine_outcome(pnl)
+
+    return JournalEntry(
+        id=entry.id,
+        symbol=entry.symbol,
+        direction=entry.direction,
+        entry_price=entry.entry_price,
+        exit_price=new_exit_price,
+        stop_loss=new_stop_loss,
+        position_size=entry.position_size,
+        entry_time=entry.entry_time,
+        exit_time=new_exit_time,
+        pnl=pnl,
+        r_multiple=r_multiple,
+        outcome=outcome,
+        timeframe=entry.timeframe,
+        targets=entry.targets,
+        exit_reason=new_exit_reason,
+        notes=new_notes,
+        workflow_id=entry.workflow_id,
+    )
+
+
 def calculate_analytics(entries: list[JournalEntry]) -> JournalAnalytics:
     """Calculate analytics from journal entries.
 

@@ -7,9 +7,12 @@ import { useState, useCallback, useEffect } from "react";
 import {
   createJournalEntry,
   getJournalEntries,
+  getJournalEntry,
   getJournalAnalytics,
   deleteJournalEntry,
+  updateJournalEntry,
   type JournalEntryRequest,
+  type JournalEntryUpdateRequest,
   type JournalEntryData,
   type JournalAnalyticsData,
   type TradeDirection,
@@ -148,12 +151,56 @@ export function useJournal(symbolFilter?: string) {
     [refresh]
   );
 
+  // Update entry
+  const updateEntry = useCallback(
+    async (
+      entryId: string,
+      updates: JournalEntryUpdateRequest
+    ): Promise<JournalEntryData | null> => {
+      setState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+      try {
+        const response = await updateJournalEntry(entryId, updates);
+        // Refresh to get updated analytics
+        await refresh();
+        return response.entry;
+      } catch (error) {
+        console.error("Failed to update journal entry:", error);
+
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error: "Failed to update entry",
+        }));
+
+        return null;
+      }
+    },
+    [refresh]
+  );
+
+  // Get single entry
+  const getEntry = useCallback(
+    async (entryId: string): Promise<JournalEntryData | null> => {
+      try {
+        const response = await getJournalEntry(entryId);
+        return response.entry;
+      } catch (error) {
+        console.error("Failed to get journal entry:", error);
+        return null;
+      }
+    },
+    []
+  );
+
   return {
     ...state,
     analytics: state.analytics ?? EMPTY_ANALYTICS,
     refresh,
     addEntry,
     removeEntry,
+    updateEntry,
+    getEntry,
   };
 }
 

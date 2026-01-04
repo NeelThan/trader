@@ -209,6 +209,19 @@ export type JournalEntryRequest = {
   workflow_id?: string;
 };
 
+/**
+ * Request to update an existing journal entry.
+ * All fields are optional - only provided fields will be updated.
+ * P&L and R-multiple are recalculated when price fields change.
+ */
+export type JournalEntryUpdateRequest = {
+  exit_price?: number;
+  exit_time?: string;
+  exit_reason?: string;
+  stop_loss?: number;
+  notes?: string;
+};
+
 export type JournalEntryData = {
   id: string;
   symbol: string;
