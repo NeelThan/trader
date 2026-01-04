@@ -9,7 +9,7 @@
  * Responsive: sidebar becomes bottom sheet on mobile.
  */
 
-import { useMemo, useRef, useState, useCallback, useEffect } from "react";
+import { useMemo, useRef, useState, useCallback, useEffect, useReducer } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -52,6 +52,12 @@ import type { UseTradeDiscoveryResult, TradeOpportunity } from "@/hooks/use-trad
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
 import type { WorkflowPhase } from "@/app/workflow-v2/page";
 import { MARKET_CONFIG, TIMEFRAME_CONFIG } from "@/lib/chart-constants";
+import {
+  layoutReducer,
+  initialLayoutState,
+  layoutActions,
+  layoutSelectors,
+} from "./workflow-layout-reducer";
 
 const SYMBOLS: MarketSymbol[] = ["DJI", "SPX", "NDX", "BTCUSD", "EURUSD", "GOLD"];
 const TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
@@ -90,34 +96,36 @@ export function WorkflowV2Layout({
   const { settings } = useSettings();
   const chartColors = COLOR_SCHEMES[settings.colorScheme] ?? DEFAULT_CHART_COLORS;
 
-  // Mobile sidebar state
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const toggleSidebar = useCallback(() => setIsSidebarOpen((prev) => !prev), []);
+  // Consolidated UI state via reducer
+  const [layoutState, dispatch] = useReducer(layoutReducer, initialLayoutState);
 
-  // Chart display toggles
-  const [showIndicators, setShowIndicators] = useState(false);
-  const [showSwingMarkers, setShowSwingMarkers] = useState(true);
-  const [showFibLevels, setShowFibLevels] = useState(true);
-  const [showPivotEditor, setShowPivotEditor] = useState(false);
-  const [showTradeView, setShowTradeView] = useState(false);
-  const [showTrendPanel, setShowTrendPanel] = useState(false);
-  const [showConfluenceZones, setShowConfluenceZones] = useState(false);
-  const [showFibLabels, setShowFibLabels] = useState(true);
-  const [showFibLines, setShowFibLines] = useState(true); // Toggle to hide lines but keep zones
-  const [showLevelsTable, setShowLevelsTable] = useState(false); // Toggle to show Fib levels table
-  const [chartType, setChartType] = useState<ChartType>("bar");
-  const [isChartExpanded, setIsChartExpanded] = useState(false);
-  const [confluenceTolerance, setConfluenceTolerance] = useState(0.2); // Default 0.2% tolerance
-  const [hiddenZones, setHiddenZones] = useState<Set<string>>(new Set()); // Track hidden zone IDs
+  // Destructure for convenience
+  const { panels, chart, crosshairPrice, hiddenZones } = layoutState;
 
-  // Crosshair tracking for level tooltips
-  const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
+  // Convenience aliases for commonly used panel states
+  const showIndicators = panels.indicators;
+  const showSwingMarkers = panels.swingMarkers;
+  const showFibLevels = panels.fibLevels;
+  const showPivotEditor = panels.pivotEditor;
+  const showTradeView = panels.tradeView;
+  const showTrendPanel = panels.trendPanel;
+  const showConfluenceZones = panels.confluenceZones;
+  const showFibLabels = chart.fibLabels;
+  const showFibLines = chart.fibLines;
+  const showLevelsTable = panels.levelsTable;
+  const showSwingSettings = panels.swingSettings;
+  const chartType = chart.chartType;
+  const isChartExpanded = panels.chartExpanded;
+  const confluenceTolerance = chart.confluenceTolerance;
+  const isSidebarOpen = panels.sidebar;
+
+  // Toggle handlers using dispatch
+  const toggleSidebar = useCallback(() => dispatch(layoutActions.togglePanel("sidebar")), []);
 
   // Reset trade view when opportunity changes or phase goes back to discover
   useEffect(() => {
     if (!opportunity || phase === "discover") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: reset on state change
-      setShowTradeView(false);
+      dispatch(layoutActions.resetTradeView());
     }
   }, [opportunity, phase]);
 
@@ -285,7 +293,6 @@ export function WorkflowV2Layout({
     resetToDefaults: resetSwingDefaults,
     isLoaded: isSwingSettingsLoaded,
   } = usePersistedSwingSettings();
-  const [showSwingSettings, setShowSwingSettings] = useState(false);
   const swingSettings = useMemo(
     () => getTimeframeSettings(timeframe),
     [getTimeframeSettings, timeframe]
@@ -386,20 +393,12 @@ export function WorkflowV2Layout({
 
   // Toggle zone visibility
   const toggleZoneVisibility = useCallback((zoneId: string) => {
-    setHiddenZones((prev) => {
-      const next = new Set(prev);
-      if (next.has(zoneId)) {
-        next.delete(zoneId);
-      } else {
-        next.add(zoneId);
-      }
-      return next;
-    });
+    dispatch(layoutActions.toggleZoneVisibility(zoneId));
   }, []);
 
   // Show all zones
   const showAllZones = useCallback(() => {
-    setHiddenZones(new Set());
+    dispatch(layoutActions.showAllZones());
   }, []);
 
   // Confluence zone price lines - creates visual bands on chart
@@ -469,7 +468,7 @@ export function WorkflowV2Layout({
 
   // Crosshair move handler
   const handleCrosshairMove = useCallback((price: number | null) => {
-    setCrosshairPrice(price);
+    dispatch(layoutActions.setCrosshairPrice(price));
   }, []);
 
   // RSI indicator
@@ -672,7 +671,7 @@ export function WorkflowV2Layout({
                   {/* Chart type selector */}
                   <div className="flex items-center gap-0.5 bg-muted/50 rounded p-0.5">
                     <button
-                      onClick={() => setChartType("bar")}
+                      onClick={() => dispatch(layoutActions.setChartType("bar"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
                         chartType === "bar"
@@ -684,7 +683,7 @@ export function WorkflowV2Layout({
                       Bar
                     </button>
                     <button
-                      onClick={() => setChartType("candlestick")}
+                      onClick={() => dispatch(layoutActions.setChartType("candlestick"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
                         chartType === "candlestick"
@@ -696,7 +695,7 @@ export function WorkflowV2Layout({
                       Candle
                     </button>
                     <button
-                      onClick={() => setChartType("heikin-ashi")}
+                      onClick={() => dispatch(layoutActions.setChartType("heikin-ashi"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
                         chartType === "heikin-ashi"
@@ -714,7 +713,7 @@ export function WorkflowV2Layout({
                   {/* Feature toggles */}
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={() => setShowSwingMarkers(!showSwingMarkers)}
+                      onClick={() => dispatch(layoutActions.togglePanel("swingMarkers"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
                         showSwingMarkers
@@ -726,7 +725,7 @@ export function WorkflowV2Layout({
                       HH/LL
                     </button>
                     <button
-                      onClick={() => setShowFibLevels(!showFibLevels)}
+                      onClick={() => dispatch(layoutActions.togglePanel("fibLevels"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
                         showFibLevels
@@ -740,7 +739,7 @@ export function WorkflowV2Layout({
                     {showFibLevels && (
                       <>
                         <button
-                          onClick={() => setShowFibLines(!showFibLines)}
+                          onClick={() => dispatch({ type: "TOGGLE_FIB_LINES" })}
                           className={cn(
                             "px-1.5 py-1 text-[10px] rounded transition-colors",
                             showFibLines
@@ -752,7 +751,7 @@ export function WorkflowV2Layout({
                           Lines
                         </button>
                         <button
-                          onClick={() => setShowFibLabels(!showFibLabels)}
+                          onClick={() => dispatch({ type: "TOGGLE_FIB_LABELS" })}
                           className={cn(
                             "px-1.5 py-1 text-[10px] rounded transition-colors",
                             showFibLabels
@@ -766,7 +765,7 @@ export function WorkflowV2Layout({
                       </>
                     )}
                     <button
-                      onClick={() => setShowConfluenceZones(!showConfluenceZones)}
+                      onClick={() => dispatch(layoutActions.togglePanel("confluenceZones"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
                         showConfluenceZones
@@ -778,7 +777,7 @@ export function WorkflowV2Layout({
                       Zones
                     </button>
                     <button
-                      onClick={() => setShowLevelsTable(!showLevelsTable)}
+                      onClick={() => dispatch(layoutActions.togglePanel("levelsTable"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
                         showLevelsTable
@@ -790,7 +789,7 @@ export function WorkflowV2Layout({
                       Lvl
                     </button>
                     <button
-                      onClick={() => setShowIndicators(!showIndicators)}
+                      onClick={() => dispatch(layoutActions.togglePanel("indicators"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
                         showIndicators
@@ -802,7 +801,7 @@ export function WorkflowV2Layout({
                       Ind
                     </button>
                     <button
-                      onClick={() => setShowPivotEditor(!showPivotEditor)}
+                      onClick={() => dispatch(layoutActions.togglePanel("pivotEditor"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors relative",
                         showPivotEditor
@@ -817,7 +816,7 @@ export function WorkflowV2Layout({
                       )}
                     </button>
                     <button
-                      onClick={() => setShowSwingSettings(!showSwingSettings)}
+                      onClick={() => dispatch(layoutActions.togglePanel("swingSettings"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
                         showSwingSettings
@@ -831,7 +830,7 @@ export function WorkflowV2Layout({
                     {/* Trade View toggle - only show when opportunity selected */}
                     {opportunity && phase !== "discover" && (
                       <button
-                        onClick={() => setShowTradeView(!showTradeView)}
+                        onClick={() => dispatch(layoutActions.togglePanel("tradeView"))}
                         className={cn(
                           "px-2 py-1 text-xs rounded transition-colors",
                           showTradeView
@@ -894,7 +893,7 @@ export function WorkflowV2Layout({
                       bearishCount={stats.bearishTrends}
                       overall={overallTrend}
                       chartColors={chartColors}
-                      onClick={() => setShowTrendPanel(!showTrendPanel)}
+                      onClick={() => dispatch(layoutActions.togglePanel("trendPanel"))}
                       isActive={showTrendPanel}
                     />
                   )}
@@ -957,7 +956,7 @@ export function WorkflowV2Layout({
                     </button>
                     <div className="h-4 w-px bg-border mx-0.5" />
                     <button
-                      onClick={() => setIsChartExpanded(!isChartExpanded)}
+                      onClick={() => dispatch(layoutActions.togglePanel("chartExpanded"))}
                       className={cn(
                         "p-1 sm:p-1.5 rounded transition-colors",
                         isChartExpanded
@@ -1032,7 +1031,7 @@ export function WorkflowV2Layout({
           </Card>
 
           {/* Analysis Panels - horizontal grid layout, doesn't overlay chart */}
-          {(showIndicators || showPivotEditor || showTrendPanel || showConfluenceZones || showLevelsTable || showSwingSettings) && (
+          {layoutSelectors.hasOpenAnalysisPanel(layoutState) && (
             <div className="shrink-0 grid grid-cols-1 lg:grid-cols-3 gap-2">
               {/* Trend Alignment Panel */}
               {showTrendPanel && (
@@ -1172,7 +1171,7 @@ export function WorkflowV2Layout({
                         max="0.5"
                         step="0.01"
                         value={confluenceTolerance}
-                        onChange={(e) => setConfluenceTolerance(parseFloat(e.target.value))}
+                        onChange={(e) => dispatch(layoutActions.setConfluenceTolerance(parseFloat(e.target.value)))}
                         className="flex-1 h-1 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                       />
                       <span className="text-[10px] font-mono w-12 text-right">{confluenceTolerance.toFixed(2)}%</span>
@@ -1225,7 +1224,7 @@ export function WorkflowV2Layout({
         {isSidebarOpen && (
           <div
             className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-            onClick={() => setIsSidebarOpen(false)}
+            onClick={() => dispatch(layoutActions.setPanel("sidebar", false))}
           />
         )}
 
@@ -1249,7 +1248,7 @@ export function WorkflowV2Layout({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setIsSidebarOpen(false)}
+              onClick={() => dispatch(layoutActions.setPanel("sidebar", false))}
               aria-label="Close panel"
             >
               <CloseIcon />
