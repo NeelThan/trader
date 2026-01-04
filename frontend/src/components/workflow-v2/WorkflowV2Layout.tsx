@@ -711,20 +711,19 @@ export function WorkflowV2Layout({
 
                   {/* Feature toggles */}
                   <div className="flex items-center gap-1">
-                    {/* Swing Settings Popover - combines HH/LL toggle with per-TF settings */}
-                    <SwingSettingsPopover
-                      isVisible={showSwingMarkers}
-                      onToggleVisibility={() => dispatch(layoutActions.togglePanel("swingMarkers"))}
-                      currentTimeframe={timeframe}
-                      getTimeframeSettings={getTimeframeSettings}
-                      updateTimeframeLookback={updateTimeframeLookback}
-                      updateTimeframeEnabled={updateTimeframeEnabled}
-                      updateTimeframeShowLines={updateTimeframeShowLines}
-                      resetToDefaults={resetSwingDefaults}
-                      isLoaded={isSwingSettingsLoaded}
-                      markerCount={chartMarkers.length}
-                      hasModifiedPivots={hasPivotModifications}
-                    />
+                    {/* Swing toggle button */}
+                    <button
+                      onClick={() => dispatch(layoutActions.togglePanel("swingMarkers"))}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        showSwingMarkers
+                          ? "bg-primary/20 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                      title="Toggle swing markers (HH/HL/LH/LL)"
+                    >
+                      Swing
+                    </button>
                     <button
                       onClick={() => dispatch(layoutActions.togglePanel("fibLevels"))}
                       className={cn(
@@ -835,7 +834,49 @@ export function WorkflowV2Layout({
                     )}
                   </div>
 
-                  {/* Timeframe visibility toggles - only show when Fib is enabled */}
+                  {/* Swing timeframe buttons - only show when Swing is enabled */}
+                  {showSwingMarkers && (
+                    <>
+                      <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
+                      <div className="flex items-center gap-0.5">
+                        {TIMEFRAMES.map((tf) => {
+                          const tfSettings = getTimeframeSettings(tf);
+                          const enabled = tfSettings.enabled;
+                          const color = TIMEFRAME_COLORS[tf];
+                          return (
+                            <SwingSettingsPopover
+                              key={tf}
+                              timeframe={tf}
+                              isEnabled={enabled}
+                              settings={tfSettings}
+                              onLookbackChange={(lookback) => updateTimeframeLookback(tf, lookback)}
+                              onToggleEnabled={() => updateTimeframeEnabled(tf, !enabled)}
+                              onShowLinesChange={(showLines) => updateTimeframeShowLines(tf, showLines)}
+                            >
+                              <button
+                                className={cn(
+                                  "px-1.5 py-0.5 text-[10px] sm:text-xs rounded transition-all",
+                                  enabled
+                                    ? "font-medium"
+                                    : "text-muted-foreground/50 hover:text-muted-foreground"
+                                )}
+                                style={{
+                                  backgroundColor: enabled ? `${color}20` : undefined,
+                                  color: enabled ? color : undefined,
+                                  borderBottom: enabled ? `2px solid ${color}` : "2px solid transparent",
+                                }}
+                                title={`Configure ${tf} swing detection (click to open settings)`}
+                              >
+                                {tf}
+                              </button>
+                            </SwingSettingsPopover>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Fib timeframe buttons - only show when Fib is enabled */}
                   {showFibLevels && (
                     <>
                       <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
