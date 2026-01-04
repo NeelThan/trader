@@ -72,6 +72,8 @@ export type CandlestickChartProps = {
   width?: number;
   height?: number;
   autoSize?: boolean;
+  /** Fill container height (use 100% height instead of fixed) */
+  fillContainer?: boolean;
   theme?: "light" | "dark";
   upColor?: string;
   downColor?: string;
@@ -210,6 +212,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       width,
       height = 400,
       autoSize = true,
+      fillContainer = false,
       theme = "dark",
       upColor = "#22c55e",
       downColor = "#ef4444",
@@ -311,9 +314,13 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
 
     const themeOptions = theme === "dark" ? DARK_THEME : LIGHT_THEME;
 
+    const effectiveHeight = fillContainer
+      ? containerRef.current.clientHeight || height
+      : height;
+
     const chart = createChart(containerRef.current, {
       width: width ?? containerRef.current.clientWidth,
-      height,
+      height: effectiveHeight,
       ...themeOptions,
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -594,8 +601,11 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
   // Handle resize with ResizeObserver
   const handleResize = useCallback(() => {
     if (!containerRef.current || !chartRef.current || !autoSize) return;
-    chartRef.current.resize(containerRef.current.clientWidth, height);
-  }, [autoSize, height]);
+    const effectiveHeight = fillContainer
+      ? containerRef.current.clientHeight || height
+      : height;
+    chartRef.current.resize(containerRef.current.clientWidth, effectiveHeight);
+  }, [autoSize, fillContainer, height]);
 
   useEffect(() => {
     if (!autoSize || !containerRef.current) return;
@@ -702,8 +712,8 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     return (
       <div
         ref={containerRef}
-        className={cn("w-full", className)}
-        style={{ height }}
+        className={cn("w-full", fillContainer && "h-full", className)}
+        style={fillContainer ? undefined : { height }}
       />
     );
   }
