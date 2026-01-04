@@ -565,6 +565,10 @@ export function WorkflowV2Layout({
 
           {/* Right section */}
           <div className="flex items-center gap-2">
+            {/* DEBUG: Test element */}
+            <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-bold">
+              TEST {countdown}s
+            </div>
             {/* Refresh status indicator */}
             <RefreshStatusBar
               countdown={countdown}
