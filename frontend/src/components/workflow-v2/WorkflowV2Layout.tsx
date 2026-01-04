@@ -45,10 +45,9 @@ import {
 import { cn } from "@/lib/utils";
 import { TimeframeSettingsPopover } from "./TimeframeSettingsPopover";
 import { SwingSettingsPopover } from "./SwingSettingsPopover";
-import { DataSourcePanel, DataSourceIndicator, type DataMode } from "./DataSourcePanel";
+import { DataSourceControl, type DataMode } from "./DataSourceControl";
 import { TrendAlignmentPanel, TrendIndicatorButton } from "./TrendAlignmentPanel";
 import { LevelTooltip, ConfluenceZoneIndicator, calculateConfluenceZones } from "./LevelTooltip";
-import { RefreshStatusBar } from "@/components/ui/refresh-status-bar";
 import type { UseTradeDiscoveryResult, TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
 import type { WorkflowPhase } from "@/app/workflow-v2/page";
@@ -565,29 +564,14 @@ export function WorkflowV2Layout({
 
           {/* Right section */}
           <div className="flex items-center gap-2">
-            {/* Refresh status indicator */}
-            <RefreshStatusBar
-              countdown={countdown}
-              autoRefreshEnabled={dataMode === "live"}
-              lastUpdated={lastUpdated}
-              isRefreshing={isLoadingData}
-              isCached={isCached}
-              provider={isUsingSimulatedData ? "simulated" : "yahoo"}
-              isBackendUnavailable={isBackendUnavailable}
-              onRefresh={refreshNow}
-              onToggleAutoRefresh={(enabled) => {
-                if (enabled && dataMode !== "live") {
-                  setDataMode("live");
-                } else if (!enabled && dataMode === "live") {
-                  setDataMode("cached");
-                }
-              }}
-            />
-
-            {/* Data source controls */}
-            <DataSourcePanel
+            {/* Unified data source control */}
+            <DataSourceControl
               dataMode={dataMode}
               onDataModeChange={setDataMode}
+              countdown={countdown}
+              lastUpdated={lastUpdated}
+              isRefreshing={isLoadingData}
+              onRefresh={refreshNow}
               isRateLimited={isRateLimited}
               isBackendUnavailable={isBackendUnavailable}
               onSaveAsSimulated={handleSaveAsSimulated}
@@ -709,61 +693,165 @@ export function WorkflowV2Layout({
 
                   <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
 
-                  {/* Feature toggles */}
-                  <div className="flex items-center gap-1">
-                    {/* Swing toggle button */}
+                  {/* Swing Group - toggle + timeframes together */}
+                  <div
+                    className={cn(
+                      "flex items-center gap-0.5 px-1 py-0.5 rounded-md border transition-colors",
+                      showSwingMarkers
+                        ? "border-primary/30 bg-primary/5"
+                        : "border-transparent"
+                    )}
+                  >
                     <button
                       onClick={() => dispatch(layoutActions.togglePanel("swingMarkers"))}
                       className={cn(
-                        "px-2 py-1 text-xs rounded transition-colors",
+                        "px-2 py-0.5 text-xs rounded transition-colors flex items-center gap-1",
                         showSwingMarkers
-                          ? "bg-primary/20 text-primary"
+                          ? "bg-primary/20 text-primary font-medium"
                           : "text-muted-foreground hover:bg-muted"
                       )}
                       title="Toggle swing markers (HH/HL/LH/LL)"
                     >
                       Swing
+                      {showSwingMarkers && chartMarkers.length > 0 && (
+                        <Badge variant="secondary" className="h-4 px-1 text-[10px] ml-0.5">
+                          {chartMarkers.length}
+                        </Badge>
+                      )}
                     </button>
+                    {showSwingMarkers && (
+                      <>
+                        <div className="h-4 w-px bg-border/50 mx-0.5" />
+                        {TIMEFRAMES.map((tf) => {
+                          const tfSettings = getTimeframeSettings(tf);
+                          const enabled = tfSettings.enabled;
+                          const color = TIMEFRAME_COLORS[tf];
+                          return (
+                            <SwingSettingsPopover
+                              key={tf}
+                              timeframe={tf}
+                              isEnabled={enabled}
+                              settings={tfSettings}
+                              onLookbackChange={(lookback) => updateTimeframeLookback(tf, lookback)}
+                              onToggleEnabled={() => updateTimeframeEnabled(tf, !enabled)}
+                              onShowLinesChange={(showLines) => updateTimeframeShowLines(tf, showLines)}
+                            >
+                              <button
+                                className={cn(
+                                  "px-1 py-0.5 text-[10px] rounded transition-all",
+                                  enabled
+                                    ? "font-medium"
+                                    : "text-muted-foreground/50 hover:text-muted-foreground"
+                                )}
+                                style={{
+                                  backgroundColor: enabled ? `${color}20` : undefined,
+                                  color: enabled ? color : undefined,
+                                  borderBottom: enabled ? `2px solid ${color}` : "2px solid transparent",
+                                }}
+                                title={`Configure ${tf} swing detection`}
+                              >
+                                {tf}
+                              </button>
+                            </SwingSettingsPopover>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Fib Group - toggle + options + timeframes together */}
+                  <div
+                    className={cn(
+                      "flex items-center gap-0.5 px-1 py-0.5 rounded-md border transition-colors",
+                      showFibLevels
+                        ? "border-primary/30 bg-primary/5"
+                        : "border-transparent"
+                    )}
+                  >
                     <button
                       onClick={() => dispatch(layoutActions.togglePanel("fibLevels"))}
                       className={cn(
-                        "px-2 py-1 text-xs rounded transition-colors",
+                        "px-2 py-0.5 text-xs rounded transition-colors flex items-center gap-1",
                         showFibLevels
-                          ? "bg-primary/20 text-primary"
+                          ? "bg-primary/20 text-primary font-medium"
                           : "text-muted-foreground hover:bg-muted"
                       )}
                       title="Toggle Fibonacci levels"
                     >
                       Fib
+                      {showFibLevels && visibleLevels.length > 0 && (
+                        <Badge variant="secondary" className="h-4 px-1 text-[10px] ml-0.5">
+                          {visibleLevels.length}
+                        </Badge>
+                      )}
                     </button>
                     {showFibLevels && (
                       <>
+                        <div className="h-4 w-px bg-border/50 mx-0.5" />
                         <button
                           onClick={() => dispatch({ type: "TOGGLE_FIB_LINES" })}
                           className={cn(
-                            "px-1.5 py-1 text-[10px] rounded transition-colors",
+                            "px-1 py-0.5 text-[10px] rounded transition-colors",
                             showFibLines
-                              ? "bg-primary/20 text-primary"
-                              : "text-muted-foreground hover:bg-muted"
+                              ? "bg-primary/10 text-primary"
+                              : "text-muted-foreground/50 hover:text-muted-foreground"
                           )}
-                          title="Toggle Fib level lines (hide to see zones clearly)"
+                          title="Toggle lines"
                         >
-                          Lines
+                          L
                         </button>
                         <button
                           onClick={() => dispatch({ type: "TOGGLE_FIB_LABELS" })}
                           className={cn(
-                            "px-1.5 py-1 text-[10px] rounded transition-colors",
+                            "px-1 py-0.5 text-[10px] rounded transition-colors",
                             showFibLabels
-                              ? "bg-primary/20 text-primary"
-                              : "text-muted-foreground hover:bg-muted"
+                              ? "bg-primary/10 text-primary"
+                              : "text-muted-foreground/50 hover:text-muted-foreground"
                           )}
-                          title="Toggle Fibonacci level labels"
+                          title="Toggle labels"
                         >
-                          Labels
+                          T
                         </button>
+                        <div className="h-4 w-px bg-border/50 mx-0.5" />
+                        {TIMEFRAMES.map((tf) => {
+                          const enabled = isTimeframeEnabled(tf);
+                          const color = TIMEFRAME_COLORS[tf];
+                          return (
+                            <TimeframeSettingsPopover
+                              key={tf}
+                              timeframe={tf}
+                              isEnabled={enabled}
+                              visibilityConfig={visibilityConfig}
+                              onVisibilityChange={setVisibilityConfig}
+                              onToggleTimeframe={() => toggleTimeframeVisibility(tf)}
+                            >
+                              <button
+                                className={cn(
+                                  "px-1 py-0.5 text-[10px] rounded transition-all",
+                                  enabled
+                                    ? "font-medium"
+                                    : "text-muted-foreground/50 hover:text-muted-foreground"
+                                )}
+                                style={{
+                                  backgroundColor: enabled ? `${color}20` : undefined,
+                                  color: enabled ? color : undefined,
+                                  borderBottom: enabled ? `2px solid ${color}` : "2px solid transparent",
+                                }}
+                                title={`Configure ${tf} Fibonacci levels`}
+                              >
+                                {tf}
+                              </button>
+                            </TimeframeSettingsPopover>
+                          );
+                        })}
                       </>
                     )}
+                  </div>
+
+                  <div className="h-6 w-px bg-border mx-0.5 hidden sm:block" />
+
+                  {/* Other toggles */}
+                  <div className="flex items-center gap-1">
                     <button
                       onClick={() => dispatch(layoutActions.togglePanel("confluenceZones"))}
                       className={cn(
@@ -772,7 +860,7 @@ export function WorkflowV2Layout({
                           ? "bg-purple-500/20 text-purple-400"
                           : "text-muted-foreground hover:bg-muted"
                       )}
-                      title="Toggle confluence zones (clusters of Fib levels)"
+                      title="Toggle confluence zones"
                     >
                       Zones
                     </button>
@@ -784,9 +872,9 @@ export function WorkflowV2Layout({
                           ? "bg-blue-500/20 text-blue-400"
                           : "text-muted-foreground hover:bg-muted"
                       )}
-                      title="Toggle Fibonacci levels table with calculations"
+                      title="Toggle levels table"
                     >
-                      Levels
+                      Table
                     </button>
                     <button
                       onClick={() => dispatch(layoutActions.togglePanel("indicators"))}
@@ -796,9 +884,9 @@ export function WorkflowV2Layout({
                           ? "bg-primary/20 text-primary"
                           : "text-muted-foreground hover:bg-muted"
                       )}
-                      title="Toggle indicators (RSI & MACD)"
+                      title="Toggle RSI & MACD"
                     >
-                      Indicators
+                      RSI
                     </button>
                     <button
                       onClick={() => dispatch(layoutActions.togglePanel("pivotEditor"))}
@@ -808,7 +896,7 @@ export function WorkflowV2Layout({
                           ? "bg-primary/20 text-primary"
                           : "text-muted-foreground hover:bg-muted"
                       )}
-                      title="Toggle pivot points editor"
+                      title="Edit pivot points"
                     >
                       Pivot
                       {hasPivotModifications && (
@@ -827,94 +915,12 @@ export function WorkflowV2Layout({
                               : "bg-red-500/20 text-red-400"
                             : "text-muted-foreground hover:bg-muted"
                         )}
-                        title={`Toggle trade view (${opportunity.direction.toUpperCase()} ${opportunity.higherTimeframe}→${opportunity.lowerTimeframe})`}
+                        title={`Trade view (${opportunity.direction.toUpperCase()})`}
                       >
                         Trade
                       </button>
                     )}
                   </div>
-
-                  {/* Swing timeframe buttons - only show when Swing is enabled */}
-                  {showSwingMarkers && (
-                    <>
-                      <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
-                      <div className="flex items-center gap-0.5">
-                        {TIMEFRAMES.map((tf) => {
-                          const tfSettings = getTimeframeSettings(tf);
-                          const enabled = tfSettings.enabled;
-                          const color = TIMEFRAME_COLORS[tf];
-                          return (
-                            <SwingSettingsPopover
-                              key={tf}
-                              timeframe={tf}
-                              isEnabled={enabled}
-                              settings={tfSettings}
-                              onLookbackChange={(lookback) => updateTimeframeLookback(tf, lookback)}
-                              onToggleEnabled={() => updateTimeframeEnabled(tf, !enabled)}
-                              onShowLinesChange={(showLines) => updateTimeframeShowLines(tf, showLines)}
-                            >
-                              <button
-                                className={cn(
-                                  "px-1.5 py-0.5 text-[10px] sm:text-xs rounded transition-all",
-                                  enabled
-                                    ? "font-medium"
-                                    : "text-muted-foreground/50 hover:text-muted-foreground"
-                                )}
-                                style={{
-                                  backgroundColor: enabled ? `${color}20` : undefined,
-                                  color: enabled ? color : undefined,
-                                  borderBottom: enabled ? `2px solid ${color}` : "2px solid transparent",
-                                }}
-                                title={`Configure ${tf} swing detection (click to open settings)`}
-                              >
-                                {tf}
-                              </button>
-                            </SwingSettingsPopover>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-
-                  {/* Fib timeframe buttons - only show when Fib is enabled */}
-                  {showFibLevels && (
-                    <>
-                      <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
-                      <div className="flex items-center gap-0.5">
-                        {TIMEFRAMES.map((tf) => {
-                          const enabled = isTimeframeEnabled(tf);
-                          const color = TIMEFRAME_COLORS[tf];
-                          return (
-                            <TimeframeSettingsPopover
-                              key={tf}
-                              timeframe={tf}
-                              isEnabled={enabled}
-                              visibilityConfig={visibilityConfig}
-                              onVisibilityChange={setVisibilityConfig}
-                              onToggleTimeframe={() => toggleTimeframeVisibility(tf)}
-                            >
-                              <button
-                                className={cn(
-                                  "px-1.5 py-0.5 text-[10px] sm:text-xs rounded transition-all",
-                                  enabled
-                                    ? "font-medium"
-                                    : "text-muted-foreground/50 hover:text-muted-foreground"
-                                )}
-                                style={{
-                                  backgroundColor: enabled ? `${color}20` : undefined,
-                                  color: enabled ? color : undefined,
-                                  borderBottom: enabled ? `2px solid ${color}` : "2px solid transparent",
-                                }}
-                                title={`Configure ${tf} Fibonacci levels (click to open settings)`}
-                              >
-                                {tf}
-                              </button>
-                            </TimeframeSettingsPopover>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
 
                   {/* Trend indicator - clickable to show panel */}
                   {!isLoadingTrend && (
