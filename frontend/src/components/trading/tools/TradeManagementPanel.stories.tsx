@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { useState, useCallback, useMemo } from "react";
 import { TradeManagementPanel } from "./TradeManagementPanel";
+import { MarketDataProvider } from "@/contexts/MarketDataContext";
 import type { TradeStatus, TradeLogEntry } from "@/hooks/use-workflow-state";
 
 const meta: Meta<typeof TradeManagementPanel> = {
@@ -13,9 +14,11 @@ const meta: Meta<typeof TradeManagementPanel> = {
   },
   decorators: [
     (Story) => (
-      <div className="max-w-2xl mx-auto p-6 bg-background">
-        <Story />
-      </div>
+      <MarketDataProvider>
+        <div className="max-w-2xl mx-auto p-6 bg-background">
+          <Story />
+        </div>
+      </MarketDataProvider>
     ),
   ],
 };
