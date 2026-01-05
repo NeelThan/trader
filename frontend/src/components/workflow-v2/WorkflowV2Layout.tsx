@@ -363,17 +363,6 @@ export function WorkflowV2Layout({
   const pivotDataByTimeframe = useMemo(() => {
     const data: Record<string, { pivotHigh: number | null; pivotLow: number | null; pointA?: number; pointB?: number; pointC?: number }> = {};
 
-    // Debug: log byTimeframe to see what data we have
-    console.log("[pivotDataByTimeframe] byTimeframe count:", byTimeframe.length,
-      byTimeframe.map(tf => ({
-        tf: tf.timeframe,
-        swingEndpoint: tf.swingEndpoint,
-        pivotHigh: tf.pivotHigh,
-        pivotLow: tf.pivotLow,
-        levelCount: tf.levels.length
-      }))
-    );
-
     for (const tfData of byTimeframe) {
       // Get A from projection levels (which have all A, B, C)
       const projectionLevel = tfData.levels.find(l => l.pointA !== undefined);
@@ -405,6 +394,19 @@ export function WorkflowV2Layout({
     }
     return data;
   }, [byTimeframe]);
+
+  // Debug: log pivot data (in useEffect to avoid hydration issues)
+  useEffect(() => {
+    if (byTimeframe.length > 0) {
+      console.log("[Smart Detection Debug] byTimeframe:", byTimeframe.map(tf => ({
+        tf: tf.timeframe,
+        swingEndpoint: tf.swingEndpoint,
+        pivotHigh: tf.pivotHigh,
+        pivotLow: tf.pivotLow,
+      })));
+      console.log("[Smart Detection Debug] pivotDataByTimeframe:", pivotDataByTimeframe);
+    }
+  }, [byTimeframe, pivotDataByTimeframe]);
 
   // Get visible levels based on visibility config and trade view mode
   const visibleLevels = useMemo(() => {
