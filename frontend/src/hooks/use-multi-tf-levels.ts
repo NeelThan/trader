@@ -25,6 +25,7 @@ import {
   calculateHeat,
   formatRatioLabel,
   isLevelVisible,
+  ALL_TIMEFRAMES,
 } from "@/lib/chart-pro/strategy-types";
 import {
   cacheMarketData,
@@ -612,13 +613,15 @@ export function useMultiTFLevels({
   );
 
   // Fetch all levels
+  // Note: We fetch pivot data for ALL timeframes (for smart direction detection),
+  // but only calculate Fib levels for enabled timeframes
   const fetchAllLevels = useCallback(async () => {
-    if (!enabled || enabledTimeframes.length === 0) {
+    if (!enabled) {
       setByTimeframe([]);
       return;
     }
 
-    // Initialize loading states
+    // Initialize loading states for all timeframes
     const initialLoadingStates: Record<Timeframe, boolean> = {} as Record<
       Timeframe,
       boolean
@@ -628,7 +631,7 @@ export function useMultiTFLevels({
       string | null
     >;
 
-    enabledTimeframes.forEach((tf) => {
+    ALL_TIMEFRAMES.forEach((tf) => {
       initialLoadingStates[tf] = true;
       initialErrors[tf] = null;
     });
@@ -636,9 +639,10 @@ export function useMultiTFLevels({
     setLoadingStates(initialLoadingStates);
     setErrors(initialErrors);
 
-    // Fetch levels for all timeframes in parallel
+    // Fetch levels for ALL timeframes in parallel (pivot data for smart detection)
+    // Fib levels are only calculated for enabled timeframes via getEnabledStrategies
     const results = await Promise.all(
-      enabledTimeframes.map(async (tf) => {
+      ALL_TIMEFRAMES.map(async (tf) => {
         try {
           const result = await fetchLevelsForTimeframe(tf);
           setLoadingStates((prev) => ({ ...prev, [tf]: false }));
@@ -660,7 +664,7 @@ export function useMultiTFLevels({
     );
 
     setByTimeframe(validResults);
-  }, [enabled, enabledTimeframes, fetchLevelsForTimeframe]);
+  }, [enabled, fetchLevelsForTimeframe]);
 
   // Clear cache when symbol changes
   useEffect(() => {
@@ -673,14 +677,15 @@ export function useMultiTFLevels({
 
   // Debounced fetch - wait 300ms after last config change before fetching
   // Fetch levels when dependencies change
+  // Note: We always fetch when enabled=true (for pivot data), regardless of enabledTimeframes
   useEffect(() => {
     // Clear any pending fetch
     if (fetchTimeoutRef.current) {
       clearTimeout(fetchTimeoutRef.current);
     }
 
-    // Skip if no enabled timeframes
-    if (enabledTimeframes.length === 0) {
+    // Skip if not enabled
+    if (!enabled) {
       return;
     }
 
@@ -702,7 +707,7 @@ export function useMultiTFLevels({
         clearTimeout(fetchTimeoutRef.current);
       }
     };
-  }, [fetchAllLevels, enabledTimeframes]);
+  }, [fetchAllLevels, enabled]);
 
   // Calculate all levels with heat scores
   const allLevels = useMemo(() => {

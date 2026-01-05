@@ -199,8 +199,16 @@ export function TimeframeSettingsPopover({
       HARMONIC: null,
       SIGNAL: null,
     };
+    // Debug: log pivot data and recommendations
+    if (isOpen) {
+      console.log(`[Smart Detection ${timeframe}]`, {
+        pivotData,
+        hasPivotData: (pivotData?.pointB !== undefined && pivotData?.pointC !== undefined),
+        recommendations: result,
+      });
+    }
     return result;
-  }, [pivotData]);
+  }, [pivotData, timeframe, isOpen]);
 
   // Check if pivot data is available for smart detection
   // For retracement/extension/expansion we need B and C
