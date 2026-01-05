@@ -2,297 +2,353 @@
 
 This document defines when to show BUY (long) or SELL (short) levels for each Fibonacci tool based on swing structure detection.
 
-**Key Principle**: The "shape" of the swing on each timeframe determines which direction levels to display.
+**Key Principle**: The relationship between pivot points B and C (or A, B, C for Projection) determines which direction levels to display.
+
+---
+
+## Pivot Point Definitions
+
+In our multi-timeframe system, we track three alternating pivot points:
+- **A** = Oldest alternating pivot
+- **B** = Middle alternating pivot
+- **C** = Most recent alternating pivot (current)
+
+| Strategy | Points Used |
+|----------|-------------|
+| Retracement | B and C |
+| Extension | B and C |
+| Expansion | B and C |
+| Projection | A, B, and C |
 
 ---
 
 ## Quick Reference Table
 
-| Fibonacci Tool | BUY/Long Condition | SELL/Short Condition |
-|----------------|-------------------|---------------------|
-| **Retracement** | Swing DOWN (High→Low) | Swing UP (Low→High) |
-| **Extension** | Bearish move (targets below) | Bullish move (targets above) |
-| **Projection** | A=Low, B=High, C=pullback (targets down) | A=High, B=Low, C=pullback (targets up) |
-| **Expansion** | A=High, B=Low (targets below B) | A=Low, B=High (targets above B) |
+| Fibonacci Tool | BUY Condition | SELL Condition |
+|----------------|---------------|----------------|
+| **Retracement** | B < C (swing UP) | B > C (swing DOWN) |
+| **Extension** | B < C (swing UP) | B > C (swing DOWN) |
+| **Expansion** | B > C (swing DOWN) | B < C (swing UP) |
+| **Projection** | A > B (bearish ABC) | A < B (bullish ABC) |
 
 ---
 
-## 1. RETRACEMENT Conditions
+## 1. RETRACEMENT (using B and C)
 
-Retracements measure pullback levels within a swing move.
+Retracements measure pullback levels within the B→C swing.
 
-### BUY Setup (Long Retracement)
-**Shape Required**: Swing from HIGH to LOW
-- Point A = Swing High
-- Point X = Swing Low
-- Price moved DOWN, waiting for pullback UP to retracement levels
-- Formula: `Level = High - (Range × Ratio)`
-- **Action**: Look to BUY at retracement levels (38.2%, 50%, 61.8%, 78.6%)
+### BUY Retracement
+**Setup**: B < C (B is LOW, C is HIGH - swing went UP)
 
 ```
-    A (High)
-    |\
-    | \
-    |  \  ← Price moved down
-    |   \
-    X (Low) ← Now looking for pullback UP to buy
+        C (High) ← Most recent pivot
+       /|
+      / |
+     /  |  ← Retracement levels (pullback DOWN)
+    /   |
+   B (Low) ← Middle pivot
 ```
 
-### SELL Setup (Short Retracement)
-**Shape Required**: Swing from LOW to HIGH
-- Point X = Swing Low
-- Point A = Swing High
-- Price moved UP, waiting for pullback DOWN to retracement levels
-- Formula: `Level = Low + (Range × Ratio)`
-- **Action**: Look to SELL at retracement levels (38.2%, 50%, 61.8%, 78.6%)
+**Calculation**:
+- Range = C - B
+- Formula: `Level = C - (Range × Ratio)`
+- Levels are BETWEEN B and C
 
-```
-    A (High) ← Now looking for pullback DOWN to sell
-    /|
-   / |
-  /  |  ← Price moved up
- /   |
-X (Low)
-```
+**Example**: B = 80, C = 100, Range = 20
+| Ratio | Calculation | Level |
+|-------|-------------|-------|
+| 38.2% | 100 - (20 × 0.382) | 92.36 |
+| 50.0% | 100 - (20 × 0.500) | 90.00 |
+| 61.8% | 100 - (20 × 0.618) | 87.64 |
+| 78.6% | 100 - (20 × 0.786) | 84.28 |
 
-### Detection Logic
-```typescript
-// Detect swing direction from latest swing markers
-if (latestSwing === "HL" || latestSwing === "LL") {
-  // Swing ended LOW → next move likely UP → BUY retracement
-  showLongRetracement = true;
-} else if (latestSwing === "HH" || latestSwing === "LH") {
-  // Swing ended HIGH → next move likely DOWN → SELL retracement
-  showShortRetracement = true;
-}
-```
+**Action**: BUY at these levels (buying the pullback in an uptrend)
 
 ---
 
-## 2. EXTENSION Conditions
-
-Extensions project targets BEYOND the original swing (past 100%).
-
-### BUY Setup (Long Extension)
-**Shape Required**: Bearish swing (High→Low), targets BELOW origin
-- Point A = Origin (High)
-- Point X = Extreme (Low)
-- Extensions project below the low
-- Formula: `Level = A - (Range × Ratio)` where ratio > 1.0
-- **Action**: BUY targets are at extension levels (127.2%, 161.8%, 261.8%)
+### SELL Retracement
+**Setup**: B > C (B is HIGH, C is LOW - swing went DOWN)
 
 ```
-    A (High/Origin)
-    |
-    | ← Range
-    |
-    X (Low)
-    |
-    | ← Extension targets (127.2%, 161.8%, 261.8%)
-    ↓
+   B (High) ← Middle pivot
+    \   |
+     \  |  ← Retracement levels (pullback UP)
+      \ |
+       \|
+        C (Low) ← Most recent pivot
 ```
 
-### SELL Setup (Short Extension)
-**Shape Required**: Bullish swing (Low→High), targets ABOVE origin
-- Point A = Origin (Low)
-- Point X = Extreme (High)
-- Extensions project above the high
-- Formula: `Level = A + (Range × Ratio)` where ratio > 1.0
-- **Action**: SELL targets are at extension levels (127.2%, 161.8%, 261.8%)
+**Calculation**:
+- Range = B - C
+- Formula: `Level = C + (Range × Ratio)`
+- Levels are BETWEEN C and B
 
-```
-    ↑
-    | ← Extension targets (127.2%, 161.8%, 261.8%)
-    |
-    X (High)
-    |
-    | ← Range
-    |
-    A (Low/Origin)
-```
+**Example**: B = 100, C = 80, Range = 20
+| Ratio | Calculation | Level |
+|-------|-------------|-------|
+| 38.2% | 80 + (20 × 0.382) | 87.64 |
+| 50.0% | 80 + (20 × 0.500) | 90.00 |
+| 61.8% | 80 + (20 × 0.618) | 92.36 |
+| 78.6% | 80 + (20 × 0.786) | 95.72 |
 
-### Detection Logic
-```typescript
-// Extension direction follows the swing direction
-if (swingDirection === "down") {
-  // Bearish swing → BUY extensions (targets below)
-  showLongExtension = true;
-} else if (swingDirection === "up") {
-  // Bullish swing → SELL extensions (targets above)
-  showShortExtension = true;
-}
-```
-
-**Note**: Extensions are shown when price has moved past 100% of the retracement zone.
+**Action**: SELL at these levels (selling the pullback in a downtrend)
 
 ---
 
-## 3. PROJECTION Conditions
+## 2. EXTENSION (using B and C)
 
-Projections use 3 pivot points (A, B, C) to project targets from C.
+Extensions project targets BEYOND the B→C swing (using ratios > 1.0).
 
-### BUY Setup (Long Projection)
-**Shape Required**: ABC where A=Low, B=High, C=Higher Low (pullback)
-- A = Swing Low (start)
-- B = Swing High (impulse)
-- C = Pullback Low (retracement of A-B)
-- Projects targets DOWN from C
-- Formula: `Level = C - (AB_Swing × Ratio)`
-- **Action**: BUY targets projected below C
+### BUY Extension
+**Setup**: B < C (B is LOW, C is HIGH - swing went UP)
 
 ```
-        B (High)
-       /\
-      /  \
-     /    \ C (Pullback)
-    /      \|
-   /        | ← Projection targets down from C
-  A (Low)   ↓
-```
-
-### SELL Setup (Short Projection)
-**Shape Required**: ABC where A=High, B=Low, C=Lower High (pullback)
-- A = Swing High (start)
-- B = Swing Low (impulse)
-- C = Pullback High (retracement of A-B)
-- Projects targets UP from C
-- Formula: `Level = C + (AB_Swing × Ratio)`
-- **Action**: SELL targets projected above C
-
-```
-  A (High)   ↑
-   \        | ← Projection targets up from C
-    \      /|
-     \    / C (Pullback)
-      \  /
-       \/
-        B (Low)
-```
-
-### Detection Logic
-```typescript
-// Need ABC pattern detection
-if (patternType === "bullish_ABC") {
-  // A=Low, B=High, C=HL → project down for BUY
-  showLongProjection = true;
-} else if (patternType === "bearish_ABC") {
-  // A=High, B=Low, C=LH → project up for SELL
-  showShortProjection = true;
-}
-```
-
----
-
-## 4. EXPANSION Conditions
-
-Expansions measure the range between A and B, then project from B.
-
-### BUY Setup (Long Expansion)
-**Shape Required**: A=HIGH, B=LOW (bearish range)
-- A = High point
-- B = Low point (expansion origin)
-- Targets project BELOW B
-- Formula: `Level = B - (AB_Range × Ratio)`
-- **Action**: BUY targets below B
-
-```
-    A (High)
-    |
-    | ← Range (A-B)
-    |
+        C (High)
+       /
+      /
+     /
     B (Low)
     |
-    | ← Expansion targets (38.2%, 50%, 61.8%, 100%, 161.8%)
+    | ← Extension targets (BELOW B)
     ↓
 ```
 
-### SELL Setup (Short Expansion)
-**Shape Required**: A=LOW, B=HIGH (bullish range)
-- A = Low point
-- B = High point (expansion origin)
-- Targets project ABOVE B
-- Formula: `Level = B + (AB_Range × Ratio)`
-- **Action**: SELL targets above B
+**Calculation**:
+- Range = C - B
+- Formula: `Level = C - (Range × Ratio)` where Ratio > 1.0
+- Levels are BELOW B
+
+**Example**: B = 80, C = 100, Range = 20
+| Ratio | Calculation | Level |
+|-------|-------------|-------|
+| 127.2% | 100 - (20 × 1.272) | 74.56 |
+| 161.8% | 100 - (20 × 1.618) | 67.64 |
+| 200.0% | 100 - (20 × 2.000) | 60.00 |
+| 261.8% | 100 - (20 × 2.618) | 47.64 |
+
+**Action**: BUY targets at these levels
+
+---
+
+### SELL Extension
+**Setup**: B > C (B is HIGH, C is LOW - swing went DOWN)
 
 ```
     ↑
-    | ← Expansion targets (38.2%, 50%, 61.8%, 100%, 161.8%)
+    | ← Extension targets (ABOVE B)
     |
     B (High)
-    |
-    | ← Range (A-B)
-    |
-    A (Low)
+     \
+      \
+       \
+        C (Low)
 ```
 
-### Detection Logic
+**Calculation**:
+- Range = B - C
+- Formula: `Level = C + (Range × Ratio)` where Ratio > 1.0
+- Levels are ABOVE B
+
+**Example**: B = 100, C = 80, Range = 20
+| Ratio | Calculation | Level |
+|-------|-------------|-------|
+| 127.2% | 80 + (20 × 1.272) | 105.44 |
+| 161.8% | 80 + (20 × 1.618) | 112.36 |
+| 200.0% | 80 + (20 × 2.000) | 120.00 |
+| 261.8% | 80 + (20 × 2.618) | 132.36 |
+
+**Action**: SELL targets at these levels
+
+---
+
+## 3. EXPANSION (using B and C)
+
+Expansions project from C using the B-C range.
+
+### BUY Expansion
+**Setup**: B > C (B is HIGH, C is LOW - swing went DOWN)
+
+```
+    B (High)
+    |
+    | ← Range (B-C)
+    |
+    C (Low)
+    |
+    | ← Expansion targets (BELOW C)
+    ↓
+```
+
+**Calculation**:
+- Range = B - C
+- Formula: `Level = C - (Range × Ratio)`
+- Levels are BELOW C
+
+**Example**: B = 100, C = 80, Range = 20
+| Ratio | Calculation | Level |
+|-------|-------------|-------|
+| 38.2% | 80 - (20 × 0.382) | 72.36 |
+| 50.0% | 80 - (20 × 0.500) | 70.00 |
+| 61.8% | 80 - (20 × 0.618) | 67.64 |
+| 100.0% | 80 - (20 × 1.000) | 60.00 |
+| 161.8% | 80 - (20 × 1.618) | 47.64 |
+
+**Action**: BUY targets at these levels
+
+---
+
+### SELL Expansion
+**Setup**: B < C (B is LOW, C is HIGH - swing went UP)
+
+```
+    ↑
+    | ← Expansion targets (ABOVE C)
+    |
+    C (High)
+    |
+    | ← Range (C-B)
+    |
+    B (Low)
+```
+
+**Calculation**:
+- Range = C - B
+- Formula: `Level = C + (Range × Ratio)`
+- Levels are ABOVE C
+
+**Example**: B = 80, C = 100, Range = 20
+| Ratio | Calculation | Level |
+|-------|-------------|-------|
+| 38.2% | 100 + (20 × 0.382) | 107.64 |
+| 50.0% | 100 + (20 × 0.500) | 110.00 |
+| 61.8% | 100 + (20 × 0.618) | 112.36 |
+| 100.0% | 100 + (20 × 1.000) | 120.00 |
+| 161.8% | 100 + (20 × 1.618) | 132.36 |
+
+**Action**: SELL targets at these levels
+
+---
+
+## 4. PROJECTION (using A, B, and C)
+
+Projections use all three pivot points. The A-B range is projected from point C.
+
+### BUY Projection
+**Setup**: A > B (A is HIGH, B is LOW), C is between A and B
+
+```
+  A (High) ← Oldest pivot
+   \
+    \
+     \
+      B (Low) ← Middle pivot
+       \
+        \ C (Pullback high, between A and B)
+         \|
+          | ← Projection targets (BELOW C)
+          ↓
+```
+
+**Calculation**:
+- Range = A - B
+- Formula: `Level = C - (Range × Ratio)`
+- Levels are BELOW C
+
+**Example**: A = 120, B = 80, C = 100, Range = 40
+| Ratio | Calculation | Level |
+|-------|-------------|-------|
+| 61.8% | 100 - (40 × 0.618) | 75.28 |
+| 78.6% | 100 - (40 × 0.786) | 68.56 |
+| 100.0% | 100 - (40 × 1.000) | 60.00 |
+| 127.2% | 100 - (40 × 1.272) | 49.12 |
+| 161.8% | 100 - (40 × 1.618) | 35.28 |
+
+**Action**: BUY targets at these levels
+
+---
+
+### SELL Projection
+**Setup**: A < B (A is LOW, B is HIGH), C is between A and B
+
+```
+          ↑
+          | ← Projection targets (ABOVE C)
+         /|
+        / C (Pullback low, between A and B)
+       /
+      B (High) ← Middle pivot
+     /
+    /
+   /
+  A (Low) ← Oldest pivot
+```
+
+**Calculation**:
+- Range = B - A
+- Formula: `Level = C + (Range × Ratio)`
+- Levels are ABOVE C
+
+**Example**: A = 80, B = 120, C = 100, Range = 40
+| Ratio | Calculation | Level |
+|-------|-------------|-------|
+| 61.8% | 100 + (40 × 0.618) | 124.72 |
+| 78.6% | 100 + (40 × 0.786) | 131.44 |
+| 100.0% | 100 + (40 × 1.000) | 140.00 |
+| 127.2% | 100 + (40 × 1.272) | 150.88 |
+| 161.8% | 100 + (40 × 1.618) | 164.72 |
+
+**Action**: SELL targets at these levels
+
+---
+
+## Formula Summary
+
+| Strategy | Setup | Range | Formula | Levels |
+|----------|-------|-------|---------|--------|
+| **Retracement BUY** | B < C | C - B | C - (Range × ratio) | Between B and C |
+| **Retracement SELL** | B > C | B - C | C + (Range × ratio) | Between C and B |
+| **Extension BUY** | B < C | C - B | C - (Range × ratio) | Below B |
+| **Extension SELL** | B > C | B - C | C + (Range × ratio) | Above B |
+| **Expansion BUY** | B > C | B - C | C - (Range × ratio) | Below C |
+| **Expansion SELL** | B < C | C - B | C + (Range × ratio) | Above C |
+| **Projection BUY** | A > B | A - B | C - (Range × ratio) | Below C |
+| **Projection SELL** | A < B | B - A | C + (Range × ratio) | Above C |
+
+---
+
+## Key Pattern
+
+- **BUY setups**: Subtract from reference point → levels go DOWN
+- **SELL setups**: Add to reference point → levels go UP
+
+---
+
+## Detection Logic
+
 ```typescript
-// Based on A-B relationship
-if (pointA > pointB) {
-  // A=High, B=Low → BUY expansion (targets below)
-  showLongExpansion = true;
-} else if (pointA < pointB) {
-  // A=Low, B=High → SELL expansion (targets above)
-  showShortExpansion = true;
+// Determine BUY or SELL based on pivot relationships
+function getFibDirection(strategy: string, a: number, b: number, c: number): 'BUY' | 'SELL' {
+  switch (strategy) {
+    case 'retracement':
+    case 'extension':
+      return b < c ? 'BUY' : 'SELL';
+    case 'expansion':
+      return b > c ? 'BUY' : 'SELL';
+    case 'projection':
+      return a > b ? 'BUY' : 'SELL';
+  }
+}
+
+// Calculate level based on direction
+function calcLevel(direction: 'BUY' | 'SELL', refPoint: number, range: number, ratio: number): number {
+  return direction === 'BUY'
+    ? refPoint - (range * ratio)  // Subtract for BUY
+    : refPoint + (range * ratio); // Add for SELL
 }
 ```
-
----
-
-## Sync Logic Implementation
-
-When the user clicks "Smart Sync", for each timeframe:
-
-1. **Get swing detection results** (HH, HL, LH, LL markers)
-2. **Determine swing shape**:
-   - Latest HL/LL = swing ended LOW → shape is "down"
-   - Latest HH/LH = swing ended HIGH → shape is "up"
-
-3. **Apply conditions per strategy**:
-
-| Strategy | Shape "down" (ended low) | Shape "up" (ended high) |
-|----------|-------------------------|------------------------|
-| Retracement | Show LONG (buy pullback) | Show SHORT (sell pullback) |
-| Extension | Show LONG (targets below) | Show SHORT (targets above) |
-| Projection | Show LONG (if ABC bullish) | Show SHORT (if ABC bearish) |
-| Expansion | Based on A>B or A<B | Based on A<B or A>B |
-
-4. **Price position filtering**:
-   - If price < 100% of swing → primarily show RETRACEMENTS
-   - If price > 100% of swing → primarily show EXTENSIONS
-   - Show BOTH if price is near 100% (80-120% range)
-
----
-
-## Example Scenarios
-
-### Scenario 1: Monthly timeframe with swing down
-- Latest marker: HL (Higher Low)
-- Swing: High→Low (bearish move completed)
-- **Retracement**: Show LONG (buying the pullback up)
-- **Extension**: Show LONG (targets below the low)
-
-### Scenario 2: Daily timeframe with swing up
-- Latest marker: LH (Lower High)
-- Swing: Low→High (bullish move completed)
-- **Retracement**: Show SHORT (selling the pullback down)
-- **Extension**: Show SHORT (targets above the high)
-
-### Scenario 3: Mixed timeframes
-- Monthly: HL → Show LONG levels
-- Weekly: LH → Show SHORT levels
-- Daily: LL → Show LONG levels
-- Result: Multi-TF analysis shows conflicting directions - wait for alignment
 
 ---
 
 ## Reference
 
 Source: Sandy Jadeja Fibonacci Trading Workshop
-Document: `docs/references/fibonacci_strategy_knowledge.md`
-
-Key pages:
-- Page 21: Retracement buy signal conditions
-- Page 23: Extension formulas
-- Page 24: Projection (ABC) patterns
-- Page 25: Expansion calculations

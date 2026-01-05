@@ -47,19 +47,25 @@ def calculate_retracement_levels(
     direction: Literal["buy", "sell"],
 ) -> dict[FibonacciLevel, float]:
     """
-    Calculate Fibonacci retracement levels.
+    Calculate Fibonacci retracement levels using pivot points B and C.
+
+    Retracements measure pullback levels within the B→C swing.
 
     Args:
-        high: The high price point
-        low: The low price point
-        direction: 'buy' or 'sell' setup
+        high: The high price point (C if B < C, else B)
+        low: The low price point (B if B < C, else C)
+        direction: 'buy' if B < C (swing up), 'sell' if B > C (swing down)
 
     Returns:
         Dictionary mapping FibonacciLevel to calculated price level
 
+    Setup:
+        BUY:  B < C (swing UP) → levels between B and C for buying pullback
+        SELL: B > C (swing DOWN) → levels between C and B for selling pullback
+
     Formula:
-        BUY:  Level = High - (Range × Ratio)
-        SELL: Level = Low + (Range × Ratio)
+        BUY:  Level = C - (Range × Ratio) = High - (Range × Ratio)
+        SELL: Level = C + (Range × Ratio) = Low + (Range × Ratio)
     """
     price_range = high - low
 
@@ -80,21 +86,25 @@ def calculate_extension_levels(
     direction: Literal["buy", "sell"],
 ) -> dict[ExtensionLevel, float]:
     """
-    Calculate Fibonacci extension levels.
+    Calculate Fibonacci extension levels using pivot points B and C.
 
-    Extensions project beyond the origin point for profit targets.
+    Extensions project targets BEYOND the B→C swing (ratios > 1.0).
 
     Args:
-        high: The high price point
-        low: The low price point
-        direction: 'buy' or 'sell' setup
+        high: The high price point (C if B < C, else B)
+        low: The low price point (B if B < C, else C)
+        direction: 'buy' if B < C (swing up), 'sell' if B > C (swing down)
 
     Returns:
         Dictionary mapping ExtensionLevel to calculated price level
 
+    Setup:
+        BUY:  B < C (swing UP) → targets BELOW B
+        SELL: B > C (swing DOWN) → targets ABOVE B
+
     Formula:
-        BUY (target below):  Level = High - (Range × Ratio)
-        SELL (target above): Level = Low + (Range × Ratio)
+        BUY:  Level = C - (Range × Ratio) = High - (Range × Ratio)
+        SELL: Level = C + (Range × Ratio) = Low + (Range × Ratio)
     """
     price_range = high - low
 
@@ -116,23 +126,30 @@ def calculate_projection_levels(
     direction: Literal["buy", "sell"],
 ) -> dict[ProjectionLevel, float]:
     """
-    Calculate Fibonacci projection levels from 3 pivot points.
+    Calculate Fibonacci projection levels from 3 pivot points (A, B, C).
 
-    Projection measures a previous swing (A→B) and projects from C.
+    Projection uses all three alternating pivots:
+    - A = Oldest pivot
+    - B = Middle pivot
+    - C = Most recent pivot (projection origin)
 
     Args:
-        point_a: First pivot point price
-        point_b: Second pivot point price
-        point_c: Third pivot point (projection origin)
-        direction: 'buy' or 'sell' setup
+        point_a: First pivot point price (oldest)
+        point_b: Second pivot point price (middle)
+        point_c: Third pivot point price (most recent, projection origin)
+        direction: 'buy' if A > B (bearish ABC), 'sell' if A < B (bullish ABC)
 
     Returns:
         Dictionary mapping ProjectionLevel to calculated price level
 
+    Setup:
+        BUY:  A > B (A high, B low) → targets BELOW C
+        SELL: A < B (A low, B high) → targets ABOVE C
+
     Formula:
-        Swing = |A - B|
-        BUY (project down):  D = C - (Swing × Ratio)
-        SELL (project up):   D = C + (Swing × Ratio)
+        Range = |A - B|
+        BUY:  Level = C - (Range × Ratio)
+        SELL: Level = C + (Range × Ratio)
     """
     swing = abs(point_a - point_b)
 
@@ -153,23 +170,28 @@ def calculate_expansion_levels(
     direction: Literal["buy", "sell"],
 ) -> dict[ExpansionLevel, float]:
     """
-    Calculate Fibonacci expansion levels from 2 pivot points.
+    Calculate Fibonacci expansion levels using pivot points B and C.
 
-    Expansion forecasts from pivot B (end of swing), unlike Extension
-    which forecasts from pivot A (origin).
+    Expansion projects from C using the B-C range.
+    Note: API parameters are named point_a/point_b for backward compatibility,
+    but they represent pivot B and pivot C respectively in the ABC pattern.
 
     Args:
-        point_a: Start of swing
-        point_b: End of swing (forecast origin)
-        direction: 'buy' or 'sell' setup
+        point_a: Pivot B price (middle alternating pivot)
+        point_b: Pivot C price (most recent alternating pivot, expansion origin)
+        direction: 'buy' if B > C (swing down), 'sell' if B < C (swing up)
 
     Returns:
         Dictionary mapping ExpansionLevel to calculated price level
 
+    Setup:
+        BUY:  B > C (B high, C low) → targets BELOW C
+        SELL: B < C (B low, C high) → targets ABOVE C
+
     Formula:
-        Range = |A - B|
-        BUY (expand down):  D = B - (Range × Ratio)
-        SELL (expand up):   D = B + (Range × Ratio)
+        Range = |B - C| = |point_a - point_b|
+        BUY:  Level = C - (Range × Ratio) = point_b - (Range × Ratio)
+        SELL: Level = C + (Range × Ratio) = point_b + (Range × Ratio)
     """
     price_range = abs(point_a - point_b)
 

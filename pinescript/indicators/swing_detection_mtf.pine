@@ -397,8 +397,10 @@ hasValidABCData(float pA, float pB, float pC) =>
     not na(pA) or not na(pB) or not na(pC)
 
 // Convert lastType to swing direction for Fibonacci calculations
-// "low" = swing ended LOW = DOWN direction = BUY setup
-// "high" = swing ended HIGH = UP direction = SELL setup
+// "low" = C is a swing LOW = B > C (swing went DOWN to reach C)
+//         → SELL setup for Retracement/Extension, BUY setup for Expansion
+// "high" = C is a swing HIGH = B < C (swing went UP to reach C)
+//         → BUY setup for Retracement/Extension, SELL setup for Expansion
 getSwingDir(string lastType) =>
     lastType == "low" ? "down" : (lastType == "high" ? "up" : "down")
 
@@ -421,21 +423,39 @@ isValidTFRequest(string targetTF) =>
     currentMins <= targetMins * 1.1  // 10% tolerance for month variations
 
 // Fibonacci calculations
+// Direction mapping: "down" = lastType was LOW = C is low = B > C = SELL setup
+//                    "up" = lastType was HIGH = C is high = B < C = BUY setup
+//
+// Retracement: Entry levels between B and C (within the swing)
+// BUY (B < C, dir="up"): Level = C - (Range × ratio) = h - (rng × ratio)
+// SELL (B > C, dir="down"): Level = C + (Range × ratio) = l + (rng × ratio)
 calcRetracement(float h, float l, string dir, float ratio) =>
     rng = h - l
-    dir == "down" ? h - (rng * ratio) : l + (rng * ratio)
+    dir == "down" ? l + (rng * ratio) : h - (rng * ratio)
 
+// Extension: Target levels beyond the B-C swing (ratios > 1.0)
+// Same direction logic as retracement, just projects further
+// BUY (B < C, dir="up"): Level = C - (Range × ratio) = h - (rng × ratio) → targets below B
+// SELL (B > C, dir="down"): Level = C + (Range × ratio) = l + (rng × ratio) → targets above B
 calcExtension(float h, float l, string dir, float ratio) =>
     rng = h - l
-    dir == "down" ? h - (rng * ratio) : l + (rng * ratio)
+    dir == "down" ? l + (rng * ratio) : h - (rng * ratio)
 
+// Projection: Uses A-B range projected from C
+// When dir="down" (C is low): Pattern A=low, B=high, C=low → A < B → SELL projection
+// When dir="up" (C is high): Pattern A=high, B=low, C=high → A > B → BUY projection
+// BUY (A > B, dir="up"): Level = C - (Range × ratio) → targets below C
+// SELL (A < B, dir="down"): Level = C + (Range × ratio) → targets above C
 calcProjection(float a, float b, float c, string dir, float ratio) =>
     swing = math.abs(a - b)
-    dir == "down" ? c - (swing * ratio) : c + (swing * ratio)
+    dir == "down" ? c + (swing * ratio) : c - (swing * ratio)
 
-calcExpansion(float a, float b, string dir, float ratio) =>
-    rng = math.abs(a - b)
-    dir == "down" ? b - (rng * ratio) : b + (rng * ratio)
+// Expansion: Projects from C using B-C range (OPPOSITE direction condition to retracement)
+// BUY (B > C, dir="down"): Level = C - (Range × ratio) = l - (rng × ratio) → targets below C
+// SELL (B < C, dir="up"): Level = C + (Range × ratio) = h + (rng × ratio) → targets above C
+calcExpansion(float h, float l, string dir, float ratio) =>
+    rng = h - l
+    dir == "down" ? l - (rng * ratio) : h + (rng * ratio)
 
 // Update pivot storage with new swing high/low data
 // When alternating (high→low or low→high): shift pattern (A←B, B←C, C←new)
@@ -450,6 +470,7 @@ updatePivots(TFData tf, float sh, float sl) =>
             tf.lastType := "high"
         else
             tf.pivotC := sh
+            tf.lastType := tf.lastType  // Keep type consistent (no-op for return type)
     if not na(sl)
         tf.lastL := sl
         if tf.lastType != "low"
@@ -459,10 +480,24 @@ updatePivots(TFData tf, float sh, float sl) =>
             tf.lastType := "low"
         else
             tf.pivotC := sl
+            tf.lastType := tf.lastType  // Keep type consistent (no-op for return type)
+    true  // Explicit return to avoid type mismatch
 
 // Get computed ABC point (auto-detected or manual override)
 getABCPoint(float autoVal, bool useAuto, float manualVal) =>
     useAuto ? autoVal : (manualVal > 0 ? manualVal : autoVal)
+
+// Trend analysis functions (must be before drawTrendRow)
+getTrendSignal(float rsiVal, float macdHistVal) =>
+    rsiSig = rsiVal >= 60 ? 1.0 : (rsiVal <= 40 ? -1.0 : (rsiVal > 50 ? 0.5 : (rsiVal < 50 ? -0.5 : 0.0)))
+    macdSig = macdHistVal > 0 ? 1.0 : (macdHistVal < 0 ? -1.0 : 0.0)
+    (rsiSig * 0.5) + (macdSig * 0.5)
+
+getTrendDir(float score) =>
+    score >= 0.3 ? "BULL" : (score <= -0.3 ? "BEAR" : "RANG")
+
+getTrendCol(string trend) =>
+    trend == "BULL" ? color.lime : (trend == "BEAR" ? color.red : color.gray)
 
 // Draw a single trend table row, returns trend direction ("BULL", "BEAR", "RANG")
 drawTrendRow(table tbl, int row, string tfName, color tfCol, bool autoABC,
@@ -591,21 +626,6 @@ pointC15m  = getABCPoint(tf15m.pivotC,  autoABC15m,  manualC15m)
 pointA1min = getABCPoint(tf1min.pivotA, autoABC1min, manualA1min)
 pointB1min = getABCPoint(tf1min.pivotB, autoABC1min, manualB1min)
 pointC1min = getABCPoint(tf1min.pivotC, autoABC1min, manualC1min)
-
-// =============================================================================
-// TREND ANALYSIS
-// =============================================================================
-
-getTrendSignal(float rsiVal, float macdHistVal) =>
-    rsiSig = rsiVal >= 60 ? 1.0 : (rsiVal <= 40 ? -1.0 : (rsiVal > 50 ? 0.5 : (rsiVal < 50 ? -0.5 : 0.0)))
-    macdSig = macdHistVal > 0 ? 1.0 : (macdHistVal < 0 ? -1.0 : 0.0)
-    (rsiSig * 0.5) + (macdSig * 0.5)
-
-getTrendDir(float score) =>
-    score >= 0.3 ? "BULL" : (score <= -0.3 ? "BEAR" : "RANG")
-
-getTrendCol(string trend) =>
-    trend == "BULL" ? color.lime : (trend == "BEAR" ? color.red : color.gray)
 
 // =============================================================================
 // DRAWING ARRAYS
@@ -753,9 +773,11 @@ drawABCConnections(float pointA, float pointB, float pointC, color tfColor, bool
 // =============================================================================
 
 // Per-TF Fib drawing with separate strategy ratios
-// swingDir: "down" = last pivot was LOW (BUY setup), "up" = last pivot was HIGH (SELL setup)
+// swingH/swingL: B and C points (most recent alternating pivots) for retracement/extension/expansion
+// pointA: A point (oldest alternating pivot) needed for projection
+// swingDir: "down" = last pivot was LOW (B→C went down), "up" = last pivot was HIGH (B→C went up)
 drawTFLevels(
-    float swingH, float swingL, float prevH, string swingDir,
+    float swingH, float swingL, float pointA, string swingDir,
     string tfName, color tfColor,
     bool showLabel, bool extendLine, bool showPrice, int lineLen,
     bool showRet, bool rR236, bool rR382, bool rR500, bool rR618, bool rR786,
@@ -767,8 +789,8 @@ drawTFLevels(
         rangeH = math.max(swingH, swingL)
         rangeL = math.min(swingH, swingL)
         // Use the passed direction based on which pivot came last:
-        // "down" = last was LOW = BUY setup (levels below for entry, above for targets)
-        // "up" = last was HIGH = SELL setup (levels above for entry, below for targets)
+        // "down" = C is LOW, B > C = SELL for Ret/Ext, BUY for Exp
+        // "up" = C is HIGH, B < C = BUY for Ret/Ext, SELL for Exp
         dir = swingDir
 
         // RETRACEMENT
@@ -784,7 +806,7 @@ drawTFLevels(
             if rR786
                 drawFib(calcRetracement(rangeH, rangeL, dir, 0.786), tfName, "78.6%", "R", tfColor, showLabel, extendLine, showPrice, lineLen)
 
-        // EXTENSION
+        // EXTENSION (uses B→C swing range, projects beyond C in direction of the move)
         if showExt
             if rE1272
                 drawFib(calcExtension(rangeH, rangeL, dir, 1.272), tfName, "127.2%", "E", tfColor, showLabel, extendLine, showPrice, lineLen)
@@ -795,21 +817,23 @@ drawTFLevels(
             if rE2618
                 drawFib(calcExtension(rangeH, rangeL, dir, 2.618), tfName, "261.8%", "E", tfColor, showLabel, extendLine, showPrice, lineLen)
 
-        // PROJECTION (needs 3 points: prevH, swingH, swingL as A, B, C)
-        if showProj and not na(prevH)
-            pointA = prevH
-            pointB = swingH
-            pointC = swingL
+        // PROJECTION (needs 3 points: A, B, C from the ABC pattern)
+        // B and C swap based on direction (alternating pattern):
+        // dir="down" (C is low): A=low, B=high (swingH), C=low (swingL)
+        // dir="up" (C is high): A=high, B=low (swingL), C=high (swingH)
+        if showProj and not na(pointA)
+            projB = dir == "down" ? swingH : swingL  // B is opposite type to C
+            projC = dir == "down" ? swingL : swingH  // C is most recent pivot
             if rP618
-                drawFib(calcProjection(pointA, pointB, pointC, dir, 0.618), tfName, "61.8%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcProjection(pointA, projB, projC, dir, 0.618), tfName, "61.8%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
             if rP786
-                drawFib(calcProjection(pointA, pointB, pointC, dir, 0.786), tfName, "78.6%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcProjection(pointA, projB, projC, dir, 0.786), tfName, "78.6%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
             if rP1000
-                drawFib(calcProjection(pointA, pointB, pointC, dir, 1.000), tfName, "100%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcProjection(pointA, projB, projC, dir, 1.000), tfName, "100%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
             if rP1272
-                drawFib(calcProjection(pointA, pointB, pointC, dir, 1.272), tfName, "127.2%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcProjection(pointA, projB, projC, dir, 1.272), tfName, "127.2%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
             if rP1618
-                drawFib(calcProjection(pointA, pointB, pointC, dir, 1.618), tfName, "161.8%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcProjection(pointA, projB, projC, dir, 1.618), tfName, "161.8%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
 
         // EXPANSION (from swingH to swingL)
         if showExp
