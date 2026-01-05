@@ -362,6 +362,18 @@ export function WorkflowV2Layout({
   // Get pivot data per timeframe for smart direction detection
   const pivotDataByTimeframe = useMemo(() => {
     const data: Record<string, { pivotHigh: number | null; pivotLow: number | null; pointA?: number; pointB?: number; pointC?: number }> = {};
+
+    // Debug: log byTimeframe to see what data we have
+    console.log("[pivotDataByTimeframe] byTimeframe count:", byTimeframe.length,
+      byTimeframe.map(tf => ({
+        tf: tf.timeframe,
+        swingEndpoint: tf.swingEndpoint,
+        pivotHigh: tf.pivotHigh,
+        pivotLow: tf.pivotLow,
+        levelCount: tf.levels.length
+      }))
+    );
+
     for (const tfData of byTimeframe) {
       // Get A from projection levels (which have all A, B, C)
       const projectionLevel = tfData.levels.find(l => l.pointA !== undefined);
