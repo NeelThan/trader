@@ -665,6 +665,7 @@ getBuySell(string fibType, string dir) =>
         dir == "down" ? "SELL" : "BUY"
 
 // Draw single Fib level (with per-TF settings)
+// Labels are positioned at the left end of the line so higher TFs (longer lines) appear further left
 drawFib(float price, string tfName, string ratioText, string fibType, string dir, color tfColor, bool showLabel, bool extendLine, bool showPrice, int lineLen) =>
     if not na(price)
         extStyle = extendLine ? extend.right : extend.none
@@ -677,8 +678,9 @@ drawFib(float price, string tfName, string ratioText, string fibType, string dir
             txt = tfName + " " + fibType + " " + ratioText + " " + buySell
             if showPrice
                 txt := txt + " " + str.tostring(price, format.mintick)
-            newLbl = label.new(bar_index, price, txt,
-                xloc.bar_index, yloc.price, color.new(tfColor, 80), label.style_label_left, tfColor, size.tiny)
+            // Position label at left end of line (higher TF = further left)
+            newLbl = label.new(bar_index - lineLen, price, txt,
+                xloc.bar_index, yloc.price, color.new(tfColor, 80), label.style_label_right, tfColor, size.tiny)
             array.push(fibLabels, newLbl)
 
 // Draw swing marker (horizontal line + label) with per-TF settings
