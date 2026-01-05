@@ -332,23 +332,29 @@ if barstate.islast and showFormulaTable
 
     // Divider for R:R
     table.cell(formulaTable, 0, row, "──", text_color=color.gray, text_size=size.tiny)
-    table.cell(formulaTable, 1, row, "── RISK:REWARD ──", text_color=color.gray, text_size=size.tiny)
+    table.cell(formulaTable, 1, row, "── RISK:REWARD ($$) ──", text_color=color.gray, text_size=size.tiny)
     table.cell(formulaTable, 2, row, "──", text_color=color.gray, text_size=size.tiny)
     row += 1
 
-    // R:R Formula explanation
+    // R:R Formula explanation - Dollar based
     table.cell(formulaTable, 0, row, "R:R", text_color=color.yellow, text_size=size.tiny)
-    rrFormula = tradeDirection == "Long" ? "(Target - Entry) ÷ Stop" : "(Entry - Target) ÷ Stop"
-    table.cell(formulaTable, 1, row, rrFormula, text_color=color.gray, text_size=size.tiny)
+    table.cell(formulaTable, 1, row, "R:R = Profit $ ÷ Risk $", text_color=color.gray, text_size=size.tiny)
     table.cell(formulaTable, 2, row, "", text_size=size.tiny)
     row += 1
 
-    // T1 R:R
+    // Show risk amount
+    table.cell(formulaTable, 0, row, "Risk", text_color=color.red, text_size=size.tiny)
+    table.cell(formulaTable, 1, row, "Max loss if stopped out", text_color=color.gray, text_size=size.tiny)
+    table.cell(formulaTable, 2, row, "-$" + str.tostring(riskAmount, "#.##"), text_color=color.red, text_size=size.tiny)
+    row += 1
+
+    // T1 R:R with dollar formula
     if target1Price > 0
         table.cell(formulaTable, 0, row, "T1", text_color=color.aqua, text_size=size.tiny)
-        if t1Valid and validTrade
-            t1Formula = str.tostring(t1Distance, format.mintick) + " ÷ " + str.tostring(stopDistance, format.mintick)
-            table.cell(formulaTable, 1, row, t1Formula, text_color=color.white, text_size=size.tiny)
+        if t1Valid and validTrade and stopIsValid
+            // Show dollar-based R:R calculation
+            t1DollarFormula = "$" + str.tostring(t1Profit, "#.##") + " ÷ $" + str.tostring(riskAmount, "#.##")
+            table.cell(formulaTable, 1, row, t1DollarFormula, text_color=color.white, text_size=size.tiny)
             rrColor = t1RR >= 2 ? color.lime : (t1RR >= 1 ? color.yellow : color.red)
             table.cell(formulaTable, 2, row, "1:" + str.tostring(t1RR, "#.##"), text_color=rrColor, text_size=size.tiny)
         else
@@ -356,12 +362,12 @@ if barstate.islast and showFormulaTable
             table.cell(formulaTable, 2, row, "---", text_color=color.gray, text_size=size.tiny)
         row += 1
 
-    // T2 R:R
+    // T2 R:R with dollar formula
     if target2Price > 0
         table.cell(formulaTable, 0, row, "T2", text_color=color.aqua, text_size=size.tiny)
-        if t2Valid and validTrade
-            t2Formula = str.tostring(t2Distance, format.mintick) + " ÷ " + str.tostring(stopDistance, format.mintick)
-            table.cell(formulaTable, 1, row, t2Formula, text_color=color.white, text_size=size.tiny)
+        if t2Valid and validTrade and stopIsValid
+            t2DollarFormula = "$" + str.tostring(t2Profit, "#.##") + " ÷ $" + str.tostring(riskAmount, "#.##")
+            table.cell(formulaTable, 1, row, t2DollarFormula, text_color=color.white, text_size=size.tiny)
             rrColor = t2RR >= 2 ? color.lime : (t2RR >= 1 ? color.yellow : color.red)
             table.cell(formulaTable, 2, row, "1:" + str.tostring(t2RR, "#.##"), text_color=rrColor, text_size=size.tiny)
         else
@@ -369,12 +375,12 @@ if barstate.islast and showFormulaTable
             table.cell(formulaTable, 2, row, "---", text_color=color.gray, text_size=size.tiny)
         row += 1
 
-    // T3 R:R
+    // T3 R:R with dollar formula
     if target3Price > 0
         table.cell(formulaTable, 0, row, "T3", text_color=color.aqua, text_size=size.tiny)
-        if t3Valid and validTrade
-            t3Formula = str.tostring(t3Distance, format.mintick) + " ÷ " + str.tostring(stopDistance, format.mintick)
-            table.cell(formulaTable, 1, row, t3Formula, text_color=color.white, text_size=size.tiny)
+        if t3Valid and validTrade and stopIsValid
+            t3DollarFormula = "$" + str.tostring(t3Profit, "#.##") + " ÷ $" + str.tostring(riskAmount, "#.##")
+            table.cell(formulaTable, 1, row, t3DollarFormula, text_color=color.white, text_size=size.tiny)
             rrColor = t3RR >= 2 ? color.lime : (t3RR >= 1 ? color.yellow : color.red)
             table.cell(formulaTable, 2, row, "1:" + str.tostring(t3RR, "#.##"), text_color=rrColor, text_size=size.tiny)
         else
@@ -382,10 +388,10 @@ if barstate.islast and showFormulaTable
             table.cell(formulaTable, 2, row, "---", text_color=color.gray, text_size=size.tiny)
         row += 1
 
-    // Profit Calculations
+    // Profit Calculations - How profit is derived
     if (t1Valid or t2Valid or t3Valid) and validTrade and stopIsValid
         table.cell(formulaTable, 0, row, "──", text_color=color.gray, text_size=size.tiny)
-        table.cell(formulaTable, 1, row, "── PROFIT @ TARGET ──", text_color=color.gray, text_size=size.tiny)
+        table.cell(formulaTable, 1, row, "── HOW PROFIT IS CALC ──", text_color=color.gray, text_size=size.tiny)
         table.cell(formulaTable, 2, row, "──", text_color=color.gray, text_size=size.tiny)
         row += 1
 
@@ -398,21 +404,21 @@ if barstate.islast and showFormulaTable
             table.cell(formulaTable, 0, row, "T1", text_color=color.aqua, text_size=size.tiny)
             profitFormula = str.tostring(positionSize, "#.##") + " × " + str.tostring(t1Distance, format.mintick)
             table.cell(formulaTable, 1, row, profitFormula, text_color=color.white, text_size=size.tiny)
-            table.cell(formulaTable, 2, row, "$" + str.tostring(t1Profit, "#,###.##"), text_color=color.lime, text_size=size.tiny)
+            table.cell(formulaTable, 2, row, "+$" + str.tostring(t1Profit, "#,###.##"), text_color=color.lime, text_size=size.tiny)
             row += 1
 
         if t2Valid
             table.cell(formulaTable, 0, row, "T2", text_color=color.aqua, text_size=size.tiny)
             profitFormula = str.tostring(positionSize, "#.##") + " × " + str.tostring(t2Distance, format.mintick)
             table.cell(formulaTable, 1, row, profitFormula, text_color=color.white, text_size=size.tiny)
-            table.cell(formulaTable, 2, row, "$" + str.tostring(t2Profit, "#,###.##"), text_color=color.lime, text_size=size.tiny)
+            table.cell(formulaTable, 2, row, "+$" + str.tostring(t2Profit, "#,###.##"), text_color=color.lime, text_size=size.tiny)
             row += 1
 
         if t3Valid
             table.cell(formulaTable, 0, row, "T3", text_color=color.aqua, text_size=size.tiny)
             profitFormula = str.tostring(positionSize, "#.##") + " × " + str.tostring(t3Distance, format.mintick)
             table.cell(formulaTable, 1, row, profitFormula, text_color=color.white, text_size=size.tiny)
-            table.cell(formulaTable, 2, row, "$" + str.tostring(t3Profit, "#,###.##"), text_color=color.lime, text_size=size.tiny)
+            table.cell(formulaTable, 2, row, "+$" + str.tostring(t3Profit, "#,###.##"), text_color=color.lime, text_size=size.tiny)
 
 // =============================================================================
 // R:R SUMMARY TABLE (Bottom)
