@@ -352,12 +352,31 @@ export function WorkflowV2Layout({
   });
 
   // Multi-TF Fibonacci levels
-  const { allLevels, isLoading: isLoadingLevels } = useMultiTFLevels({
+  const { allLevels, byTimeframe, isLoading: isLoadingLevels } = useMultiTFLevels({
     symbol,
     visibilityConfig,
     enabled: showFibLevels,
     dataMode: "live",
   });
+
+  // Get pivot data per timeframe for smart direction detection
+  const pivotDataByTimeframe = useMemo(() => {
+    const data: Record<string, { pivotHigh: number | null; pivotLow: number | null; pointA?: number; pointB?: number; pointC?: number }> = {};
+    for (const tfData of byTimeframe) {
+      // Get B and C from any level that has them (retracement/extension have these)
+      const levelWithBC = tfData.levels.find(l => l.pointB !== undefined && l.pointC !== undefined);
+      // Get A from any level that has it (projection has A, B, C)
+      const levelWithA = tfData.levels.find(l => l.pointA !== undefined);
+      data[tfData.timeframe] = {
+        pivotHigh: tfData.pivotHigh,
+        pivotLow: tfData.pivotLow,
+        pointA: levelWithA?.pointA,
+        pointB: levelWithBC?.pointB,
+        pointC: levelWithBC?.pointC,
+      };
+    }
+    return data;
+  }, [byTimeframe]);
 
   // Get visible levels based on visibility config and trade view mode
   const visibleLevels = useMemo(() => {
@@ -853,6 +872,7 @@ export function WorkflowV2Layout({
                               visibilityConfig={visibilityConfig}
                               onVisibilityChange={setVisibilityConfig}
                               onToggleTimeframe={() => toggleTimeframeVisibility(tf)}
+                              pivotData={pivotDataByTimeframe[tf]}
                             >
                               <button
                                 className={cn(

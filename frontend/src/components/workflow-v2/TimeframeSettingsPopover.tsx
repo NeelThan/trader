@@ -99,12 +99,71 @@ const SMART_DEFAULTS: Record<Timeframe, {
   },
 };
 
+/**
+ * Pivot data for smart direction detection.
+ * Contains B and C pivot values to determine BUY/SELL setup.
+ */
+export type PivotData = {
+  pivotHigh: number | null;
+  pivotLow: number | null;
+  pointA?: number;
+  pointB?: number;
+  pointC?: number;
+};
+
+/**
+ * Determine the recommended direction for a strategy based on pivot relationships.
+ *
+ * Per docs/references/fibonacci_conditions.md:
+ * - Retracement/Extension: B < C → BUY (long), B > C → SELL (short)
+ * - Expansion: B > C → BUY (long), B < C → SELL (short) [opposite!]
+ * - Projection: A > B → BUY (long), A < B → SELL (short)
+ */
+function getRecommendedDirection(
+  strategy: StrategySource,
+  pivotData: PivotData | undefined
+): "long" | "short" | null {
+  if (!pivotData) return null;
+
+  const { pivotHigh, pivotLow, pointA, pointB, pointC } = pivotData;
+
+  // For projection, we need A and B
+  if (strategy === "PROJECTION") {
+    if (pointA !== undefined && pointB !== undefined) {
+      // A > B → BUY (long), A < B → SELL (short)
+      return pointA > pointB ? "long" : "short";
+    }
+    return null;
+  }
+
+  // For other strategies, we need B (high) and C (low) or vice versa
+  // Since we track pivotHigh and pivotLow as the most recent swing points,
+  // we need to determine which is C (most recent) based on the swing pattern.
+  // If pointB and pointC are available, use those directly
+  if (pointB !== undefined && pointC !== undefined) {
+    const bGreaterThanC = pointB > pointC;
+
+    if (strategy === "EXPANSION") {
+      // Expansion: B > C → BUY (long), B < C → SELL (short)
+      return bGreaterThanC ? "long" : "short";
+    } else {
+      // Retracement/Extension: B < C → BUY (long), B > C → SELL (short)
+      return bGreaterThanC ? "short" : "long";
+    }
+  }
+
+  // Fallback: if we only have pivotHigh/pivotLow, we can't determine direction
+  // without knowing which one is the most recent (C)
+  return null;
+}
+
 type TimeframeSettingsPopoverProps = {
   timeframe: Timeframe;
   isEnabled: boolean;
   visibilityConfig: VisibilityConfig;
   onVisibilityChange: (config: VisibilityConfig) => void;
   onToggleTimeframe: () => void;
+  pivotData?: PivotData;
   children: React.ReactNode;
 };
 
@@ -120,6 +179,7 @@ export function TimeframeSettingsPopover({
   visibilityConfig,
   onVisibilityChange,
   onToggleTimeframe,
+  pivotData,
   children,
 }: TimeframeSettingsPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -128,6 +188,22 @@ export function TimeframeSettingsPopover({
   const tfConfig = useMemo(() => {
     return visibilityConfig.timeframes.find(tf => tf.timeframe === timeframe);
   }, [visibilityConfig, timeframe]);
+
+  // Get recommended directions for all strategies based on pivot data
+  const recommendedDirections = useMemo(() => {
+    const result: Record<StrategySource, "long" | "short" | null> = {
+      RETRACEMENT: getRecommendedDirection("RETRACEMENT", pivotData),
+      EXTENSION: getRecommendedDirection("EXTENSION", pivotData),
+      PROJECTION: getRecommendedDirection("PROJECTION", pivotData),
+      EXPANSION: getRecommendedDirection("EXPANSION", pivotData),
+      HARMONIC: null,
+      SIGNAL: null,
+    };
+    return result;
+  }, [pivotData]);
+
+  // Check if pivot data is available for smart detection
+  const hasPivotData = pivotData?.pointB !== undefined && pivotData?.pointC !== undefined;
 
   // Count enabled ratios
   const enabledCount = useMemo(() => {
@@ -205,6 +281,7 @@ export function TimeframeSettingsPopover({
   };
 
   // Apply smart defaults for this timeframe
+  // Uses pivot data to determine which direction (long/short) makes sense
   const applySmartDefaults = () => {
     const defaults = SMART_DEFAULTS[timeframe];
 
@@ -228,14 +305,22 @@ export function TimeframeSettingsPopover({
 
           const anyVisible = newRatios.some(r => r.visible);
 
+          // Get recommended direction based on pivot data (B vs C relationship)
+          const recommendedDir = getRecommendedDirection(strat.strategy, pivotData);
+
+          // If we have pivot data, only enable the recommended direction
+          // If no pivot data, enable both (fallback to old behavior)
+          const enableLong = recommendedDir === null || recommendedDir === "long";
+          const enableShort = recommendedDir === null || recommendedDir === "short";
+
           return {
             ...strat,
             long: {
-              enabled: isEnabledStrategy && anyVisible,
+              enabled: isEnabledStrategy && anyVisible && enableLong,
               ratios: newRatios,
             },
             short: {
-              enabled: isEnabledStrategy && anyVisible,
+              enabled: isEnabledStrategy && anyVisible && enableShort,
               ratios: newRatios,
             },
           };
@@ -422,6 +507,7 @@ export function TimeframeSettingsPopover({
                         onToggleDirection={() => toggleDirection(strategy, "long")}
                         onToggleRatio={(ratio) => toggleRatio(strategy, "long", ratio)}
                         formatRatio={(ratio) => formatRatio(strategy, ratio)}
+                        isRecommended={recommendedDirections[strategy] === "long"}
                       />
 
                       {/* Short Direction */}
@@ -432,6 +518,7 @@ export function TimeframeSettingsPopover({
                         onToggleDirection={() => toggleDirection(strategy, "short")}
                         onToggleRatio={(ratio) => toggleRatio(strategy, "short", ratio)}
                         formatRatio={(ratio) => formatRatio(strategy, ratio)}
+                        isRecommended={recommendedDirections[strategy] === "short"}
                       />
                     </div>
                   </CollapsibleContent>
@@ -451,7 +538,11 @@ export function TimeframeSettingsPopover({
         {/* Footer with smart defaults hint */}
         <div className="px-3 py-2 border-t bg-muted/30 text-[10px] text-muted-foreground">
           <Sparkles className="h-3 w-3 inline mr-1" />
-          Smart defaults use fewer levels on higher timeframes
+          {hasPivotData ? (
+            <>Smart uses pivot B vs C to show only relevant directions</>
+          ) : (
+            <>Smart defaults use fewer levels on higher timeframes</>
+          )}
         </div>
       </PopoverContent>
     </Popover>
@@ -468,6 +559,8 @@ type DirectionSectionProps = {
   onToggleDirection: () => void;
   onToggleRatio: (ratio: number) => void;
   formatRatio: (ratio: number) => string;
+  /** Whether this direction is recommended based on pivot B vs C relationship */
+  isRecommended?: boolean;
 };
 
 function DirectionSection({
@@ -476,6 +569,7 @@ function DirectionSection({
   onToggleDirection,
   onToggleRatio,
   formatRatio,
+  isRecommended,
 }: DirectionSectionProps) {
   const isEnabled = settings?.enabled ?? false;
   const ratios = settings?.ratios ?? [];
@@ -495,6 +589,16 @@ function DirectionSection({
         >
           {direction === "long" ? "Long" : "Short"}
         </span>
+        {isRecommended && (
+          <Badge
+            variant="outline"
+            className="text-[9px] h-4 px-1 border-amber-500/50 text-amber-600 bg-amber-500/10"
+            title={`Recommended based on pivot B ${direction === "long" ? "<" : ">"} C relationship`}
+          >
+            <Sparkles className="h-2.5 w-2.5 mr-0.5" />
+            rec
+          </Badge>
+        )}
         {isEnabled && (
           <span className="text-[10px] text-muted-foreground">
             ({visibleCount}/{ratios.length})

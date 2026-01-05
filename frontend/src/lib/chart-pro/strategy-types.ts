@@ -713,35 +713,40 @@ function getSwingEndpoint(swingType: SwingType): "high" | "low" {
 /**
  * Calculate per-strategy directions based on swing shape.
  *
- * RETRACEMENT:
- * - Swing ended LOW (HL/LL) → LONG (buy the pullback up)
- * - Swing ended HIGH (HH/LH) → SHORT (sell the pullback down)
+ * Per docs/references/fibonacci_conditions.md:
  *
- * EXTENSION:
- * - Swing DOWN (ended low) → LONG (targets below)
- * - Swing UP (ended high) → SHORT (targets above)
+ * RETRACEMENT & EXTENSION (use B vs C relationship):
+ * - Swing ended HIGH (C is high) → B < C → BUY/LONG (buy pullback in uptrend)
+ * - Swing ended LOW (C is low) → B > C → SELL/SHORT (sell pullback in downtrend)
  *
- * PROJECTION & EXPANSION:
- * - Follow same logic as extension (based on swing direction)
+ * EXPANSION (opposite of retracement/extension):
+ * - Swing ended HIGH (C is high) → B < C → SELL/SHORT (targets above C)
+ * - Swing ended LOW (C is low) → B > C → BUY/LONG (targets below C)
+ *
+ * PROJECTION (uses A vs B relationship):
+ * - A > B (bearish ABC) → BUY/LONG (targets below C)
+ * - A < B (bullish ABC) → SELL/SHORT (targets above C)
+ * Note: For simplicity, projection follows the overall trend structure.
  */
 function calculateStrategyDirections(swingType: SwingType): StrategyDirections {
   const endpoint = getSwingEndpoint(swingType);
 
-  // Retracement: based on where swing ENDED
-  // If ended LOW → price moved DOWN → retracement is UP → BUY/LONG
-  // If ended HIGH → price moved UP → retracement is DOWN → SELL/SHORT
-  const retracementDir = endpoint === "low" ? "long" : "short";
+  // Retracement & Extension: based on B vs C relationship
+  // Swing ended HIGH (C is high) → B < C → BUY/LONG
+  // Swing ended LOW (C is low) → B > C → SELL/SHORT
+  const retracementDir = endpoint === "high" ? "long" : "short";
+  const extensionDir = endpoint === "high" ? "long" : "short";
 
-  // Extension: follows swing direction (targets beyond endpoint)
-  // If ended LOW → swing was DOWN → targets are BELOW → LONG
-  // If ended HIGH → swing was UP → targets are ABOVE → SHORT
-  const extensionDir = endpoint === "low" ? "long" : "short";
+  // Expansion: OPPOSITE of retracement/extension
+  // Swing ended HIGH (C is high) → B < C → SELL/SHORT (targets above C)
+  // Swing ended LOW (C is low) → B > C → BUY/LONG (targets below C)
+  const expansionDir = endpoint === "high" ? "short" : "long";
 
-  // Projection: same as extension (projects from C in the swing direction)
-  const projectionDir = extensionDir;
-
-  // Expansion: same as extension (expands from B in swing direction)
-  const expansionDir = extensionDir;
+  // Projection: follows overall trend structure (HH/HL = bullish, LH/LL = bearish)
+  // Bullish structure (A < B) → SELL/SHORT (targets above)
+  // Bearish structure (A > B) → BUY/LONG (targets below)
+  // Using swing type: HH/LH ended at high = uptrend structure
+  const projectionDir = swingType === "HH" || swingType === "HL" ? "short" : "long";
 
   return {
     retracement: retracementDir,
@@ -755,9 +760,9 @@ function calculateStrategyDirections(swingType: SwingType): StrategyDirections {
  * Analyze swing markers to determine direction and strategy for a timeframe
  *
  * Logic for per-strategy directions (see docs/references/fibonacci_conditions.md):
- * - RETRACEMENT: based on where swing ENDED (low = buy pullback, high = sell pullback)
- * - EXTENSION: based on swing DIRECTION (down = long targets, up = short targets)
- * - PROJECTION/EXPANSION: follows extension logic
+ * - RETRACEMENT/EXTENSION: B < C (swing UP) → LONG, B > C (swing DOWN) → SHORT
+ * - EXPANSION: B < C → SHORT (opposite of above), B > C → LONG
+ * - PROJECTION: A > B (bearish ABC) → LONG, A < B (bullish ABC) → SHORT
  *
  * Additional filters:
  * - If current price > 100% of swing range → show extensions only
