@@ -1,0 +1,256 @@
+// Position Sizing Calculator
+// Calculates recommended lot size and dollar value based on account size and risk percentage
+//
+// IMPORTANT: Pine Script cannot access your live broker account balance.
+// You must manually enter your account size in the settings.
+//
+// Formula:
+//   Risk Amount ($) = Account Size × Risk Percentage
+//   Stop Distance = |Entry Price - Stop Loss Price|
+//   Position Size (units) = Risk Amount / Stop Distance
+//   Lot Size = Position Size / Contract Size (for forex/futures)
+//
+// Example:
+//   Account: $10,000, Risk: 1%, Entry: 1.1000, Stop: 1.0950
+//   Risk Amount = $10,000 × 1% = $100
+//   Stop Distance = |1.1000 - 1.0950| = 0.0050 (50 pips)
+//   Position Size = $100 / 0.0050 = 20,000 units
+//   Lot Size = 20,000 / 100,000 = 0.20 lots
+
+//@version=6
+indicator("Position Sizing Calculator", overlay=true)
+
+// =============================================================================
+// INPUTS
+// =============================================================================
+
+grpAccount = "Account Settings"
+accountSize = input.float(10000, "Account Size ($)", minval=100, step=100, group=grpAccount,
+    tooltip="Enter your trading account balance in USD")
+riskPercent = input.float(1.0, "Risk Per Trade (%)", minval=0.1, maxval=10, step=0.1, group=grpAccount,
+    tooltip="Maximum percentage of account to risk per trade (1-2% recommended)")
+
+grpTrade = "Trade Parameters"
+useCurrentPrice = input.bool(true, "Use Current Price as Entry", group=grpTrade)
+manualEntry = input.float(0, "Manual Entry Price", minval=0, group=grpTrade,
+    tooltip="Only used if 'Use Current Price' is disabled")
+stopLossPrice = input.float(0, "Stop Loss Price", minval=0, group=grpTrade,
+    tooltip="Enter your stop loss price level")
+tradeDirection = input.string("Long", "Trade Direction", options=["Long", "Short"], group=grpTrade)
+
+grpInstrument = "Instrument Settings"
+instrumentType = input.string("Forex", "Instrument Type",
+    options=["Forex", "Stocks/ETFs", "Crypto", "Futures", "CFD"], group=grpInstrument)
+contractSize = input.float(100000, "Contract Size (Forex/Futures)", minval=1, group=grpInstrument,
+    tooltip="Standard forex lot = 100,000 units. Mini = 10,000. Micro = 1,000")
+tickValue = input.float(10, "Tick Value ($) (Futures)", minval=0.01, group=grpInstrument,
+    tooltip="Dollar value per tick movement (e.g., ES = $12.50 per 0.25 tick)")
+tickSize = input.float(0.25, "Tick Size (Futures)", minval=0.0001, group=grpInstrument,
+    tooltip="Minimum price movement (e.g., ES = 0.25)")
+
+grpDisplay = "Display Settings"
+showTable = input.bool(true, "Show Calculation Table", group=grpDisplay)
+tablePosition = input.string("Top Right", "Table Position",
+    options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=grpDisplay)
+showEntryLine = input.bool(true, "Show Entry Line", group=grpDisplay)
+showStopLine = input.bool(true, "Show Stop Loss Line", group=grpDisplay)
+
+// =============================================================================
+// CALCULATIONS
+// =============================================================================
+
+// Determine entry price
+entryPrice = useCurrentPrice ? close : manualEntry
+
+// Validate inputs
+validEntry = entryPrice > 0
+validStop = stopLossPrice > 0
+validTrade = validEntry and validStop and entryPrice != stopLossPrice
+
+// Check if stop is on correct side for trade direction
+stopIsValid = tradeDirection == "Long" ? stopLossPrice < entryPrice : stopLossPrice > entryPrice
+
+// Calculate stop distance
+stopDistance = math.abs(entryPrice - stopLossPrice)
+stopDistancePips = stopDistance * 10000  // For forex pairs with 4 decimal places
+stopDistancePercent = validEntry ? (stopDistance / entryPrice) * 100 : 0
+
+// Risk amount in dollars
+riskAmount = accountSize * (riskPercent / 100)
+
+// Position sizing calculations based on instrument type
+var float positionSize = 0.0      // Units
+var float lotSize = 0.0           // Standard lots (forex) or contracts (futures)
+var float dollarValue = 0.0       // Total position value
+var float riskRewardRatio = 0.0   // Potential R:R
+
+if validTrade and stopIsValid
+    if instrumentType == "Forex"
+        // Forex: Position Size = Risk Amount / Stop Distance in price
+        // Assuming pip value ≈ $10 per standard lot for USD pairs
+        positionSize := riskAmount / stopDistance
+        lotSize := positionSize / contractSize
+        dollarValue := positionSize * entryPrice
+
+    else if instrumentType == "Stocks/ETFs" or instrumentType == "CFD"
+        // Stocks: Position Size = Risk Amount / Stop Distance per share
+        positionSize := riskAmount / stopDistance
+        lotSize := positionSize  // Shares
+        dollarValue := positionSize * entryPrice
+
+    else if instrumentType == "Crypto"
+        // Crypto: Similar to stocks
+        positionSize := riskAmount / stopDistance
+        lotSize := positionSize  // Coins/units
+        dollarValue := positionSize * entryPrice
+
+    else if instrumentType == "Futures"
+        // Futures: Use tick value
+        // Risk per contract = (Stop Distance / Tick Size) × Tick Value
+        ticksInStop = stopDistance / tickSize
+        riskPerContract = ticksInStop * tickValue
+        lotSize := riskPerContract > 0 ? riskAmount / riskPerContract : 0
+        positionSize := lotSize
+        dollarValue := lotSize * entryPrice * tickSize * 100  // Approximate
+
+// =============================================================================
+// TABLE POSITION
+// =============================================================================
+
+tablePos = switch tablePosition
+    "Top Right" => position.top_right
+    "Top Left" => position.top_left
+    "Bottom Right" => position.bottom_right
+    "Bottom Left" => position.bottom_left
+    => position.top_right
+
+// =============================================================================
+// DRAW TABLE
+// =============================================================================
+
+var table calcTable = table.new(tablePos, 2, 16, bgcolor=color.new(color.black, 80), border_width=1)
+
+if barstate.islast and showTable
+    // Header
+    table.cell(calcTable, 0, 0, "POSITION SIZING", text_color=color.white, text_size=size.normal, bgcolor=color.new(color.blue, 60))
+    table.cell(calcTable, 1, 0, "CALCULATOR", text_color=color.white, text_size=size.normal, bgcolor=color.new(color.blue, 60))
+
+    // Account Info Section
+    table.cell(calcTable, 0, 1, "Account Size", text_color=color.gray, text_size=size.small)
+    table.cell(calcTable, 1, 1, "$" + str.tostring(accountSize, "#,###.##"), text_color=color.white, text_size=size.small)
+
+    table.cell(calcTable, 0, 2, "Risk %", text_color=color.gray, text_size=size.small)
+    table.cell(calcTable, 1, 2, str.tostring(riskPercent, "#.##") + "%", text_color=color.yellow, text_size=size.small)
+
+    table.cell(calcTable, 0, 3, "Risk Amount", text_color=color.gray, text_size=size.small)
+    table.cell(calcTable, 1, 3, "$" + str.tostring(riskAmount, "#,###.##"), text_color=color.orange, text_size=size.small)
+
+    // Trade Info Section
+    table.cell(calcTable, 0, 4, "─── TRADE ───", text_color=color.gray, text_size=size.tiny)
+    table.cell(calcTable, 1, 4, "", text_size=size.tiny)
+
+    dirColor = tradeDirection == "Long" ? color.lime : color.red
+    table.cell(calcTable, 0, 5, "Direction", text_color=color.gray, text_size=size.small)
+    table.cell(calcTable, 1, 5, tradeDirection, text_color=dirColor, text_size=size.small)
+
+    table.cell(calcTable, 0, 6, "Entry Price", text_color=color.gray, text_size=size.small)
+    table.cell(calcTable, 1, 6, str.tostring(entryPrice, format.mintick), text_color=color.white, text_size=size.small)
+
+    table.cell(calcTable, 0, 7, "Stop Loss", text_color=color.gray, text_size=size.small)
+    stopColor = stopIsValid ? color.red : color.fuchsia
+    stopText = stopIsValid ? str.tostring(stopLossPrice, format.mintick) : str.tostring(stopLossPrice, format.mintick) + " ⚠️"
+    table.cell(calcTable, 1, 7, stopText, text_color=stopColor, text_size=size.small)
+
+    table.cell(calcTable, 0, 8, "Stop Distance", text_color=color.gray, text_size=size.small)
+    distanceText = validTrade ? str.tostring(stopDistance, format.mintick) + " (" + str.tostring(stopDistancePercent, "#.##") + "%)" : "---"
+    table.cell(calcTable, 1, 8, distanceText, text_color=color.white, text_size=size.small)
+
+    // Calculation Section
+    table.cell(calcTable, 0, 9, "─── SIZING ───", text_color=color.gray, text_size=size.tiny)
+    table.cell(calcTable, 1, 9, "", text_size=size.tiny)
+
+    table.cell(calcTable, 0, 10, "Instrument", text_color=color.gray, text_size=size.small)
+    table.cell(calcTable, 1, 10, instrumentType, text_color=color.aqua, text_size=size.small)
+
+    // Position Size
+    table.cell(calcTable, 0, 11, "Position Size", text_color=color.gray, text_size=size.small)
+    if validTrade and stopIsValid
+        posText = instrumentType == "Forex" ? str.tostring(positionSize, "#,###") + " units" : str.tostring(positionSize, "#,###.##")
+        table.cell(calcTable, 1, 11, posText, text_color=color.lime, text_size=size.small)
+    else
+        table.cell(calcTable, 1, 11, "---", text_color=color.gray, text_size=size.small)
+
+    // Lot Size / Contracts
+    table.cell(calcTable, 0, 12, instrumentType == "Futures" ? "Contracts" : (instrumentType == "Forex" ? "Lot Size" : "Shares"), text_color=color.gray, text_size=size.small)
+    if validTrade and stopIsValid
+        lotText = instrumentType == "Forex" ? str.tostring(lotSize, "#.###") + " lots" : str.tostring(lotSize, "#,###.##")
+        table.cell(calcTable, 1, 12, lotText, text_color=color.lime, text_size=size.small)
+    else
+        table.cell(calcTable, 1, 12, "---", text_color=color.gray, text_size=size.small)
+
+    // Position Value
+    table.cell(calcTable, 0, 13, "Position Value", text_color=color.gray, text_size=size.small)
+    if validTrade and stopIsValid
+        table.cell(calcTable, 1, 13, "$" + str.tostring(dollarValue, "#,###.##"), text_color=color.white, text_size=size.small)
+    else
+        table.cell(calcTable, 1, 13, "---", text_color=color.gray, text_size=size.small)
+
+    // Formula Section
+    table.cell(calcTable, 0, 14, "─── FORMULA ───", text_color=color.gray, text_size=size.tiny)
+    table.cell(calcTable, 1, 14, "", text_size=size.tiny)
+
+    // Show the calculation
+    if validTrade and stopIsValid
+        formula = "$" + str.tostring(riskAmount, "#.##") + " ÷ " + str.tostring(stopDistance, format.mintick)
+        table.cell(calcTable, 0, 15, "Risk ÷ Stop", text_color=color.gray, text_size=size.tiny)
+        table.cell(calcTable, 1, 15, formula, text_color=color.white, text_size=size.tiny)
+    else if not stopIsValid and validStop
+        table.cell(calcTable, 0, 15, "⚠️ Warning", text_color=color.fuchsia, text_size=size.small)
+        warnText = tradeDirection == "Long" ? "Stop must be BELOW entry" : "Stop must be ABOVE entry"
+        table.cell(calcTable, 1, 15, warnText, text_color=color.fuchsia, text_size=size.tiny)
+    else
+        table.cell(calcTable, 0, 15, "ℹ️ Note", text_color=color.yellow, text_size=size.small)
+        table.cell(calcTable, 1, 15, "Enter stop loss price", text_color=color.yellow, text_size=size.tiny)
+
+// =============================================================================
+// DRAW ENTRY AND STOP LINES
+// =============================================================================
+
+var line entryLine = na
+var line stopLine = na
+var label entryLabel = na
+var label stopLabel = na
+
+if barstate.islast
+    // Clean up old drawings
+    line.delete(entryLine)
+    line.delete(stopLine)
+    label.delete(entryLabel)
+    label.delete(stopLabel)
+
+    // Draw entry line
+    if showEntryLine and validEntry
+        entryColor = tradeDirection == "Long" ? color.lime : color.red
+        entryLine := line.new(bar_index - 50, entryPrice, bar_index + 10, entryPrice,
+            xloc.bar_index, extend.none, entryColor, line.style_solid, 2)
+        entryLabel := label.new(bar_index + 12, entryPrice, "ENTRY\n" + str.tostring(entryPrice, format.mintick),
+            xloc.bar_index, yloc.price, color.new(entryColor, 70), label.style_label_left, entryColor, size.small)
+
+    // Draw stop loss line
+    if showStopLine and validStop
+        stopLine := line.new(bar_index - 50, stopLossPrice, bar_index + 10, stopLossPrice,
+            xloc.bar_index, extend.none, color.red, line.style_dashed, 2)
+
+        // Calculate risk info for stop label
+        riskInfo = validTrade ? "\nRisk: $" + str.tostring(riskAmount, "#.##") : ""
+        stopLabel := label.new(bar_index + 12, stopLossPrice, "STOP\n" + str.tostring(stopLossPrice, format.mintick) + riskInfo,
+            xloc.bar_index, yloc.price, color.new(color.red, 70), label.style_label_left, color.red, size.small)
+
+// =============================================================================
+// ALERTS (Optional - for when position size changes significantly)
+// =============================================================================
+
+// Plot invisible values for use in alerts
+plot(riskAmount, "Risk Amount", display=display.data_window)
+plot(lotSize, "Lot Size", display=display.data_window)
+plot(stopDistance, "Stop Distance", display=display.data_window)
