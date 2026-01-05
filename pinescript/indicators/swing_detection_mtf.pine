@@ -654,8 +654,18 @@ clearDrawings() =>
         line.delete(ln)
     array.clear(swingConnectLines)
 
+// Determine BUY/SELL signal based on strategy and direction
+// - Retracement/Extension: "down" (C is low, B > C) = SELL, "up" (C is high, B < C) = BUY
+// - Expansion: OPPOSITE - "down" = BUY, "up" = SELL (targets opposite direction)
+// - Projection: Same as Ret/Ext - based on A vs B relationship encoded in dir
+getBuySell(string fibType, string dir) =>
+    if fibType == "X"  // Expansion is opposite
+        dir == "down" ? "BUY" : "SELL"
+    else  // R, E, P all follow same logic
+        dir == "down" ? "SELL" : "BUY"
+
 // Draw single Fib level (with per-TF settings)
-drawFib(float price, string tfName, string ratioText, string fibType, color tfColor, bool showLabel, bool extendLine, bool showPrice, int lineLen) =>
+drawFib(float price, string tfName, string ratioText, string fibType, string dir, color tfColor, bool showLabel, bool extendLine, bool showPrice, int lineLen) =>
     if not na(price)
         extStyle = extendLine ? extend.right : extend.none
         newLine = line.new(bar_index - lineLen, price, bar_index, price,
@@ -663,7 +673,8 @@ drawFib(float price, string tfName, string ratioText, string fibType, color tfCo
         array.push(fibLines, newLine)
 
         if showLabel
-            txt = tfName + " " + fibType + " " + ratioText
+            buySell = getBuySell(fibType, dir)
+            txt = tfName + " " + fibType + " " + ratioText + " " + buySell
             if showPrice
                 txt := txt + " " + str.tostring(price, format.mintick)
             newLbl = label.new(bar_index, price, txt,
@@ -796,26 +807,26 @@ drawTFLevels(
         // RETRACEMENT
         if showRet
             if rR236
-                drawFib(calcRetracement(rangeH, rangeL, dir, 0.236), tfName, "23.6%", "R", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcRetracement(rangeH, rangeL, dir, 0.236), tfName, "23.6%", "R", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rR382
-                drawFib(calcRetracement(rangeH, rangeL, dir, 0.382), tfName, "38.2%", "R", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcRetracement(rangeH, rangeL, dir, 0.382), tfName, "38.2%", "R", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rR500
-                drawFib(calcRetracement(rangeH, rangeL, dir, 0.500), tfName, "50%", "R", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcRetracement(rangeH, rangeL, dir, 0.500), tfName, "50%", "R", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rR618
-                drawFib(calcRetracement(rangeH, rangeL, dir, 0.618), tfName, "61.8%", "R", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcRetracement(rangeH, rangeL, dir, 0.618), tfName, "61.8%", "R", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rR786
-                drawFib(calcRetracement(rangeH, rangeL, dir, 0.786), tfName, "78.6%", "R", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcRetracement(rangeH, rangeL, dir, 0.786), tfName, "78.6%", "R", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
 
         // EXTENSION (uses B→C swing range, projects beyond C in direction of the move)
         if showExt
             if rE1272
-                drawFib(calcExtension(rangeH, rangeL, dir, 1.272), tfName, "127.2%", "E", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcExtension(rangeH, rangeL, dir, 1.272), tfName, "127.2%", "E", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rE1618
-                drawFib(calcExtension(rangeH, rangeL, dir, 1.618), tfName, "161.8%", "E", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcExtension(rangeH, rangeL, dir, 1.618), tfName, "161.8%", "E", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rE2000
-                drawFib(calcExtension(rangeH, rangeL, dir, 2.000), tfName, "200%", "E", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcExtension(rangeH, rangeL, dir, 2.000), tfName, "200%", "E", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rE2618
-                drawFib(calcExtension(rangeH, rangeL, dir, 2.618), tfName, "261.8%", "E", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcExtension(rangeH, rangeL, dir, 2.618), tfName, "261.8%", "E", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
 
         // PROJECTION (needs 3 points: A, B, C from the ABC pattern)
         // B and C swap based on direction (alternating pattern):
@@ -825,28 +836,28 @@ drawTFLevels(
             projB = dir == "down" ? swingH : swingL  // B is opposite type to C
             projC = dir == "down" ? swingL : swingH  // C is most recent pivot
             if rP618
-                drawFib(calcProjection(pointA, projB, projC, dir, 0.618), tfName, "61.8%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcProjection(pointA, projB, projC, dir, 0.618), tfName, "61.8%", "P", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rP786
-                drawFib(calcProjection(pointA, projB, projC, dir, 0.786), tfName, "78.6%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcProjection(pointA, projB, projC, dir, 0.786), tfName, "78.6%", "P", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rP1000
-                drawFib(calcProjection(pointA, projB, projC, dir, 1.000), tfName, "100%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcProjection(pointA, projB, projC, dir, 1.000), tfName, "100%", "P", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rP1272
-                drawFib(calcProjection(pointA, projB, projC, dir, 1.272), tfName, "127.2%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcProjection(pointA, projB, projC, dir, 1.272), tfName, "127.2%", "P", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rP1618
-                drawFib(calcProjection(pointA, projB, projC, dir, 1.618), tfName, "161.8%", "P", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcProjection(pointA, projB, projC, dir, 1.618), tfName, "161.8%", "P", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
 
         // EXPANSION (from swingH to swingL)
         if showExp
             if rX382
-                drawFib(calcExpansion(swingH, swingL, dir, 0.382), tfName, "38.2%", "X", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcExpansion(swingH, swingL, dir, 0.382), tfName, "38.2%", "X", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rX500
-                drawFib(calcExpansion(swingH, swingL, dir, 0.500), tfName, "50%", "X", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcExpansion(swingH, swingL, dir, 0.500), tfName, "50%", "X", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rX618
-                drawFib(calcExpansion(swingH, swingL, dir, 0.618), tfName, "61.8%", "X", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcExpansion(swingH, swingL, dir, 0.618), tfName, "61.8%", "X", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rX1000
-                drawFib(calcExpansion(swingH, swingL, dir, 1.000), tfName, "100%", "X", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcExpansion(swingH, swingL, dir, 1.000), tfName, "100%", "X", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
             if rX1618
-                drawFib(calcExpansion(swingH, swingL, dir, 1.618), tfName, "161.8%", "X", tfColor, showLabel, extendLine, showPrice, lineLen)
+                drawFib(calcExpansion(swingH, swingL, dir, 1.618), tfName, "161.8%", "X", dir, tfColor, showLabel, extendLine, showPrice, lineLen)
 
 // =============================================================================
 // MAIN DRAWING LOGIC
