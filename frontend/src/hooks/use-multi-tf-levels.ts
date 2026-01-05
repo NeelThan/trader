@@ -443,6 +443,16 @@ export function useMultiTFLevels({
       const high = pivots.swing_high.price;
       const low = pivots.swing_low.price;
 
+      // Determine which pivot is most recent (swing endpoint)
+      // This tells us the actual B vs C relationship for smart direction detection
+      const highTime = typeof pivots.swing_high.time === "string"
+        ? new Date(pivots.swing_high.time).getTime()
+        : pivots.swing_high.time;
+      const lowTime = typeof pivots.swing_low.time === "string"
+        ? new Date(pivots.swing_low.time).getTime()
+        : pivots.swing_low.time;
+      const swingEndpoint: "high" | "low" = highTime > lowTime ? "high" : "low";
+
       const levels: StrategyLevel[] = [];
 
       // Extract ABC points for projection (may be null if not enough pivots)
@@ -457,6 +467,7 @@ export function useMultiTFLevels({
         if (strategy === "RETRACEMENT") {
           const retracement = await fetchFibonacciLevels(high, low, "buy", "retracement");
           if (retracement) {
+            // Long/buy retracement: B < C (B is low, C is high)
             levels.push(...fibResponseToLevels({
               response: retracement,
               timeframe,
@@ -464,12 +475,15 @@ export function useMultiTFLevels({
               direction: "long",
               pivotHigh: high,
               pivotLow: low,
+              pointB: low,
+              pointC: high,
             }));
           }
         }
         if (strategy === "EXTENSION") {
           const extension = await fetchFibonacciLevels(high, low, "buy", "extension");
           if (extension) {
+            // Long/buy extension: B < C (B is low, C is high)
             levels.push(...fibResponseToLevels({
               response: extension,
               timeframe,
@@ -477,6 +491,8 @@ export function useMultiTFLevels({
               direction: "long",
               pivotHigh: high,
               pivotLow: low,
+              pointB: low,
+              pointC: high,
             }));
           }
         }
@@ -520,6 +536,7 @@ export function useMultiTFLevels({
         if (strategy === "RETRACEMENT") {
           const retracement = await fetchFibonacciLevels(high, low, "sell", "retracement");
           if (retracement) {
+            // Short/sell retracement: B > C (B is high, C is low)
             levels.push(...fibResponseToLevels({
               response: retracement,
               timeframe,
@@ -527,12 +544,15 @@ export function useMultiTFLevels({
               direction: "short",
               pivotHigh: high,
               pivotLow: low,
+              pointB: high,
+              pointC: low,
             }));
           }
         }
         if (strategy === "EXTENSION") {
           const extension = await fetchFibonacciLevels(high, low, "sell", "extension");
           if (extension) {
+            // Short/sell extension: B > C (B is high, C is low)
             levels.push(...fibResponseToLevels({
               response: extension,
               timeframe,
@@ -540,6 +560,8 @@ export function useMultiTFLevels({
               direction: "short",
               pivotHigh: high,
               pivotLow: low,
+              pointB: high,
+              pointC: low,
             }));
           }
         }
@@ -583,6 +605,7 @@ export function useMultiTFLevels({
         levels,
         pivotHigh: high,
         pivotLow: low,
+        swingEndpoint,
       };
     },
     [symbol, visibilityConfig, dataMode]

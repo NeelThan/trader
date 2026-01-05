@@ -142,6 +142,8 @@ export type TimeframeLevels = {
   levels: StrategyLevel[];
   pivotHigh: number | null;
   pivotLow: number | null;
+  /** Which pivot is most recent - determines actual B vs C relationship */
+  swingEndpoint?: "high" | "low";
 };
 
 /**

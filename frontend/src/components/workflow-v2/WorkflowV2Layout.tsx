@@ -363,16 +363,32 @@ export function WorkflowV2Layout({
   const pivotDataByTimeframe = useMemo(() => {
     const data: Record<string, { pivotHigh: number | null; pivotLow: number | null; pointA?: number; pointB?: number; pointC?: number }> = {};
     for (const tfData of byTimeframe) {
-      // Get B and C from any level that has them (retracement/extension have these)
-      const levelWithBC = tfData.levels.find(l => l.pointB !== undefined && l.pointC !== undefined);
-      // Get A from any level that has it (projection has A, B, C)
-      const levelWithA = tfData.levels.find(l => l.pointA !== undefined);
+      // Get A from projection levels (which have all A, B, C)
+      const projectionLevel = tfData.levels.find(l => l.pointA !== undefined);
+
+      // Determine B and C based on swingEndpoint (which pivot is most recent)
+      // swingEndpoint = "high" means C is the high, B is the low
+      // swingEndpoint = "low" means C is the low, B is the high
+      let pointB: number | undefined;
+      let pointC: number | undefined;
+      if (tfData.swingEndpoint && tfData.pivotHigh != null && tfData.pivotLow != null) {
+        if (tfData.swingEndpoint === "high") {
+          // Most recent pivot is HIGH → C is high, B is low (swing went UP)
+          pointB = tfData.pivotLow;
+          pointC = tfData.pivotHigh;
+        } else {
+          // Most recent pivot is LOW → C is low, B is high (swing went DOWN)
+          pointB = tfData.pivotHigh;
+          pointC = tfData.pivotLow;
+        }
+      }
+
       data[tfData.timeframe] = {
         pivotHigh: tfData.pivotHigh,
         pivotLow: tfData.pivotLow,
-        pointA: levelWithA?.pointA,
-        pointB: levelWithBC?.pointB,
-        pointC: levelWithBC?.pointC,
+        pointA: projectionLevel?.pointA,
+        pointB,
+        pointC,
       };
     }
     return data;

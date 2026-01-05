@@ -203,7 +203,10 @@ export function TimeframeSettingsPopover({
   }, [pivotData]);
 
   // Check if pivot data is available for smart detection
-  const hasPivotData = pivotData?.pointB !== undefined && pivotData?.pointC !== undefined;
+  // For retracement/extension/expansion we need B and C
+  // For projection we need A and B
+  const hasPivotData = (pivotData?.pointB !== undefined && pivotData?.pointC !== undefined) ||
+    (pivotData?.pointA !== undefined && pivotData?.pointB !== undefined);
 
   // Count enabled ratios
   const enabledCount = useMemo(() => {
