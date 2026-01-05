@@ -37,8 +37,9 @@ target3Price = input.float(0, "Target 3 (T3) Price", minval=0, group=grpTargets,
     tooltip="Third profit target price")
 
 grpInstrument = "═══ INSTRUMENT ═══"
-instrumentType = input.string("Forex", "Instrument Type",
-    options=["Forex", "Stocks/ETFs", "Crypto", "Futures", "CFD"], group=grpInstrument)
+instrumentType = input.string("Indices", "Instrument Type",
+    options=["Indices", "Forex", "Stocks/ETFs", "Crypto", "Futures", "CFD"], group=grpInstrument,
+    tooltip="Indices: DJI, SPX, NDX, etc. Forex: Currency pairs. Futures: ES, NQ, YM, etc.")
 contractSize = input.float(100000, "Contract Size", minval=1, group=grpInstrument,
     tooltip="Forex: Standard=100000, Mini=10000, Micro=1000")
 tickValue = input.float(12.50, "Tick Value ($) - Futures", minval=0.01, group=grpInstrument,
@@ -51,8 +52,8 @@ showMainTable = input.bool(true, "Show Main Table", group=grpDisplay)
 showFormulaTable = input.bool(true, "Show Formula Breakdown", group=grpDisplay,
     tooltip="Educational breakdown of each calculation step")
 showRRTable = input.bool(true, "Show R:R Table", group=grpDisplay)
-tablePosition = input.string("Top Right", "Main Table Position",
-    options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=grpDisplay)
+tablePosition = input.string("Top Center", "Main Table Position",
+    options=["Top Center", "Top Right", "Top Left", "Bottom Right", "Bottom Left", "Bottom Center"], group=grpDisplay)
 showLines = input.bool(true, "Show Entry/Stop/Target Lines", group=grpDisplay)
 
 // =============================================================================
@@ -88,6 +89,15 @@ if validTrade and stopIsValid
     if instrumentType == "Forex"
         positionSize := riskAmount / stopDistance
         lotSize := positionSize / contractSize
+        dollarValue := positionSize * entryPrice
+        riskPerUnit := stopDistance
+
+    else if instrumentType == "Indices"
+        // For indices (DJI, SPX, NDX), position size = number of units/contracts
+        // Risk per unit = stop distance in points
+        // Example: DJI at 42000, stop 100 points away, risk $100 = 1 unit
+        positionSize := riskAmount / stopDistance
+        lotSize := positionSize
         dollarValue := positionSize * entryPrice
         riskPerUnit := stopDistance
 
@@ -141,16 +151,20 @@ if instrumentType == "Futures" and validTrade
 // =============================================================================
 
 mainTablePos = switch tablePosition
+    "Top Center" => position.top_center
     "Top Right" => position.top_right
     "Top Left" => position.top_left
+    "Bottom Center" => position.bottom_center
     "Bottom Right" => position.bottom_right
     "Bottom Left" => position.bottom_left
-    => position.top_right
+    => position.top_center
 
-// Formula table on opposite side
+// Formula table on opposite side (left when main is center/right, right when main is left)
 formulaTablePos = switch tablePosition
+    "Top Center" => position.top_left
     "Top Right" => position.top_left
     "Top Left" => position.top_right
+    "Bottom Center" => position.bottom_left
     "Bottom Right" => position.bottom_left
     "Bottom Left" => position.bottom_right
     => position.top_left
@@ -216,7 +230,7 @@ if barstate.islast and showMainTable
     table.cell(mainTable, 1, row, instrumentType, text_color=color.aqua, text_size=size.small)
     row += 1
 
-    sizeLabel = instrumentType == "Forex" ? "Units" : (instrumentType == "Futures" ? "Contracts" : "Shares")
+    sizeLabel = instrumentType == "Forex" ? "Units" : (instrumentType == "Futures" ? "Contracts" : (instrumentType == "Indices" ? "Units" : "Shares"))
     table.cell(mainTable, 0, row, sizeLabel, text_color=color.gray, text_size=size.tiny)
     if validTrade and stopIsValid
         sizeText = instrumentType == "Forex" ? str.tostring(positionSize, "#,###") : str.tostring(lotSize, "#.##")
