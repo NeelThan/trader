@@ -24,17 +24,30 @@ grpTrade = "═══ TRADE SETUP ═══"
 useCurrentPrice = input.bool(true, "Use Current Price as Entry", group=grpTrade)
 manualEntry = input.float(0, "Manual Entry Price", minval=0, group=grpTrade,
     tooltip="Only used if 'Use Current Price' is disabled")
-stopLossPrice = input.float(0, "Stop Loss Price", minval=0, group=grpTrade,
-    tooltip="Enter your stop loss price level")
 tradeDirection = input.string("Long", "Trade Direction", options=["Long", "Short"], group=grpTrade)
 
-grpTargets = "═══ TARGETS (R:R) ═══"
-target1Price = input.float(0, "Target 1 (T1) Price", minval=0, group=grpTargets,
-    tooltip="First profit target price")
-target2Price = input.float(0, "Target 2 (T2) Price", minval=0, group=grpTargets,
-    tooltip="Second profit target price")
-target3Price = input.float(0, "Target 3 (T3) Price", minval=0, group=grpTargets,
-    tooltip="Third profit target price")
+grpAuto = "═══ AUTO LEVELS (ATR) ═══"
+useAutoStop = input.bool(true, "Auto Stop Loss (ATR-based)", group=grpAuto,
+    tooltip="Automatically calculate stop loss using ATR")
+atrPeriod = input.int(14, "ATR Period", minval=1, maxval=50, group=grpAuto)
+atrMultiplier = input.float(1.5, "ATR Multiplier for Stop", minval=0.5, maxval=5, step=0.1, group=grpAuto,
+    tooltip="Stop = Entry ± (ATR × Multiplier). 1.5-2.0 is common")
+manualStopPrice = input.float(0, "Manual Stop Price (if not auto)", minval=0, group=grpAuto,
+    tooltip="Only used if Auto Stop is disabled")
+
+useAutoTargets = input.bool(true, "Auto Targets (R-multiples)", group=grpAuto,
+    tooltip="Automatically calculate targets based on R-multiples")
+t1Multiple = input.float(1.0, "T1 = Risk × ", minval=0.5, maxval=10, step=0.5, group=grpAuto,
+    tooltip="Target 1 at 1R = same distance as stop")
+t2Multiple = input.float(2.0, "T2 = Risk × ", minval=0.5, maxval=10, step=0.5, group=grpAuto,
+    tooltip="Target 2 at 2R = 2× stop distance")
+t3Multiple = input.float(3.0, "T3 = Risk × ", minval=0.5, maxval=10, step=0.5, group=grpAuto,
+    tooltip="Target 3 at 3R = 3× stop distance")
+
+grpManualTargets = "═══ MANUAL TARGETS ═══"
+manualT1 = input.float(0, "Manual T1 Price (if not auto)", minval=0, group=grpManualTargets)
+manualT2 = input.float(0, "Manual T2 Price (if not auto)", minval=0, group=grpManualTargets)
+manualT3 = input.float(0, "Manual T3 Price (if not auto)", minval=0, group=grpManualTargets)
 
 grpInstrument = "═══ INSTRUMENT ═══"
 instrumentType = input.string("Indices", "Instrument Type",
@@ -63,6 +76,33 @@ showLines = input.bool(true, "Show Entry/Stop/Target Lines", group=grpDisplay)
 // Entry price
 entryPrice = useCurrentPrice ? close : manualEntry
 
+// Calculate ATR for auto stop/targets
+atrValue = ta.atr(atrPeriod)
+
+// Auto or Manual Stop Loss
+autoStopPrice = tradeDirection == "Long" ?
+    entryPrice - (atrValue * atrMultiplier) :
+    entryPrice + (atrValue * atrMultiplier)
+stopLossPrice = useAutoStop ? autoStopPrice : manualStopPrice
+
+// Calculate stop distance first (needed for auto targets)
+stopDistance = math.abs(entryPrice - stopLossPrice)
+
+// Auto or Manual Targets (based on R-multiples of stop distance)
+autoT1 = tradeDirection == "Long" ?
+    entryPrice + (stopDistance * t1Multiple) :
+    entryPrice - (stopDistance * t1Multiple)
+autoT2 = tradeDirection == "Long" ?
+    entryPrice + (stopDistance * t2Multiple) :
+    entryPrice - (stopDistance * t2Multiple)
+autoT3 = tradeDirection == "Long" ?
+    entryPrice + (stopDistance * t3Multiple) :
+    entryPrice - (stopDistance * t3Multiple)
+
+target1Price = useAutoTargets ? autoT1 : manualT1
+target2Price = useAutoTargets ? autoT2 : manualT2
+target3Price = useAutoTargets ? autoT3 : manualT3
+
 // Validation
 validEntry = entryPrice > 0
 validStop = stopLossPrice > 0
@@ -73,9 +113,8 @@ stopIsValid = tradeDirection == "Long" ? stopLossPrice < entryPrice : stopLossPr
 // Formula: Risk Amount = Account Size × (Risk Percentage / 100)
 riskAmount = accountSize * (riskPercent / 100)
 
-// === STEP 2: Calculate Stop Distance ===
+// === STEP 2: Stop Distance (already calculated above for auto targets) ===
 // Formula: Stop Distance = |Entry Price - Stop Loss Price|
-stopDistance = math.abs(entryPrice - stopLossPrice)
 stopDistancePercent = validEntry ? (stopDistance / entryPrice) * 100 : 0
 
 // === STEP 3: Calculate Position Size ===
@@ -173,7 +212,7 @@ formulaTablePos = switch tablePosition
 // MAIN CALCULATION TABLE
 // =============================================================================
 
-var table mainTable = table.new(mainTablePos, 2, 18, bgcolor=color.new(color.black, 85), border_width=1)
+var table mainTable = table.new(mainTablePos, 2, 22, bgcolor=color.new(color.black, 85), border_width=1)
 
 if barstate.islast and showMainTable
     row = 0
@@ -211,8 +250,15 @@ if barstate.islast and showMainTable
     table.cell(mainTable, 1, row, str.tostring(entryPrice, format.mintick), text_color=color.white, text_size=size.small)
     row += 1
 
+    // ATR info (when using auto)
+    if useAutoStop
+        table.cell(mainTable, 0, row, "ATR(" + str.tostring(atrPeriod) + ")", text_color=color.gray, text_size=size.tiny)
+        table.cell(mainTable, 1, row, str.tostring(atrValue, format.mintick) + " × " + str.tostring(atrMultiplier, "#.#"), text_color=color.aqua, text_size=size.tiny)
+        row += 1
+
     stopColor = stopIsValid ? color.red : color.fuchsia
-    table.cell(mainTable, 0, row, "Stop", text_color=color.gray, text_size=size.tiny)
+    stopLabel = useAutoStop ? "Stop (auto)" : "Stop"
+    table.cell(mainTable, 0, row, stopLabel, text_color=color.gray, text_size=size.tiny)
     table.cell(mainTable, 1, row, validStop ? str.tostring(stopLossPrice, format.mintick) : "Enter stop", text_color=stopColor, text_size=size.small)
     row += 1
 
