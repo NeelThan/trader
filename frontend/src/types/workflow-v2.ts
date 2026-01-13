@@ -119,6 +119,45 @@ export function getCategoryAdjustedRisk(
   return baseRiskPercent * TRADE_CATEGORY_RISK[category];
 }
 
+// ============================================================================
+// Trade Opportunity Types (for multi-symbol scanning)
+// ============================================================================
+
+/**
+ * A trade opportunity identified through multi-timeframe analysis.
+ * Returned by the /workflow/opportunities endpoint.
+ */
+export type TradeOpportunity = {
+  /** Market symbol (e.g., "DJI", "SPX") */
+  symbol: MarketSymbol;
+  /** Higher timeframe for trend context */
+  higher_timeframe: Timeframe;
+  /** Lower timeframe for entry timing */
+  lower_timeframe: Timeframe;
+  /** Trade direction */
+  direction: TradeDirection;
+  /** Confidence score 0-100 */
+  confidence: number;
+  /** Trade category for position sizing */
+  category: TradeCategory;
+  /** Current trend phase */
+  phase: TrendPhase;
+  /** Human-readable description */
+  description: string;
+};
+
+/**
+ * Result of scanning multiple symbols for opportunities.
+ */
+export type OpportunityScanResult = {
+  /** List of symbols that were scanned */
+  symbols_scanned: string[];
+  /** List of identified opportunities */
+  opportunities: TradeOpportunity[];
+  /** Time taken to scan in milliseconds */
+  scan_time_ms: number;
+};
+
 /**
  * An individual Fibonacci level with metadata.
  */
