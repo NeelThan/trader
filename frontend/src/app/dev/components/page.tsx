@@ -37,6 +37,10 @@ import { PositionSizingTool } from "@/components/trading/tools/PositionSizingToo
 import { FibonacciSetupTool } from "@/components/trading/tools/FibonacciSetupTool";
 import { TradeManagementPanel } from "@/components/trading/tools/TradeManagementPanel";
 
+// Workflow V2 Components
+import { OpportunitiesPanel } from "@/components/workflow-v2/OpportunitiesPanel";
+import { useOpportunities } from "@/hooks/use-opportunities";
+
 // Only show this page in development
 if (process.env.NODE_ENV === "production") {
   notFound();
@@ -62,6 +66,36 @@ function ComponentDemo({ name, description, children }: { name: string; descript
         {children}
       </div>
     </div>
+  );
+}
+
+function OpportunitiesPanelDemo() {
+  const {
+    opportunities,
+    symbolsScanned,
+    scanTimeMs,
+    isLoading,
+    error,
+    refresh,
+  } = useOpportunities({
+    symbols: ["DJI", "SPX", "NDX"],
+    enabled: true,
+  });
+
+  return (
+    <ComponentDemo name="OpportunitiesPanel" description="Multi-symbol opportunity scanner panel">
+      <div className="w-full max-w-md">
+        <OpportunitiesPanel
+          opportunities={opportunities}
+          symbolsScanned={symbolsScanned}
+          scanTimeMs={scanTimeMs}
+          isLoading={isLoading}
+          error={error}
+          onRefresh={refresh}
+          onSelectOpportunity={(opp) => console.log("Selected:", opp)}
+        />
+      </div>
+    </ComponentDemo>
   );
 }
 
@@ -367,6 +401,11 @@ export default function ComponentsPage() {
                 Each tool can also be used standalone.
               </p>
             </div>
+          </Section>
+
+          {/* Workflow V2 Components */}
+          <Section title="Workflow V2 Components (Scanner)">
+            <OpportunitiesPanelDemo />
           </Section>
 
           {/* Additional Info */}
