@@ -22,6 +22,103 @@ export type FibStrategy = "retracement" | "extension" | "expansion" | "projectio
  */
 export type TradeDirection = "long" | "short";
 
+// ============================================================================
+// Extended Framework Types (from Fibonacci Trading Framework Extended)
+// ============================================================================
+
+/**
+ * Trend phase identifies where we are in the trend cycle.
+ * - impulse: Price moving strongly in trend direction
+ * - correction: Price pulling back against trend
+ * - continuation: Price resuming trend after correction
+ * - exhaustion: Trend losing momentum, potential reversal
+ */
+export type TrendPhase = "impulse" | "correction" | "continuation" | "exhaustion";
+
+/**
+ * Trade category determines position sizing risk.
+ * - with_trend: Trading with higher TF trend (1-2% risk)
+ * - counter_trend: Against higher TF at major confluence (0.5-1% risk)
+ * - reversal_attempt: Speculative against trend (0.25-0.5% risk)
+ */
+export type TradeCategory = "with_trend" | "counter_trend" | "reversal_attempt";
+
+/**
+ * Risk multipliers for each trade category.
+ * Applied to base risk percentage.
+ */
+export const TRADE_CATEGORY_RISK: Record<TradeCategory, number> = {
+  with_trend: 1.0, // 100% of base risk
+  counter_trend: 0.5, // 50% of base risk
+  reversal_attempt: 0.25, // 25% of base risk
+};
+
+/**
+ * Human-readable explanations for each trade category.
+ */
+export const TRADE_CATEGORY_EXPLANATIONS: Record<TradeCategory, string> = {
+  with_trend: "Trading with the higher timeframe trend - highest probability setup",
+  counter_trend: "Trading against higher TF at major confluence - reduced risk recommended",
+  reversal_attempt: "Speculative reversal trade - use minimal position size",
+};
+
+/**
+ * Confluence score interpretation levels.
+ */
+export type ConfluenceInterpretation = "standard" | "important" | "significant" | "major";
+
+/**
+ * Breakdown of confluence score components.
+ */
+export type ConfluenceBreakdown = {
+  /** Base Fib level: always +1 */
+  baseFibLevel: number;
+  /** Same TF confluence: +1 per level */
+  sameTFConfluence: number;
+  /** Higher TF confluence: +2 per level */
+  higherTFConfluence: number;
+  /** Previous pivot nearby: +2 */
+  previousPivot: number;
+  /** Psychological level (round number): +1 */
+  psychologicalLevel: number;
+};
+
+/**
+ * Complete confluence score with breakdown and interpretation.
+ */
+export type ConfluenceScore = {
+  /** Total confluence score */
+  total: number;
+  /** Score breakdown by component */
+  breakdown: ConfluenceBreakdown;
+  /** Interpretation label */
+  interpretation: ConfluenceInterpretation;
+};
+
+/**
+ * Get interpretation label from total confluence score.
+ * - 1-2: standard
+ * - 3-4: important
+ * - 5-6: significant
+ * - 7+: major
+ */
+export function getConfluenceInterpretation(score: number): ConfluenceInterpretation {
+  if (score >= 7) return "major";
+  if (score >= 5) return "significant";
+  if (score >= 3) return "important";
+  return "standard";
+}
+
+/**
+ * Get category-adjusted risk percentage.
+ */
+export function getCategoryAdjustedRisk(
+  baseRiskPercent: number,
+  category: TradeCategory
+): number {
+  return baseRiskPercent * TRADE_CATEGORY_RISK[category];
+}
+
 /**
  * An individual Fibonacci level with metadata.
  */
