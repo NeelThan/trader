@@ -42,6 +42,8 @@ const mockOpportunity: TradeOpportunity = {
   },
   higherTrend: undefined,
   lowerTrend: undefined,
+  category: "with_trend",
+  trendPhase: "correction",
 };
 
 // Mock sizing data

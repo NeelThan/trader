@@ -56,6 +56,8 @@ const mockOpportunity: TradeOpportunity = {
   },
   higherTrend: undefined,
   lowerTrend: undefined,
+  category: "with_trend",
+  trendPhase: "correction",
 };
 
 describe("useWorkflowV2State", () => {

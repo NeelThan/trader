@@ -41,6 +41,8 @@ const mockOpportunities: TradeOpportunity[] = [
     },
     higherTrend: undefined,
     lowerTrend: undefined,
+    category: "with_trend",
+    trendPhase: "correction",
   },
   {
     id: "spx-opp-1",
@@ -69,6 +71,8 @@ const mockOpportunities: TradeOpportunity[] = [
     },
     higherTrend: undefined,
     lowerTrend: undefined,
+    category: "with_trend",
+    trendPhase: "impulse",
   },
 ];
 

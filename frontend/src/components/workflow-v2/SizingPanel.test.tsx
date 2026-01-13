@@ -39,6 +39,8 @@ const mockOpportunity: TradeOpportunity = {
   },
   higherTrend: undefined,
   lowerTrend: undefined,
+  category: "with_trend",
+  trendPhase: "correction",
 };
 
 // Mock sizing data
@@ -90,6 +92,13 @@ describe("SizingPanel", () => {
     onRestoreSuggested: vi.fn(),
     onBack: vi.fn(),
     onProceed: vi.fn(),
+    categoryInfo: {
+      category: "with_trend" as const,
+      riskMultiplier: 1.0,
+      baseRiskPercentage: 2,
+      adjustedRiskPercentage: 2,
+      explanation: "Trading with the trend",
+    },
   };
 
   beforeEach(() => {

@@ -37,6 +37,8 @@ const mockActiveOpportunity: TradeOpportunity = {
   },
   higherTrend: undefined,
   lowerTrend: undefined,
+  category: "with_trend",
+  trendPhase: "correction",
 };
 
 // Mock opportunity - developing (not active)
@@ -67,6 +69,8 @@ const mockDevelopingOpportunity: TradeOpportunity = {
   },
   higherTrend: undefined,
   lowerTrend: undefined,
+  category: "with_trend",
+  trendPhase: "impulse",
 };
 
 describe("DiscoveryPanel", () => {
