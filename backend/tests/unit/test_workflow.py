@@ -807,3 +807,171 @@ class TestCalculateConfluenceScore:
         assert score.breakdown.higher_tf_confluence == 0
         assert score.breakdown.previous_pivot == 0
         assert score.total == 1  # Only base score
+
+
+class TestTradeOpportunityModel:
+    """Tests for TradeOpportunity model."""
+
+    def test_can_import_trade_opportunity(self) -> None:
+        """TradeOpportunity model should be importable."""
+        from trader.workflow import TradeOpportunity
+
+        assert TradeOpportunity is not None
+
+    def test_create_long_opportunity(self) -> None:
+        """Should create long trade opportunity."""
+        from trader.workflow import TradeOpportunity
+
+        opportunity = TradeOpportunity(
+            symbol="DJI",
+            higher_timeframe="1D",
+            lower_timeframe="4H",
+            direction="long",
+            confidence=75,
+            category="with_trend",
+            phase="correction",
+            description="Buy pullback in 1D uptrend",
+        )
+
+        assert opportunity.symbol == "DJI"
+        assert opportunity.direction == "long"
+        assert opportunity.category == "with_trend"
+        assert opportunity.phase == "correction"
+
+    def test_create_short_opportunity(self) -> None:
+        """Should create short trade opportunity."""
+        from trader.workflow import TradeOpportunity
+
+        opportunity = TradeOpportunity(
+            symbol="SPX",
+            higher_timeframe="1W",
+            lower_timeframe="1D",
+            direction="short",
+            confidence=80,
+            category="counter_trend",
+            phase="exhaustion",
+            description="Sell rally at resistance",
+        )
+
+        assert opportunity.symbol == "SPX"
+        assert opportunity.direction == "short"
+        assert opportunity.category == "counter_trend"
+        assert opportunity.phase == "exhaustion"
+
+
+class TestOpportunityScanResult:
+    """Tests for OpportunityScanResult model."""
+
+    def test_can_import_scan_result(self) -> None:
+        """OpportunityScanResult model should be importable."""
+        from trader.workflow import OpportunityScanResult
+
+        assert OpportunityScanResult is not None
+
+    def test_create_scan_result_with_opportunities(self) -> None:
+        """Should create scan result with opportunities."""
+        from trader.workflow import OpportunityScanResult, TradeOpportunity
+
+        opportunities = [
+            TradeOpportunity(
+                symbol="DJI",
+                higher_timeframe="1D",
+                lower_timeframe="4H",
+                direction="long",
+                confidence=75,
+                category="with_trend",
+                phase="correction",
+                description="Buy pullback",
+            ),
+        ]
+
+        result = OpportunityScanResult(
+            symbols_scanned=["DJI", "SPX"],
+            opportunities=opportunities,
+            scan_time_ms=150,
+        )
+
+        assert len(result.symbols_scanned) == 2
+        assert len(result.opportunities) == 1
+        assert result.scan_time_ms == 150
+
+    def test_create_empty_scan_result(self) -> None:
+        """Should create scan result with no opportunities."""
+        from trader.workflow import OpportunityScanResult
+
+        result = OpportunityScanResult(
+            symbols_scanned=["DJI"],
+            opportunities=[],
+            scan_time_ms=50,
+        )
+
+        assert len(result.opportunities) == 0
+
+
+class TestScanOpportunitiesFunction:
+    """Tests for scan_opportunities function."""
+
+    @pytest.fixture
+    def sample_bars(self) -> list[OHLCBar]:
+        """Create sample OHLC bars with clear trend."""
+        return [
+            OHLCBar(time="2024-01-01", open=100.0, high=105.0, low=99.0, close=104.0),
+            OHLCBar(time="2024-01-02", open=104.0, high=108.0, low=103.0, close=107.0),
+            OHLCBar(time="2024-01-03", open=107.0, high=112.0, low=105.0, close=110.0),
+            OHLCBar(time="2024-01-04", open=110.0, high=115.0, low=108.0, close=108.0),
+            OHLCBar(time="2024-01-05", open=108.0, high=110.0, low=106.0, close=109.0),
+        ]
+
+    @pytest.fixture
+    def mock_market_service(self, sample_bars: list[OHLCBar]) -> MagicMock:
+        """Create mock market data service."""
+        mock = MagicMock()
+        mock.get_ohlc = AsyncMock(
+            return_value=MarketDataResult.from_success(
+                data=sample_bars,
+                market_status=MarketStatus.unknown(),
+                provider="yahoo",
+            )
+        )
+        return mock
+
+    async def test_scan_returns_result(self, mock_market_service: MagicMock) -> None:
+        """Should return OpportunityScanResult."""
+        from trader.workflow import OpportunityScanResult, scan_opportunities
+
+        result = await scan_opportunities(
+            symbols=["DJI"],
+            market_service=mock_market_service,
+        )
+
+        assert isinstance(result, OpportunityScanResult)
+        assert "DJI" in result.symbols_scanned
+        assert result.scan_time_ms >= 0
+
+    async def test_scan_multiple_symbols(self, mock_market_service: MagicMock) -> None:
+        """Should scan multiple symbols."""
+        from trader.workflow import scan_opportunities
+
+        result = await scan_opportunities(
+            symbols=["DJI", "SPX", "NDX"],
+            market_service=mock_market_service,
+        )
+
+        assert len(result.symbols_scanned) == 3
+        assert "DJI" in result.symbols_scanned
+        assert "SPX" in result.symbols_scanned
+        assert "NDX" in result.symbols_scanned
+
+    async def test_scan_with_timeframe_pairs(
+        self, mock_market_service: MagicMock
+    ) -> None:
+        """Should use specified timeframe pairs."""
+        from trader.workflow import scan_opportunities
+
+        result = await scan_opportunities(
+            symbols=["DJI"],
+            timeframe_pairs=[("1D", "4H"), ("1W", "1D")],
+            market_service=mock_market_service,
+        )
+
+        assert isinstance(result.opportunities, list)

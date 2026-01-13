@@ -45,6 +45,7 @@ from trader.workflow import (
     AlignmentResult,
     IndicatorConfirmation,
     LevelsResult,
+    OpportunityScanResult,
     TradeCategory,
     TrendAssessment,
     assess_trend,
@@ -52,6 +53,7 @@ from trader.workflow import (
     check_timeframe_alignment,
     confirm_with_indicators,
     identify_fibonacci_levels,
+    scan_opportunities,
 )
 
 # Initialize singleton services
@@ -1139,3 +1141,40 @@ def workflow_categorize(
         confluence_score=confluence_score,
     )
     return {"category": category}
+
+
+@app.get("/workflow/opportunities", response_model=OpportunityScanResult)
+async def workflow_opportunities(
+    symbols: str = "DJI,SPX,NDX",
+    timeframe_pairs: str = "1D:4H",
+) -> OpportunityScanResult:
+    """Scan multiple symbols for trade opportunities.
+
+    Analyzes each symbol across timeframe pairs to identify potential trades.
+    Uses higher timeframe for trend context and lower timeframe for entry.
+
+    Args:
+        symbols: Comma-separated list of symbols (e.g., "DJI,SPX,NDX").
+        timeframe_pairs: Colon-separated higher:lower pairs, comma-separated
+                        for multiple pairs (e.g., "1D:4H" or "1D:4H,1W:1D").
+
+    Returns:
+        OpportunityScanResult with identified opportunities and scan metadata.
+    """
+    symbol_list = [s.strip() for s in symbols.split(",")]
+
+    # Parse timeframe pairs (e.g., "1D:4H,1W:1D" -> [("1D", "4H"), ("1W", "1D")])
+    pairs: list[tuple[str, str]] = []
+    for pair_str in timeframe_pairs.split(","):
+        parts = pair_str.strip().split(":")
+        if len(parts) == 2:
+            pairs.append((parts[0].strip(), parts[1].strip()))
+
+    if not pairs:
+        pairs = [("1D", "4H")]  # Default pair
+
+    return await scan_opportunities(
+        symbols=symbol_list,
+        timeframe_pairs=pairs,
+        market_service=_market_data_service,
+    )

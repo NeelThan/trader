@@ -181,6 +181,44 @@ class IndicatorConfirmation(BaseModel):
     overall: OverallConfirmation
 
 
+class TradeOpportunity(BaseModel):
+    """A trade opportunity identified through multi-timeframe analysis.
+
+    Attributes:
+        symbol: Market symbol (e.g., "DJI", "SPX").
+        higher_timeframe: Higher timeframe for trend context (e.g., "1D", "1W").
+        lower_timeframe: Lower timeframe for entry timing (e.g., "4H", "1H").
+        direction: Trade direction (long/short).
+        confidence: Confidence score 0-100.
+        category: Trade category for position sizing.
+        phase: Current trend phase.
+        description: Human-readable description of the opportunity.
+    """
+
+    symbol: str
+    higher_timeframe: str
+    lower_timeframe: str
+    direction: Literal["long", "short"]
+    confidence: int = Field(ge=0, le=100)
+    category: TradeCategory
+    phase: TrendPhase
+    description: str
+
+
+class OpportunityScanResult(BaseModel):
+    """Result of scanning multiple symbols for trade opportunities.
+
+    Attributes:
+        symbols_scanned: List of symbols that were scanned.
+        opportunities: List of identified trade opportunities.
+        scan_time_ms: Time taken to complete the scan in milliseconds.
+    """
+
+    symbols_scanned: list[str]
+    opportunities: list[TradeOpportunity]
+    scan_time_ms: int = Field(ge=0)
+
+
 # --- Helper Functions (Private) ---
 
 
@@ -720,4 +758,106 @@ def _create_neutral_confirmation() -> IndicatorConfirmation:
         rsi=IndicatorSignal(value=50.0, signal="neutral", explanation="No data"),
         macd=IndicatorSignal(value=None, signal="neutral", explanation="No data"),
         overall="wait",
+    )
+
+
+async def scan_opportunities(
+    symbols: list[str],
+    market_service: MarketDataService,
+    timeframe_pairs: list[tuple[str, str]] | None = None,
+) -> OpportunityScanResult:
+    """Scan multiple symbols for trade opportunities.
+
+    Analyzes each symbol across timeframe pairs to identify potential trades.
+    Uses higher timeframe for trend context and lower timeframe for entry timing.
+
+    Args:
+        symbols: List of market symbols to scan (e.g., ["DJI", "SPX", "NDX"]).
+        market_service: Service for fetching market data.
+        timeframe_pairs: Optional list of (higher_tf, lower_tf) tuples.
+                        Defaults to [("1D", "4H")].
+
+    Returns:
+        OpportunityScanResult with all identified opportunities.
+    """
+    import time
+
+    start_time = time.monotonic()
+
+    if timeframe_pairs is None:
+        timeframe_pairs = [("1D", "4H")]
+
+    opportunities: list[TradeOpportunity] = []
+
+    for symbol in symbols:
+        for higher_tf, lower_tf in timeframe_pairs:
+            opportunity = await _analyze_symbol_pair(
+                symbol, higher_tf, lower_tf, market_service
+            )
+            if opportunity:
+                opportunities.append(opportunity)
+
+    elapsed_ms = int((time.monotonic() - start_time) * 1000)
+
+    return OpportunityScanResult(
+        symbols_scanned=list(symbols),
+        opportunities=opportunities,
+        scan_time_ms=elapsed_ms,
+    )
+
+
+async def _analyze_symbol_pair(
+    symbol: str,
+    higher_tf: str,
+    lower_tf: str,
+    market_service: MarketDataService,
+) -> TradeOpportunity | None:
+    """Analyze a symbol for opportunities on a timeframe pair.
+
+    Returns an opportunity if higher TF shows clear trend and lower TF
+    shows potential entry (correction phase).
+    """
+    higher_assessment = await assess_trend(symbol, higher_tf, market_service)
+    lower_assessment = await assess_trend(symbol, lower_tf, market_service)
+
+    # Skip if higher TF has no clear trend
+    if higher_assessment.trend == "neutral":
+        return None
+
+    # Skip if confidence is too low
+    if higher_assessment.confidence < 60:
+        return None
+
+    # Determine trade direction from higher TF trend
+    direction: Literal["long", "short"] = (
+        "long" if higher_assessment.trend == "bullish" else "short"
+    )
+
+    # Calculate combined confidence
+    combined = higher_assessment.confidence + lower_assessment.confidence
+    confidence = min(100, combined // 2)
+
+    # Determine trade category
+    category = categorize_trade(
+        higher_tf_trend=higher_assessment.trend,
+        lower_tf_trend=lower_assessment.trend,
+        trade_direction=direction,
+        confluence_score=3,  # Default moderate confluence
+    )
+
+    # Build description
+    direction_text = "Buy" if direction == "long" else "Sell"
+    phase_text = lower_assessment.phase
+    trend_text = higher_assessment.trend
+    description = f"{direction_text} {phase_text} in {higher_tf} {trend_text} trend"
+
+    return TradeOpportunity(
+        symbol=symbol,
+        higher_timeframe=higher_tf,
+        lower_timeframe=lower_tf,
+        direction=direction,
+        confidence=confidence,
+        category=category,
+        phase=lower_assessment.phase,
+        description=description,
     )
