@@ -38,9 +38,43 @@ OverallConfirmation = Literal["strong", "partial", "wait"]
 # --- Extended Framework Type Aliases ---
 TrendPhase = Literal["impulse", "correction", "continuation", "exhaustion"]
 TradeCategory = Literal["with_trend", "counter_trend", "reversal_attempt"]
+ConfluenceInterpretation = Literal["standard", "important", "significant", "major"]
 
 
 # --- Response Models ---
+
+
+class ConfluenceBreakdown(BaseModel):
+    """Breakdown of confluence score components.
+
+    Each component contributes to the total confluence score:
+    - base_fib_level: Always 1 (every Fib level starts with this)
+    - same_tf_confluence: +1 per same-timeframe level within tolerance
+    - higher_tf_confluence: +2 per higher-timeframe level within tolerance
+    - previous_pivot: +2 if near a previous major pivot
+    - psychological_level: +1 if at a round number
+    """
+
+    base_fib_level: int = 1
+    same_tf_confluence: int = 0
+    higher_tf_confluence: int = 0
+    previous_pivot: int = 0
+    psychological_level: int = 0
+
+
+class ConfluenceScore(BaseModel):
+    """Weighted confluence score for a price level.
+
+    Score interpretations:
+    - 1-2: Standard (basic Fib level)
+    - 3-4: Important (some confluence)
+    - 5-6: Significant (strong confluence)
+    - 7+:  Major (exceptional confluence zone)
+    """
+
+    total: int = Field(ge=0)
+    breakdown: ConfluenceBreakdown
+    interpretation: ConfluenceInterpretation
 
 
 class TrendAssessment(BaseModel):
@@ -296,6 +330,118 @@ def _is_aligned_with_higher_tf(
     if higher_tf_trend == "bearish" and trade_direction == "short":
         return True
     return False
+
+
+def calculate_confluence_score(
+    level_price: float,
+    same_tf_levels: list[float],
+    higher_tf_levels: list[float],
+    previous_pivots: list[float],
+    tolerance_percent: float = 0.5,
+) -> ConfluenceScore:
+    """Calculate weighted confluence score for a price level.
+
+    Scoring System:
+    - Base Fib level: +1 (always)
+    - Same TF confluence: +1 per level within tolerance
+    - Higher TF confluence: +2 per level within tolerance
+    - Previous major pivot: +2 if any pivot within tolerance
+    - Psychological level: +1 if round number
+
+    Args:
+        level_price: The Fibonacci level price to score.
+        same_tf_levels: Other Fib levels from the same timeframe.
+        higher_tf_levels: Fib levels from higher timeframes.
+        previous_pivots: Previous major pivot prices.
+        tolerance_percent: Percentage tolerance for confluence (default 0.5%).
+
+    Returns:
+        ConfluenceScore with total, breakdown, and interpretation.
+    """
+    breakdown = _calculate_breakdown(
+        level_price,
+        same_tf_levels,
+        higher_tf_levels,
+        previous_pivots,
+        tolerance_percent,
+    )
+    total = _sum_breakdown(breakdown)
+    interpretation = _get_interpretation(total)
+
+    return ConfluenceScore(
+        total=total, breakdown=breakdown, interpretation=interpretation
+    )
+
+
+def _calculate_breakdown(
+    level_price: float,
+    same_tf_levels: list[float],
+    higher_tf_levels: list[float],
+    previous_pivots: list[float],
+    tolerance_percent: float,
+) -> ConfluenceBreakdown:
+    """Calculate confluence breakdown from inputs."""
+    tolerance = level_price * (tolerance_percent / 100)
+
+    same_tf = _count_levels_in_tolerance(level_price, same_tf_levels, tolerance)
+    higher_tf = _count_levels_in_tolerance(level_price, higher_tf_levels, tolerance) * 2
+    pivot = 2 if _any_level_in_tolerance(level_price, previous_pivots, tolerance) else 0
+    psychological = 1 if _is_psychological_level(level_price) else 0
+
+    return ConfluenceBreakdown(
+        base_fib_level=1,
+        same_tf_confluence=same_tf,
+        higher_tf_confluence=higher_tf,
+        previous_pivot=pivot,
+        psychological_level=psychological,
+    )
+
+
+def _count_levels_in_tolerance(
+    target: float, levels: list[float], tolerance: float
+) -> int:
+    """Count how many levels are within tolerance of target."""
+    return sum(1 for level in levels if abs(level - target) <= tolerance)
+
+
+def _any_level_in_tolerance(
+    target: float, levels: list[float], tolerance: float
+) -> bool:
+    """Check if any level is within tolerance of target."""
+    return any(abs(level - target) <= tolerance for level in levels)
+
+
+def _is_psychological_level(price: float) -> bool:
+    """Check if price is a psychological level (round number)."""
+    if price < 100:
+        return price % 10 == 0
+    if price < 1000:
+        return price % 100 == 0
+    if price < 10000:
+        return price % 500 == 0
+    return price % 1000 == 0
+
+
+def _sum_breakdown(breakdown: ConfluenceBreakdown) -> int:
+    """Sum all components of confluence breakdown."""
+    return (
+        breakdown.base_fib_level
+        + breakdown.same_tf_confluence
+        + breakdown.higher_tf_confluence
+        + breakdown.previous_pivot
+        + breakdown.psychological_level
+    )
+
+
+def _get_interpretation(total: int) -> ConfluenceInterpretation:
+    """Get interpretation label from total score."""
+    if total >= 7:
+        return "major"
+    if total >= 5:
+        return "significant"
+    if total >= 3:
+        return "important"
+    return "standard"
 
 
 # --- Main Functions ---

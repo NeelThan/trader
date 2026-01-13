@@ -57,6 +57,18 @@ class TestWorkflowModelsImports:
 
         assert TradeCategory is not None
 
+    def test_can_import_confluence_breakdown(self) -> None:
+        """ConfluenceBreakdown model should be importable."""
+        from trader.workflow import ConfluenceBreakdown
+
+        assert ConfluenceBreakdown is not None
+
+    def test_can_import_confluence_score(self) -> None:
+        """ConfluenceScore model should be importable."""
+        from trader.workflow import ConfluenceScore
+
+        assert ConfluenceScore is not None
+
 
 class TestTrendAssessment:
     """Tests for TrendAssessment model."""
@@ -540,3 +552,258 @@ class TestCategorizeTradeFunction:
         )
 
         assert result in ["with_trend", "counter_trend", "reversal_attempt"]
+
+
+class TestConfluenceBreakdown:
+    """Tests for ConfluenceBreakdown model."""
+
+    def test_create_default_breakdown(self) -> None:
+        """Should create breakdown with default values."""
+        from trader.workflow import ConfluenceBreakdown
+
+        breakdown = ConfluenceBreakdown()
+
+        assert breakdown.base_fib_level == 1
+        assert breakdown.same_tf_confluence == 0
+        assert breakdown.higher_tf_confluence == 0
+        assert breakdown.previous_pivot == 0
+        assert breakdown.psychological_level == 0
+
+    def test_create_breakdown_with_values(self) -> None:
+        """Should create breakdown with custom values."""
+        from trader.workflow import ConfluenceBreakdown
+
+        breakdown = ConfluenceBreakdown(
+            base_fib_level=1,
+            same_tf_confluence=2,
+            higher_tf_confluence=4,
+            previous_pivot=2,
+            psychological_level=1,
+        )
+
+        assert breakdown.same_tf_confluence == 2
+        assert breakdown.higher_tf_confluence == 4
+        assert breakdown.previous_pivot == 2
+
+
+class TestConfluenceScore:
+    """Tests for ConfluenceScore model."""
+
+    def test_create_standard_score(self) -> None:
+        """Should create standard interpretation for low scores."""
+        from trader.workflow import ConfluenceBreakdown, ConfluenceScore
+
+        breakdown = ConfluenceBreakdown(base_fib_level=1)
+        score = ConfluenceScore(
+            total=1,
+            breakdown=breakdown,
+            interpretation="standard",
+        )
+
+        assert score.total == 1
+        assert score.interpretation == "standard"
+
+    def test_create_important_score(self) -> None:
+        """Should create important interpretation for score 3-4."""
+        from trader.workflow import ConfluenceBreakdown, ConfluenceScore
+
+        breakdown = ConfluenceBreakdown(base_fib_level=1, same_tf_confluence=2)
+        score = ConfluenceScore(
+            total=3,
+            breakdown=breakdown,
+            interpretation="important",
+        )
+
+        assert score.total == 3
+        assert score.interpretation == "important"
+
+    def test_create_significant_score(self) -> None:
+        """Should create significant interpretation for score 5-6."""
+        from trader.workflow import ConfluenceBreakdown, ConfluenceScore
+
+        breakdown = ConfluenceBreakdown(
+            base_fib_level=1, same_tf_confluence=2, higher_tf_confluence=2
+        )
+        score = ConfluenceScore(
+            total=5,
+            breakdown=breakdown,
+            interpretation="significant",
+        )
+
+        assert score.total == 5
+        assert score.interpretation == "significant"
+
+    def test_create_major_score(self) -> None:
+        """Should create major interpretation for score 7+."""
+        from trader.workflow import ConfluenceBreakdown, ConfluenceScore
+
+        breakdown = ConfluenceBreakdown(
+            base_fib_level=1,
+            same_tf_confluence=2,
+            higher_tf_confluence=4,
+            psychological_level=1,
+        )
+        score = ConfluenceScore(
+            total=8,
+            breakdown=breakdown,
+            interpretation="major",
+        )
+
+        assert score.total == 8
+        assert score.interpretation == "major"
+
+    def test_interpretation_values(self) -> None:
+        """Interpretation should only accept valid values."""
+        from trader.workflow import ConfluenceBreakdown, ConfluenceScore
+
+        breakdown = ConfluenceBreakdown()
+        for interp in ["standard", "important", "significant", "major"]:
+            score = ConfluenceScore(
+                total=1,
+                breakdown=breakdown,
+                interpretation=interp,
+            )
+            assert score.interpretation == interp
+
+
+class TestCalculateConfluenceScore:
+    """Tests for calculate_confluence_score function."""
+
+    def test_base_score_is_one(self) -> None:
+        """Base confluence score should be 1 for any Fib level."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=100.0,
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[],
+        )
+
+        assert score.total >= 1
+        assert score.breakdown.base_fib_level == 1
+
+    def test_same_tf_adds_one_per_level(self) -> None:
+        """Each same-TF level within tolerance adds +1."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=101.0,  # Non-psychological level
+            same_tf_levels=[101.3, 100.8],  # Within 0.5% tolerance
+            higher_tf_levels=[],
+            previous_pivots=[],
+        )
+
+        assert score.breakdown.same_tf_confluence == 2
+        assert score.total == 3  # 1 base + 2 same TF
+
+    def test_higher_tf_adds_two_per_level(self) -> None:
+        """Each higher-TF level within tolerance adds +2."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=101.0,  # Non-psychological level
+            same_tf_levels=[],
+            higher_tf_levels=[101.2, 100.9],  # Within 0.5% tolerance
+            previous_pivots=[],
+        )
+
+        assert score.breakdown.higher_tf_confluence == 4  # 2 levels x 2 points
+        assert score.total == 5  # 1 base + 4 higher TF
+
+    def test_previous_pivot_adds_two(self) -> None:
+        """Previous major pivot within tolerance adds +2."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=101.0,  # Non-psychological level
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[101.1],  # Within tolerance
+        )
+
+        assert score.breakdown.previous_pivot == 2
+        assert score.total == 3  # 1 base + 2 pivot
+
+    def test_psychological_level_adds_one(self) -> None:
+        """Round numbers (psychological levels) add +1."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=50000.0,  # Round number
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[],
+        )
+
+        assert score.breakdown.psychological_level == 1
+        assert score.total == 2  # 1 base + 1 psychological
+
+    def test_interpretation_standard(self) -> None:
+        """Score 1-2 should have standard interpretation."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=100.0,
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[],
+        )
+
+        assert score.interpretation == "standard"
+
+    def test_interpretation_important(self) -> None:
+        """Score 3-4 should have important interpretation."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=100.0,
+            same_tf_levels=[100.1, 99.9],  # +2
+            higher_tf_levels=[],
+            previous_pivots=[],
+        )
+
+        assert score.interpretation == "important"
+
+    def test_interpretation_significant(self) -> None:
+        """Score 5-6 should have significant interpretation."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=100.0,
+            same_tf_levels=[],
+            higher_tf_levels=[100.1, 99.9],  # +4
+            previous_pivots=[],
+        )
+
+        assert score.interpretation == "significant"
+
+    def test_interpretation_major(self) -> None:
+        """Score 7+ should have major interpretation."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=50000.0,  # +1 psychological
+            same_tf_levels=[50010.0],  # +1
+            higher_tf_levels=[50005.0, 49995.0],  # +4
+            previous_pivots=[50020.0],  # +2
+        )
+
+        assert score.total >= 7
+        assert score.interpretation == "major"
+
+    def test_levels_outside_tolerance_ignored(self) -> None:
+        """Levels outside tolerance should not add to score."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=101.0,  # Non-psychological level
+            same_tf_levels=[106.0, 96.0],  # Outside 0.5% tolerance
+            higher_tf_levels=[111.0],  # Outside tolerance
+            previous_pivots=[91.0],  # Outside tolerance
+        )
+
+        assert score.breakdown.same_tf_confluence == 0
+        assert score.breakdown.higher_tf_confluence == 0
+        assert score.breakdown.previous_pivot == 0
+        assert score.total == 1  # Only base score
