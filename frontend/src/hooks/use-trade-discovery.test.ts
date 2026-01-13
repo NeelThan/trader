@@ -6,11 +6,12 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { useTradeDiscovery } from "./use-trade-discovery";
+import { useTradeDiscovery, categorizeTradeFromTrends, detectTrendPhaseFromTrend } from "./use-trade-discovery";
 import * as trendAlignmentModule from "./use-trend-alignment";
 import * as signalSuggestionsModule from "./use-signal-suggestions";
 import type { TimeframeTrend } from "./use-trend-alignment";
 import type { SignalSuggestion } from "./use-signal-suggestions";
+import type { TradeCategory, TrendPhase } from "@/types/workflow-v2";
 
 // Mock the dependent hooks
 vi.mock("./use-trend-alignment");
@@ -23,13 +24,11 @@ const createTrend = (
   error: string | null = null
 ): TimeframeTrend => ({
   timeframe: timeframe as TimeframeTrend["timeframe"],
-  trend,
-  strength: 50,
-  swingSignal: "neutral" as const,
-  rsiSignal: "neutral" as const,
-  macdSignal: "neutral" as const,
-  rsiValue: 50,
-  macdHistogram: 0,
+  trend: trend === "neutral" ? "ranging" : trend,
+  confidence: 50,
+  swing: { signal: "neutral" as const },
+  rsi: { signal: "neutral" as const, value: 50 },
+  macd: { signal: "neutral" as const, value: 0 },
   isLoading: false,
   error,
 });
@@ -305,7 +304,7 @@ describe("useTradeDiscovery", () => {
       expect(opp.higherTrend).toBeDefined();
       expect(opp.higherTrend?.trend).toBe("bullish");
       expect(opp.lowerTrend).toBeDefined();
-      expect(opp.lowerTrend?.trend).toBe("neutral");
+      expect(opp.lowerTrend?.trend).toBe("ranging"); // "neutral" maps to "ranging"
     });
 
     it("should handle missing trend data gracefully", () => {
@@ -608,5 +607,310 @@ describe("useTradeDiscovery", () => {
       expect(supportOpp?.entryZone).toBe("support");
       expect(resistanceOpp?.entryZone).toBe("resistance");
     });
+  });
+
+  // ===========================================================================
+  // Trade Category Assignment
+  // ===========================================================================
+
+  describe("trade category assignment", () => {
+    it("should assign with_trend category when trading with higher TF trend", () => {
+      const trends = [
+        createTrend("1D", "bullish"),
+        createTrend("4H", "bullish"),
+      ];
+      const signals = [createSignal("sig-1", "LONG", "1D", "4H")];
+
+      vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
+        trends,
+        overall: "bullish",
+        isLoading: false,
+        refresh: mockRefresh,
+      });
+
+      vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
+        signals,
+        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+      });
+
+      const { result } = renderHook(() =>
+        useTradeDiscovery({ symbol: "DJI" })
+      );
+
+      expect(result.current.opportunities[0].category).toBe("with_trend");
+    });
+
+    it("should assign counter_trend category when trading against higher TF with high confidence", () => {
+      const trends = [
+        createTrend("1D", "bearish"),
+        createTrend("4H", "bullish"),
+      ];
+      // High confidence signal against the higher TF trend
+      const signals = [createSignal("sig-1", "LONG", "1D", "4H", { confidence: 80 })];
+
+      vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
+        trends,
+        overall: "bearish",
+        isLoading: false,
+        refresh: mockRefresh,
+      });
+
+      vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
+        signals,
+        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+      });
+
+      const { result } = renderHook(() =>
+        useTradeDiscovery({ symbol: "DJI" })
+      );
+
+      expect(result.current.opportunities[0].category).toBe("counter_trend");
+    });
+
+    it("should assign reversal_attempt category when trading against higher TF with low confidence", () => {
+      const trends = [
+        createTrend("1D", "bearish"),
+        createTrend("4H", "neutral"),
+      ];
+      // Low confidence signal against the higher TF trend
+      const signals = [createSignal("sig-1", "LONG", "1D", "4H", { confidence: 50 })];
+
+      vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
+        trends,
+        overall: "bearish",
+        isLoading: false,
+        refresh: mockRefresh,
+      });
+
+      vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
+        signals,
+        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+      });
+
+      const { result } = renderHook(() =>
+        useTradeDiscovery({ symbol: "DJI" })
+      );
+
+      expect(result.current.opportunities[0].category).toBe("reversal_attempt");
+    });
+
+    it("should assign with_trend for short trades in bearish higher TF", () => {
+      const trends = [
+        createTrend("1D", "bearish"),
+        createTrend("4H", "bearish"),
+      ];
+      const signals = [createSignal("sig-1", "SHORT", "1D", "4H")];
+
+      vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
+        trends,
+        overall: "bearish",
+        isLoading: false,
+        refresh: mockRefresh,
+      });
+
+      vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
+        signals,
+        counts: { longCount: 0, shortCount: 1, waitCount: 0, totalCount: 1 },
+      });
+
+      const { result } = renderHook(() =>
+        useTradeDiscovery({ symbol: "DJI" })
+      );
+
+      expect(result.current.opportunities[0].category).toBe("with_trend");
+    });
+  });
+
+  // ===========================================================================
+  // Trend Phase Detection
+  // ===========================================================================
+
+  describe("trend phase detection", () => {
+    it("should detect impulse phase when trending strongly with aligned indicators", () => {
+      // Phase is detected from lower TF (4H - entry timeframe)
+      const trends = [
+        createTrend("1D", "bullish"),
+        {
+          ...createTrend("4H", "bullish"),
+          trend: "bullish" as const,
+          confidence: 80,
+          swing: { signal: "bullish" as const },
+          rsi: { signal: "bullish" as const, value: 65 },
+          macd: { signal: "bullish" as const, value: 10 },
+        },
+      ];
+      const signals = [createSignal("sig-1", "LONG", "1D", "4H")];
+
+      vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
+        trends,
+        overall: "bullish",
+        isLoading: false,
+        refresh: mockRefresh,
+      });
+
+      vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
+        signals,
+        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+      });
+
+      const { result } = renderHook(() =>
+        useTradeDiscovery({ symbol: "DJI" })
+      );
+
+      expect(result.current.opportunities[0].trendPhase).toBe("impulse");
+    });
+
+    it("should detect correction phase when momentum diverges from trend", () => {
+      // Phase is detected from lower TF (4H - entry timeframe)
+      const trends = [
+        createTrend("1D", "bullish"),
+        {
+          ...createTrend("4H", "bullish"),
+          trend: "bullish" as const,
+          confidence: 60,
+          swing: { signal: "bullish" as const },
+          rsi: { signal: "bearish" as const, value: 40 },
+          macd: { signal: "bearish" as const, value: -5 },
+        },
+      ];
+      const signals = [createSignal("sig-1", "LONG", "1D", "4H")];
+
+      vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
+        trends,
+        overall: "bullish",
+        isLoading: false,
+        refresh: mockRefresh,
+      });
+
+      vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
+        signals,
+        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+      });
+
+      const { result } = renderHook(() =>
+        useTradeDiscovery({ symbol: "DJI" })
+      );
+
+      expect(result.current.opportunities[0].trendPhase).toBe("correction");
+    });
+
+    it("should default to continuation phase for neutral conditions", () => {
+      const trends = [
+        createTrend("1D", "neutral"),
+        createTrend("4H", "neutral"),
+      ];
+      const signals = [createSignal("sig-1", "LONG", "1D", "4H")];
+
+      vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
+        trends,
+        overall: "neutral",
+        isLoading: false,
+        refresh: mockRefresh,
+      });
+
+      vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
+        signals,
+        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+      });
+
+      const { result } = renderHook(() =>
+        useTradeDiscovery({ symbol: "DJI" })
+      );
+
+      // Neutral defaults to continuation
+      expect(result.current.opportunities[0].trendPhase).toBe("continuation");
+    });
+  });
+});
+
+// ===========================================================================
+// Helper Function Tests
+// ===========================================================================
+
+describe("categorizeTradeFromTrends", () => {
+  it("should return with_trend for aligned long trade", () => {
+    const result = categorizeTradeFromTrends("bullish", "bullish", "long", 75);
+    expect(result).toBe("with_trend");
+  });
+
+  it("should return with_trend for aligned short trade", () => {
+    const result = categorizeTradeFromTrends("bearish", "bearish", "short", 75);
+    expect(result).toBe("with_trend");
+  });
+
+  it("should return counter_trend for high confidence against trend", () => {
+    const result = categorizeTradeFromTrends("bearish", "bullish", "long", 75);
+    expect(result).toBe("counter_trend");
+  });
+
+  it("should return reversal_attempt for low confidence against trend", () => {
+    const result = categorizeTradeFromTrends("bearish", "neutral", "long", 50);
+    expect(result).toBe("reversal_attempt");
+  });
+
+  it("should handle ranging higher TF as with_trend", () => {
+    const result = categorizeTradeFromTrends("ranging", "bullish", "long", 75);
+    expect(result).toBe("with_trend");
+  });
+});
+
+describe("detectTrendPhaseFromTrend", () => {
+  const baseTrend: TimeframeTrend = {
+    timeframe: "1D",
+    trend: "bullish",
+    confidence: 50,
+    swing: { signal: "neutral" },
+    rsi: { signal: "neutral" },
+    macd: { signal: "neutral" },
+    isLoading: false,
+    error: null,
+  };
+
+  it("should return impulse for high confidence with aligned indicators", () => {
+    const trend: TimeframeTrend = {
+      ...baseTrend,
+      confidence: 80,
+      swing: { signal: "bullish" },
+      rsi: { signal: "bullish", value: 65 },
+      macd: { signal: "bullish", value: 10 },
+    };
+    const result = detectTrendPhaseFromTrend(trend);
+    expect(result).toBe("impulse");
+  });
+
+  it("should return correction when momentum diverges from swing trend", () => {
+    const trend: TimeframeTrend = {
+      ...baseTrend,
+      trend: "bullish",
+      confidence: 60,
+      swing: { signal: "bullish" },
+      rsi: { signal: "bearish", value: 40 },
+      macd: { signal: "bearish", value: -5 },
+    };
+    const result = detectTrendPhaseFromTrend(trend);
+    expect(result).toBe("correction");
+  });
+
+  it("should return exhaustion for low confidence in trending market", () => {
+    const trend: TimeframeTrend = {
+      ...baseTrend,
+      trend: "bullish",
+      confidence: 30,
+      swing: { signal: "neutral" },
+      rsi: { signal: "bearish", value: 35 },
+      macd: { signal: "bearish", value: -2 },
+    };
+    const result = detectTrendPhaseFromTrend(trend);
+    expect(result).toBe("exhaustion");
+  });
+
+  it("should return continuation as default", () => {
+    const trend: TimeframeTrend = {
+      ...baseTrend,
+      trend: "ranging",
+      confidence: 50,
+    };
+    const result = detectTrendPhaseFromTrend(trend);
+    expect(result).toBe("continuation");
   });
 });

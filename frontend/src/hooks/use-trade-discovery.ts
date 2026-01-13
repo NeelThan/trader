@@ -6,9 +6,10 @@
  */
 
 import { useMemo } from "react";
-import { useTrendAlignment, type TimeframeTrend } from "./use-trend-alignment";
+import { useTrendAlignment, type TimeframeTrend, type TrendDirection } from "./use-trend-alignment";
 import { useSignalSuggestions, type SignalSuggestion } from "./use-signal-suggestions";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
+import type { TradeCategory, TrendPhase } from "@/types/workflow-v2";
 
 /**
  * A discovered trade opportunity
@@ -42,6 +43,10 @@ export type TradeOpportunity = {
   higherTrend: TimeframeTrend | undefined;
   /** Trend data for lower TF */
   lowerTrend: TimeframeTrend | undefined;
+  /** Trade category for position sizing risk */
+  category: TradeCategory;
+  /** Current trend phase */
+  trendPhase: TrendPhase;
 };
 
 export type UseTradeDiscoveryOptions = {
@@ -66,6 +71,105 @@ export type UseTradeDiscoveryResult = {
 };
 
 /**
+ * Categorize a trade based on trend alignment.
+ *
+ * - WITH_TREND: Trading with the higher TF trend
+ * - COUNTER_TREND: Trading against higher TF at major confluence (high confidence)
+ * - REVERSAL_ATTEMPT: Trading against higher TF with low confluence/confidence
+ */
+export function categorizeTradeFromTrends(
+  higherTfTrend: TrendDirection,
+  lowerTfTrend: TrendDirection,
+  direction: "long" | "short",
+  confidence: number
+): TradeCategory {
+  // Determine if trade aligns with higher TF trend
+  const isWithTrend =
+    (higherTfTrend === "bullish" && direction === "long") ||
+    (higherTfTrend === "bearish" && direction === "short") ||
+    higherTfTrend === "ranging"; // Ranging higher TF = no strong bias
+
+  if (isWithTrend) {
+    return "with_trend";
+  }
+
+  // Trading against the higher TF trend
+  // High confidence (>= 70) suggests strong confluence = counter_trend
+  // Low confidence (< 70) = reversal_attempt
+  if (confidence >= 70) {
+    return "counter_trend";
+  }
+
+  return "reversal_attempt";
+}
+
+/**
+ * Detect the current trend phase from indicator data.
+ *
+ * - IMPULSE: Strong trend with aligned momentum indicators
+ * - CORRECTION: Swing trend intact but momentum diverging
+ * - EXHAUSTION: Low confidence, momentum against swing
+ * - CONTINUATION: Default/neutral state
+ */
+export function detectTrendPhaseFromTrend(trend: TimeframeTrend): TrendPhase {
+  const { confidence, swing, rsi, macd, trend: direction } = trend;
+
+  // Count aligned momentum indicators
+  const swingDirection = swing.signal;
+  const rsiDirection = rsi.signal;
+  const macdDirection = macd.signal;
+
+  // For bullish trend
+  if (direction === "bullish") {
+    const momentumAligned =
+      rsiDirection === "bullish" && macdDirection === "bullish";
+    const momentumDiverging =
+      rsiDirection === "bearish" || macdDirection === "bearish";
+
+    // High confidence + aligned momentum = impulse
+    if (confidence >= 70 && momentumAligned && swingDirection === "bullish") {
+      return "impulse";
+    }
+
+    // Swing bullish but momentum diverging = correction
+    if (swingDirection === "bullish" && momentumDiverging) {
+      return "correction";
+    }
+
+    // Low confidence with diverging momentum = exhaustion
+    if (confidence < 40 && momentumDiverging) {
+      return "exhaustion";
+    }
+  }
+
+  // For bearish trend
+  if (direction === "bearish") {
+    const momentumAligned =
+      rsiDirection === "bearish" && macdDirection === "bearish";
+    const momentumDiverging =
+      rsiDirection === "bullish" || macdDirection === "bullish";
+
+    // High confidence + aligned momentum = impulse
+    if (confidence >= 70 && momentumAligned && swingDirection === "bearish") {
+      return "impulse";
+    }
+
+    // Swing bearish but momentum diverging = correction
+    if (swingDirection === "bearish" && momentumDiverging) {
+      return "correction";
+    }
+
+    // Low confidence with diverging momentum = exhaustion
+    if (confidence < 40 && momentumDiverging) {
+      return "exhaustion";
+    }
+  }
+
+  // Default to continuation
+  return "continuation";
+}
+
+/**
  * Convert signal suggestion to trade opportunity
  */
 function signalToOpportunity(
@@ -79,12 +183,27 @@ function signalToOpportunity(
   const higherTrend = trends.find((t) => t.timeframe === signal.higherTF);
   const lowerTrend = trends.find((t) => t.timeframe === signal.lowerTF);
 
+  const direction = signal.type === "LONG" ? "long" : "short";
+
+  // Calculate category from trends
+  const category = categorizeTradeFromTrends(
+    higherTrend?.trend ?? "ranging",
+    lowerTrend?.trend ?? "ranging",
+    direction,
+    signal.confidence
+  );
+
+  // Detect trend phase from the lower TF (entry timeframe)
+  const trendPhase = lowerTrend
+    ? detectTrendPhaseFromTrend(lowerTrend)
+    : "continuation";
+
   return {
     id: signal.id,
     symbol,
     higherTimeframe: signal.higherTF,
     lowerTimeframe: signal.lowerTF,
-    direction: signal.type === "LONG" ? "long" : "short",
+    direction,
     confidence: signal.confidence,
     tradingStyle: signal.tradingStyle as "position" | "swing" | "intraday",
     description: signal.description,
@@ -94,6 +213,8 @@ function signalToOpportunity(
     signal,
     higherTrend,
     lowerTrend,
+    category,
+    trendPhase,
   };
 }
 

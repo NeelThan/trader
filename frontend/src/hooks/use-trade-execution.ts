@@ -10,6 +10,11 @@ import { createJournalEntry, type JournalEntryRequest } from "@/lib/api";
 import { withRetry, formatRetryError, DEFAULT_RETRY_CONFIG } from "@/lib/retry";
 import type { TradeOpportunity } from "./use-trade-discovery";
 import type { ValidationResult } from "./use-trade-validation";
+import {
+  type TradeCategory,
+  TRADE_CATEGORY_RISK,
+  TRADE_CATEGORY_EXPLANATIONS,
+} from "@/types/workflow-v2";
 
 /**
  * Position sizing data
@@ -67,9 +72,27 @@ export type CapturedValidation = {
   targets: number[];
 };
 
+/**
+ * Category-based sizing information
+ */
+export type CategoryInfo = {
+  /** The trade category */
+  category: TradeCategory;
+  /** Risk multiplier for this category (0.25 - 1.0) */
+  riskMultiplier: number;
+  /** Base risk percentage before category adjustment */
+  baseRiskPercentage: number;
+  /** Risk percentage after category adjustment */
+  adjustedRiskPercentage: number;
+  /** Human-readable explanation of the category */
+  explanation: string;
+};
+
 export type UseTradeExecutionResult = {
   /** Current sizing data */
   sizing: SizingData;
+  /** Category-based sizing information */
+  categoryInfo: CategoryInfo;
   /** Captured validation values (persisted across phase changes) */
   capturedValidation: CapturedValidation;
   /** Whether there are captured suggested values available */
@@ -245,9 +268,31 @@ export function useTradeExecution({
     setJournalEntryId(null);
   }, [opportunity?.id]);
 
+  // Calculate category info
+  const categoryInfo = useMemo((): CategoryInfo => {
+    const category = opportunity?.category ?? "with_trend";
+    const riskMultiplier = TRADE_CATEGORY_RISK[category];
+    const baseRiskPercentage = accountSettings.riskPercentage;
+    const adjustedRiskPercentage = baseRiskPercentage * riskMultiplier;
+    const explanation = TRADE_CATEGORY_EXPLANATIONS[category];
+
+    return {
+      category,
+      riskMultiplier,
+      baseRiskPercentage,
+      adjustedRiskPercentage,
+      explanation,
+    };
+  }, [opportunity?.category, accountSettings.riskPercentage]);
+
   // Calculate full sizing data
   const sizing = useMemo((): SizingData => {
     const { accountBalance, riskPercentage } = accountSettings;
+
+    // Apply category-based risk adjustment
+    const category = opportunity?.category ?? "with_trend";
+    const categoryMultiplier = TRADE_CATEGORY_RISK[category];
+    const adjustedRiskPercentage = riskPercentage * categoryMultiplier;
 
     // Priority: User overrides > Captured validation values > Current validation > Fallback
     const entryPrice =
@@ -267,9 +312,10 @@ export function useTradeExecution({
       [];
     const direction = opportunity?.direction ?? "long";
 
+    // Use category-adjusted risk percentage for position sizing
     const { positionSize, riskAmount, stopDistance, guardrailWarnings } = calculatePositionSize(
       accountBalance,
-      riskPercentage,
+      adjustedRiskPercentage,
       entryPrice,
       stopLoss
     );
@@ -300,7 +346,7 @@ export function useTradeExecution({
       isValid,
       guardrailWarnings,
     };
-  }, [accountSettings, tradeOverrides, capturedValidation, validation, opportunity?.direction]);
+  }, [accountSettings, tradeOverrides, capturedValidation, validation, opportunity?.direction, opportunity?.category]);
 
   // Update sizing - route to appropriate state based on field
   const updateSizing = useCallback((updates: Partial<SizingData>) => {
@@ -386,6 +432,7 @@ export function useTradeExecution({
 
   return {
     sizing,
+    categoryInfo,
     capturedValidation,
     hasCapturedSuggestions,
     tradeOverrides,

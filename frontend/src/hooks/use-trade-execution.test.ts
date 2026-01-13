@@ -49,6 +49,8 @@ const mockOpportunity: TradeOpportunity = {
   },
   higherTrend: undefined,
   lowerTrend: undefined,
+  category: "with_trend",
+  trendPhase: "continuation",
 };
 
 // Mock validation result
@@ -850,6 +852,110 @@ describe("useTradeExecution", () => {
       });
 
       expect(result.current.error).toBeNull();
+    });
+  });
+
+  // ===========================================================================
+  // Category-Based Sizing
+  // ===========================================================================
+
+  describe("category-based sizing", () => {
+    it("should expose category info from opportunity", () => {
+      const { result } = renderHook(() =>
+        useTradeExecution({
+          opportunity: mockOpportunity,
+          validation: createMockValidation(),
+          enabled: true,
+        })
+      );
+
+      expect(result.current.categoryInfo).toBeDefined();
+      expect(result.current.categoryInfo.category).toBe("with_trend");
+    });
+
+    it("should calculate category-adjusted risk for with_trend", () => {
+      const { result } = renderHook(() =>
+        useTradeExecution({
+          opportunity: { ...mockOpportunity, category: "with_trend" },
+          validation: createMockValidation({
+            suggestedEntry: 100,
+            suggestedStop: 95,
+          }),
+          enabled: true,
+        })
+      );
+
+      // with_trend = 100% of base risk
+      // Base risk: 2%, so adjusted risk: 2%
+      expect(result.current.categoryInfo.adjustedRiskPercentage).toBe(2);
+      expect(result.current.categoryInfo.riskMultiplier).toBe(1.0);
+    });
+
+    it("should calculate category-adjusted risk for counter_trend", () => {
+      const { result } = renderHook(() =>
+        useTradeExecution({
+          opportunity: { ...mockOpportunity, category: "counter_trend" },
+          validation: createMockValidation({
+            suggestedEntry: 100,
+            suggestedStop: 95,
+          }),
+          enabled: true,
+        })
+      );
+
+      // counter_trend = 50% of base risk
+      // Base risk: 2%, so adjusted risk: 1%
+      expect(result.current.categoryInfo.adjustedRiskPercentage).toBe(1);
+      expect(result.current.categoryInfo.riskMultiplier).toBe(0.5);
+    });
+
+    it("should calculate category-adjusted risk for reversal_attempt", () => {
+      const { result } = renderHook(() =>
+        useTradeExecution({
+          opportunity: { ...mockOpportunity, category: "reversal_attempt" },
+          validation: createMockValidation({
+            suggestedEntry: 100,
+            suggestedStop: 95,
+          }),
+          enabled: true,
+        })
+      );
+
+      // reversal_attempt = 25% of base risk
+      // Base risk: 2%, so adjusted risk: 0.5%
+      expect(result.current.categoryInfo.adjustedRiskPercentage).toBe(0.5);
+      expect(result.current.categoryInfo.riskMultiplier).toBe(0.25);
+    });
+
+    it("should use category-adjusted risk for position size calculation", () => {
+      const { result } = renderHook(() =>
+        useTradeExecution({
+          opportunity: { ...mockOpportunity, category: "counter_trend" },
+          validation: createMockValidation({
+            suggestedEntry: 100,
+            suggestedStop: 95,
+          }),
+          enabled: true,
+        })
+      );
+
+      // Account: 10000, Base risk: 2%, Adjusted for counter_trend: 1%
+      // Risk amount: 100, Stop distance: 5
+      // Position size: 100 / 5 = 20
+      expect(result.current.sizing.riskAmount).toBe(100); // 1% of 10000
+      expect(result.current.sizing.positionSize).toBe(20);
+    });
+
+    it("should include category explanation", () => {
+      const { result } = renderHook(() =>
+        useTradeExecution({
+          opportunity: { ...mockOpportunity, category: "counter_trend" },
+          validation: createMockValidation(),
+          enabled: true,
+        })
+      );
+
+      expect(result.current.categoryInfo.explanation).toContain("against");
     });
   });
 });
