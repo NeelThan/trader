@@ -24,6 +24,34 @@ type LevelTooltipProps = {
 };
 
 /**
+ * Get confluence label from heat score (0-100)
+ *
+ * - 0-20: Standard (basic Fib level, no special confluence)
+ * - 21-40: Important (some confluence with other levels)
+ * - 41-60: Significant (multiple confluences, key level)
+ * - 61-80: Major (high confluence, strong level)
+ * - 81+: Critical (exceptional confluence, very strong level)
+ */
+export function getConfluenceLabel(heat: number): string {
+  if (heat >= 81) return "Critical";
+  if (heat >= 61) return "Major";
+  if (heat >= 41) return "Significant";
+  if (heat >= 21) return "Important";
+  return "Standard";
+}
+
+/**
+ * Get color for confluence level based on heat score
+ */
+export function getConfluenceColor(heat: number): string {
+  if (heat >= 81) return "#ef4444"; // red - critical
+  if (heat >= 61) return "#f97316"; // orange - major
+  if (heat >= 41) return "#eab308"; // yellow - significant
+  if (heat >= 21) return "#3b82f6"; // blue - important
+  return "#9ca3af"; // gray - standard
+}
+
+/**
  * Find levels near the crosshair price
  */
 function findNearbyLevels(
@@ -67,50 +95,85 @@ export function LevelTooltip({
         <div className="text-xs text-muted-foreground">
           {nearbyLevels.length === 1 ? "Level" : `${nearbyLevels.length} Levels`} at crosshair
         </div>
-        {nearbyLevels.slice(0, 5).map((level, idx) => (
-          <div
-            key={`${level.id}-${idx}`}
-            className="flex items-center gap-2 text-xs"
-          >
-            {/* Timeframe badge */}
-            <Badge
-              variant="outline"
-              className="text-[10px] px-1 py-0 h-4"
-              style={{
-                borderColor: TIMEFRAME_COLORS[level.timeframe] || "#888",
-                color: TIMEFRAME_COLORS[level.timeframe] || "#888",
-              }}
+        {nearbyLevels.slice(0, 5).map((level, idx) => {
+          const confluenceLabel = getConfluenceLabel(level.heat);
+          const confluenceColor = getConfluenceColor(level.heat);
+
+          return (
+            <div
+              key={`${level.id}-${idx}`}
+              className="flex flex-col gap-1"
             >
-              {level.timeframe}
-            </Badge>
+              <div className="flex items-center gap-2 text-xs">
+                {/* Timeframe badge */}
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-1 py-0 h-4"
+                  style={{
+                    borderColor: TIMEFRAME_COLORS[level.timeframe] || "#888",
+                    color: TIMEFRAME_COLORS[level.timeframe] || "#888",
+                  }}
+                >
+                  {level.timeframe}
+                </Badge>
 
-            {/* Strategy */}
-            <span className="text-muted-foreground">
-              {getStrategyName(level.strategy)}
-            </span>
+                {/* Strategy */}
+                <span className="text-muted-foreground">
+                  {getStrategyName(level.strategy)}
+                </span>
 
-            {/* Ratio */}
-            <span className="font-medium">{level.label}</span>
+                {/* Ratio */}
+                <span className="font-medium">{level.label}</span>
 
-            {/* Direction */}
-            <span
-              className="text-[10px] uppercase"
-              style={{
-                color:
-                  level.direction === "long"
-                    ? DIRECTION_COLORS.long
-                    : DIRECTION_COLORS.short,
-              }}
-            >
-              {level.direction}
-            </span>
+                {/* Direction */}
+                <span
+                  className="text-[10px] uppercase"
+                  style={{
+                    color:
+                      level.direction === "long"
+                        ? DIRECTION_COLORS.long
+                        : DIRECTION_COLORS.short,
+                  }}
+                >
+                  {level.direction}
+                </span>
 
-            {/* Price */}
-            <span className="ml-auto font-mono text-muted-foreground">
-              {formatPrice(level.price)}
-            </span>
-          </div>
-        ))}
+                {/* Price */}
+                <span className="ml-auto font-mono text-muted-foreground">
+                  {formatPrice(level.price)}
+                </span>
+              </div>
+
+              {/* Confluence indicator */}
+              <div className="flex items-center gap-2 pl-1">
+                <div className="flex items-center gap-1">
+                  <div
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: confluenceColor }}
+                  />
+                  <span
+                    className="text-[9px] font-medium"
+                    style={{ color: confluenceColor }}
+                  >
+                    {confluenceLabel}
+                  </span>
+                </div>
+                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${level.heat}%`,
+                      backgroundColor: confluenceColor,
+                    }}
+                  />
+                </div>
+                <span className="text-[9px] text-muted-foreground">
+                  {level.heat}%
+                </span>
+              </div>
+            </div>
+          );
+        })}
         {nearbyLevels.length > 5 && (
           <div className="text-[10px] text-muted-foreground">
             +{nearbyLevels.length - 5} more levels

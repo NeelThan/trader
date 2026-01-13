@@ -15,7 +15,7 @@ const mockFetch = vi.fn(() =>
     status: 500,
     json: () => Promise.resolve({}),
   })
-);
+) as unknown as typeof fetch;
 global.fetch = mockFetch;
 
 describe("useTrendAlignment", () => {

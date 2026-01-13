@@ -65,14 +65,24 @@ describe("useTradeDiscovery", () => {
     // Default mock implementations
     vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
       trends: [],
-      overall: "neutral",
+      overall: {
+        direction: "ranging" as const,
+        strength: "weak" as const,
+        bullishCount: 0,
+        bearishCount: 0,
+        rangingCount: 0,
+        description: "Neutral market",
+      },
       isLoading: false,
       refresh: mockRefresh,
     });
 
     vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
       signals: [],
-      counts: { longCount: 0, shortCount: 0, waitCount: 0, totalCount: 0 },
+      activeSignals: [],
+      longCount: 0,
+      shortCount: 0,
+      waitCount: 0,
     });
   });
 
@@ -98,14 +108,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 1,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -130,14 +150,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bearish",
+        overall: {
+          direction: "bearish" as const,
+          strength: "strong" as const,
+          bullishCount: 0,
+          bearishCount: 2,
+          rangingCount: 0,
+          description: "Bearish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 0, shortCount: 1, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 0,
+        shortCount: 1,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -155,14 +185,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "neutral",
+        overall: {
+          direction: "ranging" as const,
+          strength: "weak" as const,
+          bullishCount: 0,
+          bearishCount: 0,
+          rangingCount: 2,
+          description: "Ranging market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 0, shortCount: 0, waitCount: 1, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 0,
+        shortCount: 0,
+        waitCount: 1,
       });
 
       const { result } = renderHook(() =>
@@ -187,14 +227,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 2, shortCount: 0, waitCount: 0, totalCount: 2 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 2,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -221,14 +271,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 3, shortCount: 0, waitCount: 0, totalCount: 3 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 3,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -250,14 +310,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 2, shortCount: 1, waitCount: 0, totalCount: 3 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 2,
+        shortCount: 1,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -286,14 +356,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 1,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -313,14 +393,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 1,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -341,14 +431,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "neutral",
+        overall: {
+          direction: "ranging" as const,
+          strength: "weak" as const,
+          bullishCount: 0,
+          bearishCount: 0,
+          rangingCount: 2,
+          description: "Ranging market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals: [],
-        counts: { longCount: 0, shortCount: 0, waitCount: 0, totalCount: 0 },
+        activeSignals: [],
+        longCount: 0,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -374,14 +474,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "neutral",
+        overall: {
+          direction: "ranging" as const,
+          strength: "weak" as const,
+          bullishCount: 0,
+          bearishCount: 0,
+          rangingCount: 2,
+          description: "Ranging market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals: [],
-        counts: { longCount: 0, shortCount: 0, waitCount: 0, totalCount: 0 },
+        activeSignals: [],
+        longCount: 0,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -404,14 +514,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals: [],
-        counts: { longCount: 0, shortCount: 0, waitCount: 0, totalCount: 0 },
+        activeSignals: [],
+        longCount: 0,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -431,14 +551,24 @@ describe("useTradeDiscovery", () => {
     it("should reflect loading state from trend alignment", () => {
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends: [],
-        overall: "neutral",
+        overall: {
+          direction: "ranging" as const,
+          strength: "weak" as const,
+          bullishCount: 0,
+          bearishCount: 0,
+          rangingCount: 2,
+          description: "Ranging market",
+        },
         isLoading: true,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals: [],
-        counts: { longCount: 0, shortCount: 0, waitCount: 0, totalCount: 0 },
+        activeSignals: [],
+        longCount: 0,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -451,14 +581,24 @@ describe("useTradeDiscovery", () => {
     it("should not be loading when trend alignment completes", () => {
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends: [createTrend("1D")],
-        overall: "neutral",
+        overall: {
+          direction: "ranging" as const,
+          strength: "weak" as const,
+          bullishCount: 0,
+          bearishCount: 0,
+          rangingCount: 2,
+          description: "Ranging market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals: [],
-        counts: { longCount: 0, shortCount: 0, waitCount: 0, totalCount: 0 },
+        activeSignals: [],
+        longCount: 0,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -477,14 +617,24 @@ describe("useTradeDiscovery", () => {
     it("should expose refresh function from trend alignment", () => {
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends: [],
-        overall: "neutral",
+        overall: {
+          direction: "ranging" as const,
+          strength: "weak" as const,
+          bullishCount: 0,
+          bearishCount: 0,
+          rangingCount: 2,
+          description: "Ranging market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals: [],
-        counts: { longCount: 0, shortCount: 0, waitCount: 0, totalCount: 0 },
+        activeSignals: [],
+        longCount: 0,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -508,14 +658,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 1,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       // Test with different symbols
@@ -548,14 +708,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 3, shortCount: 0, waitCount: 0, totalCount: 3 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 3,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -583,14 +753,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "neutral",
+        overall: {
+          direction: "ranging" as const,
+          strength: "weak" as const,
+          bullishCount: 0,
+          bearishCount: 0,
+          rangingCount: 2,
+          description: "Ranging market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 1, shortCount: 1, waitCount: 0, totalCount: 2 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 1,
+        shortCount: 1,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -623,14 +803,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 1,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -650,14 +840,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bearish",
+        overall: {
+          direction: "bearish" as const,
+          strength: "strong" as const,
+          bullishCount: 0,
+          bearishCount: 2,
+          rangingCount: 0,
+          description: "Bearish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 1,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -677,14 +877,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bearish",
+        overall: {
+          direction: "bearish" as const,
+          strength: "strong" as const,
+          bullishCount: 0,
+          bearishCount: 2,
+          rangingCount: 0,
+          description: "Bearish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 1,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -703,14 +913,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bearish",
+        overall: {
+          direction: "bearish" as const,
+          strength: "strong" as const,
+          bullishCount: 0,
+          bearishCount: 2,
+          rangingCount: 0,
+          description: "Bearish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 0, shortCount: 1, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 0,
+        shortCount: 1,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -743,14 +963,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 1,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -777,14 +1007,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "bullish",
+        overall: {
+          direction: "bullish" as const,
+          strength: "strong" as const,
+          bullishCount: 2,
+          bearishCount: 0,
+          rangingCount: 0,
+          description: "Bullish market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 1,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -803,14 +1043,24 @@ describe("useTradeDiscovery", () => {
 
       vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
         trends,
-        overall: "neutral",
+        overall: {
+          direction: "ranging" as const,
+          strength: "weak" as const,
+          bullishCount: 0,
+          bearishCount: 0,
+          rangingCount: 2,
+          description: "Ranging market",
+        },
         isLoading: false,
         refresh: mockRefresh,
       });
 
       vi.mocked(signalSuggestionsModule.useSignalSuggestions).mockReturnValue({
         signals,
-        counts: { longCount: 1, shortCount: 0, waitCount: 0, totalCount: 1 },
+        activeSignals: signals.filter(s => s.isActive),
+        longCount: 1,
+        shortCount: 0,
+        waitCount: 0,
       });
 
       const { result } = renderHook(() =>
@@ -844,7 +1094,7 @@ describe("categorizeTradeFromTrends", () => {
   });
 
   it("should return reversal_attempt for low confidence against trend", () => {
-    const result = categorizeTradeFromTrends("bearish", "neutral", "long", 50);
+    const result = categorizeTradeFromTrends("bearish", "ranging", "long", 50);
     expect(result).toBe("reversal_attempt");
   });
 

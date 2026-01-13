@@ -3,7 +3,12 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { calculateConfluenceZones, type ConfluenceZone } from "./LevelTooltip";
+import {
+  calculateConfluenceZones,
+  getConfluenceLabel,
+  getConfluenceColor,
+  type ConfluenceZone,
+} from "./LevelTooltip";
 import type { StrategyLevel } from "@/lib/chart-pro/strategy-types";
 
 /**
@@ -12,7 +17,7 @@ import type { StrategyLevel } from "@/lib/chart-pro/strategy-types";
 function createLevel(
   price: number,
   direction: "long" | "short" = "long",
-  timeframe = "1D"
+  timeframe: "1D" | "4H" | "1H" | "15m" | "1m" | "1W" | "1M" = "1D"
 ): StrategyLevel {
   return {
     id: `level-${price}`,
@@ -20,10 +25,11 @@ function createLevel(
     direction,
     timeframe,
     strategy: "RETRACEMENT",
+    type: "retracement",
     ratio: 0.618,
     label: "R61.8%",
-    basePrice: 100,
-    color: "#3b82f6",
+    visible: true,
+    heat: 50,
   };
 }
 
@@ -225,5 +231,63 @@ describe("calculateConfluenceZones", () => {
       const zones = calculateConfluenceZones(levels, 0.1);
       expect(zones).toHaveLength(2);
     });
+  });
+});
+
+// ===========================================================================
+// Confluence Display Helpers
+// ===========================================================================
+
+describe("getConfluenceLabel", () => {
+  it("returns 'Standard' for heat 0-20", () => {
+    expect(getConfluenceLabel(0)).toBe("Standard");
+    expect(getConfluenceLabel(15)).toBe("Standard");
+    expect(getConfluenceLabel(20)).toBe("Standard");
+  });
+
+  it("returns 'Important' for heat 21-40", () => {
+    expect(getConfluenceLabel(21)).toBe("Important");
+    expect(getConfluenceLabel(35)).toBe("Important");
+    expect(getConfluenceLabel(40)).toBe("Important");
+  });
+
+  it("returns 'Significant' for heat 41-60", () => {
+    expect(getConfluenceLabel(41)).toBe("Significant");
+    expect(getConfluenceLabel(50)).toBe("Significant");
+    expect(getConfluenceLabel(60)).toBe("Significant");
+  });
+
+  it("returns 'Major' for heat 61-80", () => {
+    expect(getConfluenceLabel(61)).toBe("Major");
+    expect(getConfluenceLabel(70)).toBe("Major");
+    expect(getConfluenceLabel(80)).toBe("Major");
+  });
+
+  it("returns 'Critical' for heat 81+", () => {
+    expect(getConfluenceLabel(81)).toBe("Critical");
+    expect(getConfluenceLabel(90)).toBe("Critical");
+    expect(getConfluenceLabel(100)).toBe("Critical");
+  });
+});
+
+describe("getConfluenceColor", () => {
+  it("returns gray for Standard (0-20)", () => {
+    expect(getConfluenceColor(15)).toBe("#9ca3af");
+  });
+
+  it("returns blue for Important (21-40)", () => {
+    expect(getConfluenceColor(35)).toBe("#3b82f6");
+  });
+
+  it("returns yellow for Significant (41-60)", () => {
+    expect(getConfluenceColor(50)).toBe("#eab308");
+  });
+
+  it("returns orange for Major (61-80)", () => {
+    expect(getConfluenceColor(70)).toBe("#f97316");
+  });
+
+  it("returns red for Critical (81+)", () => {
+    expect(getConfluenceColor(90)).toBe("#ef4444");
   });
 });

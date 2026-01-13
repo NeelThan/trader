@@ -18,11 +18,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { TrendingUp, TrendingDown, Activity, BarChart3, Info } from "lucide-react";
+import { TrendingUp, TrendingDown, Activity, BarChart3, Info, Zap, RotateCcw, ArrowRight, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TimeframeTrend, OverallAlignment, IndicatorStatus } from "@/hooks/use-trend-alignment";
 import type { Timeframe } from "@/lib/chart-constants";
 import { TIMEFRAME_COLORS } from "@/lib/chart-pro/strategy-types";
+import { detectTrendPhaseFromTrend } from "@/hooks/use-trade-discovery";
+import type { TrendPhase } from "@/types/workflow-v2";
 
 type TrendAlignmentPanelProps = {
   /** Per-timeframe trend data */
@@ -115,6 +117,52 @@ function getSignalIcon(signal: "bullish" | "bearish" | "neutral", size = 14) {
 }
 
 /**
+ * Get phase display information
+ */
+function getPhaseInfo(phase: TrendPhase): {
+  icon: React.ReactNode;
+  label: string;
+  description: string;
+  color: string;
+  bgColor: string;
+} {
+  switch (phase) {
+    case "impulse":
+      return {
+        icon: <Zap size={12} />,
+        label: "Impulse",
+        description: "Strong trending move with aligned momentum indicators",
+        color: "#22c55e",
+        bgColor: "#22c55e20",
+      };
+    case "correction":
+      return {
+        icon: <RotateCcw size={12} />,
+        label: "Correction",
+        description: "Pullback against the trend - potential entry opportunity",
+        color: "#f59e0b",
+        bgColor: "#f59e0b20",
+      };
+    case "continuation":
+      return {
+        icon: <ArrowRight size={12} />,
+        label: "Continuation",
+        description: "Trend intact, momentum building for next move",
+        color: "#3b82f6",
+        bgColor: "#3b82f620",
+      };
+    case "exhaustion":
+      return {
+        icon: <AlertTriangle size={12} />,
+        label: "Exhaustion",
+        description: "Weakening momentum - potential trend reversal warning",
+        color: "#ef4444",
+        bgColor: "#ef444420",
+      };
+  }
+}
+
+/**
  * Format indicator value for display
  */
 function formatIndicatorValue(indicator: IndicatorStatus): string {
@@ -153,6 +201,10 @@ function TimeframeBreakdown({
   const macdScore = getIndicatorScore(trend.macd.signal, INDICATOR_WEIGHTS.macd);
   const totalScore = swingScore + rsiScore + macdScore;
 
+  // Detect trend phase
+  const phase = detectTrendPhaseFromTrend(trend);
+  const phaseInfo = getPhaseInfo(phase);
+
   const getScoreColor = (score: number) => {
     if (score > 0) return chartColors.up;
     if (score < 0) return chartColors.down;
@@ -179,6 +231,33 @@ function TimeframeBreakdown({
         >
           {trend.trend.toUpperCase()}
         </Badge>
+      </div>
+
+      {/* Trend Phase Indicator */}
+      <div
+        className="p-2 rounded flex items-center gap-2"
+        style={{ backgroundColor: phaseInfo.bgColor }}
+      >
+        <div
+          className="flex items-center justify-center w-6 h-6 rounded"
+          style={{ backgroundColor: phaseInfo.color, color: "white" }}
+        >
+          {phaseInfo.icon}
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium">Phase:</span>
+            <span
+              className="text-xs font-bold"
+              style={{ color: phaseInfo.color }}
+            >
+              {phaseInfo.label}
+            </span>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            {phaseInfo.description}
+          </p>
+        </div>
       </div>
 
       {/* Formula explanation */}

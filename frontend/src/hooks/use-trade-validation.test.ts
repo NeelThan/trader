@@ -40,11 +40,14 @@ const createMockOpportunity = (
   reasoning: "Test reasoning",
   isActive: true,
   entryZone: "support",
+  category: "with_trend",
+  trendPhase: "continuation",
   signal: {
     id: "sig-1",
     type: "LONG",
     higherTF: "1D",
     lowerTF: "4H",
+    pairName: "1D → 4H",
     confidence: 75,
     description: "Test signal",
     reasoning: "Test reasoning",
@@ -54,21 +57,23 @@ const createMockOpportunity = (
   },
   higherTrend: {
     timeframe: "1D",
-    direction: "bullish",
+    trend: "bullish",
     confidence: 80,
-    swingHigh: 42500,
-    swingLow: 41800,
+    swing: { signal: "bullish" },
     rsi: { value: 55, signal: "neutral" },
     macd: { signal: "bullish" },
+    isLoading: false,
+    error: null,
   },
   lowerTrend: {
     timeframe: "4H",
-    direction: "bearish",
+    trend: "bearish",
     confidence: 65,
-    swingHigh: 42300,
-    swingLow: 42000,
+    swing: { signal: "bearish" },
     rsi: { value: 35, signal: "bullish" },
     macd: { signal: "bearish" },
+    isLoading: false,
+    error: null,
   },
   ...overrides,
 });
@@ -572,12 +577,13 @@ describe("useTradeValidation", () => {
             direction: "long",
             lowerTrend: {
               timeframe: "4H",
-              direction: "bearish",
+              trend: "bearish",
               confidence: 65,
-              swingHigh: 42300,
-              swingLow: 42000,
+              swing: { signal: "bearish" },
               rsi: { value: 35, signal: "bullish" },
               macd: { signal: "bearish" },
+              isLoading: false,
+              error: null,
             },
           }),
           enabled: true,
@@ -608,12 +614,13 @@ describe("useTradeValidation", () => {
             direction: "short",
             lowerTrend: {
               timeframe: "4H",
-              direction: "bullish",
+              trend: "bullish",
               confidence: 65,
-              swingHigh: 42300,
-              swingLow: 42000,
+              swing: { signal: "bullish" },
               rsi: { value: 75, signal: "bearish" },
               macd: { signal: "bullish" },
+              isLoading: false,
+              error: null,
             },
           }),
           enabled: true,
@@ -626,7 +633,7 @@ describe("useTradeValidation", () => {
       expect(rsiCheck?.passed).toBe(true);
     });
 
-    it("should pass RSI check when signal is neutral", () => {
+    it("should pass RSI check when signal is neutral (non-pullback setup)", () => {
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: [],
         isLoading: false,
@@ -638,18 +645,31 @@ describe("useTradeValidation", () => {
         toggleLevelVisibility: vi.fn(),
       });
 
+      // Non-pullback: both timeframes bullish for long trade
+      // In non-pullback mode, neutral RSI passes
       const { result } = renderHook(() =>
         useTradeValidation({
           opportunity: createMockOpportunity({
             direction: "long",
+            higherTrend: {
+              timeframe: "1D",
+              trend: "bullish",
+              confidence: 80,
+              swing: { signal: "bullish" },
+              rsi: { value: 55, signal: "neutral" },
+              macd: { signal: "bullish" },
+              isLoading: false,
+              error: null,
+            },
             lowerTrend: {
               timeframe: "4H",
-              direction: "bearish",
+              trend: "bullish", // Same as higher = non-pullback
               confidence: 65,
-              swingHigh: 42300,
-              swingLow: 42000,
+              swing: { signal: "bullish" },
               rsi: { value: 50, signal: "neutral" },
-              macd: { signal: "bearish" },
+              macd: { signal: "bullish" },
+              isLoading: false,
+              error: null,
             },
           }),
           enabled: true,
@@ -686,12 +706,13 @@ describe("useTradeValidation", () => {
             direction: "long",
             lowerTrend: {
               timeframe: "4H",
-              direction: "bearish",
+              trend: "bearish",
               confidence: 65,
-              swingHigh: 42300,
-              swingLow: 42000,
+              swing: { signal: "bearish" },
               rsi: { value: 50, signal: "neutral" },
               macd: { signal: "bullish" },
+              isLoading: false,
+              error: null,
             },
           }),
           enabled: true,
@@ -704,7 +725,7 @@ describe("useTradeValidation", () => {
       expect(macdCheck?.passed).toBe(true);
     });
 
-    it("should fail MACD check for long when MACD is bearish", () => {
+    it("should fail MACD check for long when higher TF MACD is bearish (pullback)", () => {
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: [],
         isLoading: false,
@@ -716,18 +737,32 @@ describe("useTradeValidation", () => {
         toggleLevelVisibility: vi.fn(),
       });
 
+      // Pullback setup: higher TF bullish trend, lower TF bearish
+      // For pullbacks, we check HIGHER TF MACD for trend confirmation
+      // If higher TF MACD is bearish while trying to go long = fail
       const { result } = renderHook(() =>
         useTradeValidation({
           opportunity: createMockOpportunity({
             direction: "long",
+            higherTrend: {
+              timeframe: "1D",
+              trend: "bullish",
+              confidence: 80,
+              swing: { signal: "bullish" },
+              rsi: { value: 55, signal: "neutral" },
+              macd: { signal: "bearish" }, // Higher TF MACD bearish = momentum weakening
+              isLoading: false,
+              error: null,
+            },
             lowerTrend: {
               timeframe: "4H",
-              direction: "bearish",
+              trend: "bearish",
               confidence: 65,
-              swingHigh: 42300,
-              swingLow: 42000,
+              swing: { signal: "bearish" },
               rsi: { value: 50, signal: "neutral" },
               macd: { signal: "bearish" },
+              isLoading: false,
+              error: null,
             },
           }),
           enabled: true,
@@ -788,12 +823,13 @@ describe("useTradeValidation", () => {
             confidence: 75,
             lowerTrend: {
               timeframe: "4H",
-              direction: "bearish",
+              trend: "bearish",
               confidence: 65,
-              swingHigh: 42300,
-              swingLow: 42000,
+              swing: { signal: "bearish" },
               rsi: { value: 35, signal: "bullish" },
               macd: { signal: "bullish" },
+              isLoading: false,
+              error: null,
             },
           }),
           enabled: true,
@@ -825,12 +861,13 @@ describe("useTradeValidation", () => {
             // No levels = fail entry + targets
             lowerTrend: {
               timeframe: "4H",
-              direction: "bearish",
+              trend: "bearish",
               confidence: 65,
-              swingHigh: 42300,
-              swingLow: 42000,
+              swing: { signal: "bearish" },
               rsi: { value: 75, signal: "bearish" }, // Wrong for long
               macd: { signal: "bearish" }, // Wrong for long
+              isLoading: false,
+              error: null,
             },
           }),
           enabled: true,
