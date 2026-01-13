@@ -469,6 +469,105 @@ R:R <  1.5  → POOR (red) - not recommended
 
 ---
 
+### Rule 9: Trade Category Classification
+
+Trades are classified into categories based on alignment with the higher timeframe trend. This determines position sizing risk.
+
+| Category | Description | Risk Multiplier | When Applied |
+|----------|-------------|-----------------|--------------|
+| **With Trend** | Trading in direction of higher TF | 100% of base risk | HTF bullish + LONG, or HTF bearish + SHORT |
+| **Counter Trend** | Against higher TF at major levels | 50% of base risk | Against HTF + confluence score ≥ 5 |
+| **Reversal Attempt** | Speculative against trend | 25% of base risk | Against HTF + confluence score < 5 |
+
+```
+Classification Logic:
+
+IF trade_direction ALIGNS with higher_tf_trend:
+   → WITH_TREND (full risk)
+
+ELSE IF confluence_score >= 5:
+   → COUNTER_TREND (half risk)
+
+ELSE:
+   → REVERSAL_ATTEMPT (quarter risk)
+```
+
+**Example:**
+- Account: $10,000, Base Risk: 2%
+- With Trend trade: Risk $200 (2%)
+- Counter Trend trade: Risk $100 (1%)
+- Reversal Attempt: Risk $50 (0.5%)
+
+---
+
+### Rule 10: Trend Phase Detection
+
+Each timeframe's trend is in one of four phases:
+
+| Phase | Description | Trading Implication |
+|-------|-------------|---------------------|
+| **Impulse** | Price moving strongly with trend | High probability continuation |
+| **Correction** | Price pulling back against trend | Entry opportunity developing |
+| **Continuation** | Price resuming trend after pullback | Confirmation of trend strength |
+| **Exhaustion** | Multiple failed attempts / weakening | Potential reversal, reduce risk |
+
+```
+Phase Detection Logic:
+
+IF trend == neutral OR pivots < 2:
+   → CORRECTION (default)
+
+IF trend == bullish:
+   IF price > last_pivot:
+      → IMPULSE (if last pivot was low) or CONTINUATION
+   ELSE:
+      → CORRECTION
+
+IF trend == bearish:
+   IF price < last_pivot:
+      → IMPULSE (if last pivot was high) or CONTINUATION
+   ELSE:
+      → CORRECTION
+```
+
+---
+
+### Rule 11: Confluence Scoring System
+
+A weighted scoring system to rank the importance of price levels:
+
+| Component | Points | Description |
+|-----------|--------|-------------|
+| Base Fib Level | +1 | Every Fib level starts with 1 point |
+| Same TF Confluence | +1 each | Other Fib levels within 0.5% tolerance |
+| Higher TF Confluence | +2 each | Higher timeframe levels within tolerance |
+| Previous Pivot | +2 | Near a previous major swing high/low |
+| Psychological Level | +1 | Round number (100, 500, 1000, etc.) |
+
+**Score Interpretation:**
+| Total Score | Interpretation | Meaning |
+|-------------|----------------|---------|
+| 1-2 | Standard | Basic Fib level |
+| 3-4 | Important | Some confluence |
+| 5-6 | Significant | Strong confluence zone |
+| 7+ | Major | Exceptional - high probability |
+
+**Example:**
+```
+Price Level: 42,000
+
+Breakdown:
+- Base Fib (R61.8%): +1
+- Same TF confluence (R50% nearby): +1
+- Higher TF confluence (Weekly R61.8%): +2
+- Previous pivot (swing low): +2
+- Psychological (round 1000): +1
+─────────────────────────────────
+Total: 7 points = MAJOR confluence zone
+```
+
+---
+
 ## Data Storage (localStorage)
 
 ```typescript
@@ -736,7 +835,16 @@ frontend/src/
 - `POST /position/risk-reward` - R:R calculation
 - `POST /journal/entries` - Create journal entry
 
-### New Endpoint Needed
+### New Endpoints Added
+```
+GET /workflow/categorize?higher_tf_trend=bullish&lower_tf_trend=bearish&trade_direction=long&confluence_score=3
+
+Returns: { "category": "with_trend" | "counter_trend" | "reversal_attempt" }
+
+Used for: Position sizing risk adjustment based on trade alignment.
+```
+
+### Future Endpoint (Not Yet Implemented)
 ```
 GET /workflow/opportunities?symbols=DJI,SPX&timeframes=1M,1W,1D...
 
@@ -816,6 +924,17 @@ After EACH phase or significant feature:
 
 ---
 
-*Document Version: 2.0*
+*Document Version: 2.1*
 *Last Updated: January 2025*
-*Based on: Sandy Jadeja Fibonacci Trading Workshop*
+*Based on: Sandy Jadeja Fibonacci Trading Workshop + Extended Framework*
+
+---
+
+## Changelog
+
+### v2.1 (January 2025)
+- Added Rule 9: Trade Category Classification (with_trend, counter_trend, reversal_attempt)
+- Added Rule 10: Trend Phase Detection (impulse, correction, continuation, exhaustion)
+- Added Rule 11: Confluence Scoring System (7-point weighted system)
+- Added `/workflow/categorize` backend endpoint
+- Category-based position sizing now implemented in UI
