@@ -45,8 +45,10 @@ from trader.workflow import (
     AlignmentResult,
     IndicatorConfirmation,
     LevelsResult,
+    TradeCategory,
     TrendAssessment,
     assess_trend,
+    categorize_trade,
     check_timeframe_alignment,
     confirm_with_indicators,
     identify_fibonacci_levels,
@@ -1112,3 +1114,28 @@ async def workflow_confirm(
         timeframe=timeframe,
         market_service=_market_data_service,
     )
+
+
+@app.get("/workflow/categorize")
+def workflow_categorize(
+    higher_tf_trend: str,
+    lower_tf_trend: str,
+    trade_direction: str,
+    confluence_score: int = 1,
+) -> dict[str, TradeCategory]:
+    """Categorize trade for position sizing based on trend alignment.
+
+    Returns trade category (with_trend, counter_trend, reversal_attempt)
+    which determines the recommended risk percentage for the trade.
+
+    - with_trend: Trading with higher TF trend (1-2% risk)
+    - counter_trend: Against higher TF at major levels (0.5-1% risk)
+    - reversal_attempt: Speculative against trend (0.25-0.5% risk)
+    """
+    category = categorize_trade(
+        higher_tf_trend=higher_tf_trend,  # type: ignore[arg-type]
+        lower_tf_trend=lower_tf_trend,  # type: ignore[arg-type]
+        trade_direction=trade_direction,  # type: ignore[arg-type]
+        confluence_score=confluence_score,
+    )
+    return {"category": category}

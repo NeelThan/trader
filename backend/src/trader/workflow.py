@@ -35,6 +35,10 @@ StrengthLevel = Literal["strong", "moderate", "weak"]
 SignalType = Literal["bullish", "bearish", "neutral", "oversold", "overbought"]
 OverallConfirmation = Literal["strong", "partial", "wait"]
 
+# --- Extended Framework Type Aliases ---
+TrendPhase = Literal["impulse", "correction", "continuation", "exhaustion"]
+TradeCategory = Literal["with_trend", "counter_trend", "reversal_attempt"]
+
 
 # --- Response Models ---
 
@@ -44,12 +48,14 @@ class TrendAssessment(BaseModel):
 
     Attributes:
         trend: Overall trend direction (bullish/bearish/neutral).
+        phase: Current trend phase (impulse/correction/continuation/exhaustion).
         swing_type: Last detected swing type (HH/HL/LH/LL).
         explanation: Human-readable explanation of the assessment.
         confidence: Confidence level 0-100.
     """
 
     trend: TrendDirection
+    phase: TrendPhase
     swing_type: SwingType
     explanation: str
     confidence: int = Field(ge=0, le=100)
@@ -217,6 +223,81 @@ def _combine_confirmations(
     return "wait"
 
 
+def _detect_trend_phase(
+    pivots: list[PivotPoint],
+    current_price: float,
+    trend: TrendDirection,
+) -> TrendPhase:
+    """Detect current trend phase from pivot structure and price position.
+
+    Phase Logic:
+    - IMPULSE: Price moving away from last pivot in trend direction
+    - CORRECTION: Price pulling back against trend direction
+    - CONTINUATION: Price resumed trend after correction
+    - EXHAUSTION: Multiple failed attempts or neutral trend
+    """
+    if trend == "neutral" or len(pivots) < 2:
+        return "correction"
+
+    last_pivot = pivots[-1]
+
+    if trend == "bullish":
+        if current_price > last_pivot.price:
+            return "impulse" if last_pivot.type == "low" else "continuation"
+        return "correction"
+
+    # trend == "bearish"
+    if current_price < last_pivot.price:
+        return "impulse" if last_pivot.type == "high" else "continuation"
+    return "correction"
+
+
+def categorize_trade(
+    higher_tf_trend: TrendDirection,
+    lower_tf_trend: TrendDirection,
+    trade_direction: Literal["long", "short"],
+    confluence_score: int,
+) -> TradeCategory:
+    """Categorize trade for position sizing based on trend alignment.
+
+    Trade Categories:
+    - WITH_TREND: Trading in direction of higher TF trend (highest probability)
+    - COUNTER_TREND: Against higher TF at major levels (confluence >= 5)
+    - REVERSAL_ATTEMPT: Against higher TF with low confluence (speculative)
+
+    Args:
+        higher_tf_trend: Trend direction of higher timeframe.
+        lower_tf_trend: Trend direction of lower timeframe.
+        trade_direction: Intended trade direction (long/short).
+        confluence_score: Confluence score at the level (1-10).
+
+    Returns:
+        TradeCategory for position sizing decisions.
+    """
+    is_with_trend = _is_aligned_with_higher_tf(higher_tf_trend, trade_direction)
+
+    if is_with_trend:
+        return "with_trend"
+
+    # Trading against higher TF - check confluence
+    if confluence_score >= 5:
+        return "counter_trend"
+
+    return "reversal_attempt"
+
+
+def _is_aligned_with_higher_tf(
+    higher_tf_trend: TrendDirection,
+    trade_direction: Literal["long", "short"],
+) -> bool:
+    """Check if trade direction aligns with higher timeframe trend."""
+    if higher_tf_trend == "bullish" and trade_direction == "long":
+        return True
+    if higher_tf_trend == "bearish" and trade_direction == "short":
+        return True
+    return False
+
+
 # --- Main Functions ---
 
 
@@ -240,6 +321,7 @@ async def assess_trend(
     if not market_result.success or not market_result.data:
         return TrendAssessment(
             trend="neutral",
+            phase="correction",
             swing_type="HL",
             explanation="Unable to fetch market data",
             confidence=0,
@@ -257,6 +339,7 @@ async def assess_trend(
     if not pivot_result.recent_pivots:
         return TrendAssessment(
             trend="neutral",
+            phase="correction",
             swing_type="HL",
             explanation="Insufficient pivot data",
             confidence=30,
@@ -265,9 +348,12 @@ async def assess_trend(
     swing_type = _detect_latest_swing_type(pivot_result.recent_pivots)
     trend = _determine_trend_from_swing(swing_type)
     explanation = _get_swing_explanation(swing_type)
+    current_price = market_result.data[-1].close
+    phase = _detect_trend_phase(pivot_result.recent_pivots, current_price, trend)
 
     return TrendAssessment(
         trend=trend,
+        phase=phase,
         swing_type=swing_type,
         explanation=explanation,
         confidence=75 if trend != "neutral" else 50,

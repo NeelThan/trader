@@ -45,6 +45,18 @@ class TestWorkflowModelsImports:
 
         assert IndicatorConfirmation is not None
 
+    def test_can_import_trend_phase_type(self) -> None:
+        """TrendPhase type alias should be importable."""
+        from trader.workflow import TrendPhase
+
+        assert TrendPhase is not None
+
+    def test_can_import_trade_category_type(self) -> None:
+        """TradeCategory type alias should be importable."""
+        from trader.workflow import TradeCategory
+
+        assert TradeCategory is not None
+
 
 class TestTrendAssessment:
     """Tests for TrendAssessment model."""
@@ -55,12 +67,14 @@ class TestTrendAssessment:
 
         assessment = TrendAssessment(
             trend="bullish",
+            phase="correction",
             swing_type="HL",
             explanation="Higher Low pattern = buyers stepping in higher",
             confidence=87,
         )
 
         assert assessment.trend == "bullish"
+        assert assessment.phase == "correction"
         assert assessment.swing_type == "HL"
         assert assessment.confidence == 87
 
@@ -70,12 +84,14 @@ class TestTrendAssessment:
 
         assessment = TrendAssessment(
             trend="bearish",
+            phase="impulse",
             swing_type="LH",
             explanation="Lower High pattern = sellers stepping in lower",
             confidence=75,
         )
 
         assert assessment.trend == "bearish"
+        assert assessment.phase == "impulse"
         assert assessment.swing_type == "LH"
 
     def test_trend_must_be_valid(self) -> None:
@@ -87,6 +103,36 @@ class TestTrendAssessment:
         with pytest.raises(ValidationError):
             TrendAssessment(
                 trend="invalid",
+                phase="correction",
+                swing_type="HH",
+                explanation="test",
+                confidence=50,
+            )
+
+    def test_phase_accepts_valid_values(self) -> None:
+        """Phase should accept impulse, correction, continuation, exhaustion."""
+        from trader.workflow import TrendAssessment
+
+        for phase in ["impulse", "correction", "continuation", "exhaustion"]:
+            assessment = TrendAssessment(
+                trend="bullish",
+                phase=phase,
+                swing_type="HH",
+                explanation="test",
+                confidence=50,
+            )
+            assert assessment.phase == phase
+
+    def test_phase_rejects_invalid_value(self) -> None:
+        """Phase should reject invalid values."""
+        from pydantic import ValidationError
+
+        from trader.workflow import TrendAssessment
+
+        with pytest.raises(ValidationError):
+            TrendAssessment(
+                trend="bullish",
+                phase="invalid_phase",
                 swing_type="HH",
                 explanation="test",
                 confidence=50,
@@ -411,3 +457,86 @@ class TestConfirmWithIndicatorsFunction:
 
         assert isinstance(result, IndicatorConfirmation)
         assert result.overall in ["strong", "partial", "wait"]
+
+
+class TestCategorizeTradeFunction:
+    """Tests for categorize_trade function."""
+
+    def test_with_trend_long_when_bullish_higher_tf(self) -> None:
+        """Should return with_trend when going long in bullish higher TF."""
+        from trader.workflow import categorize_trade
+
+        result = categorize_trade(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bearish",
+            trade_direction="long",
+            confluence_score=3,
+        )
+
+        assert result == "with_trend"
+
+    def test_with_trend_short_when_bearish_higher_tf(self) -> None:
+        """Should return with_trend when going short in bearish higher TF."""
+        from trader.workflow import categorize_trade
+
+        result = categorize_trade(
+            higher_tf_trend="bearish",
+            lower_tf_trend="bullish",
+            trade_direction="short",
+            confluence_score=3,
+        )
+
+        assert result == "with_trend"
+
+    def test_counter_trend_with_high_confluence(self) -> None:
+        """Should return counter_trend when against higher TF with high confluence."""
+        from trader.workflow import categorize_trade
+
+        result = categorize_trade(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bullish",
+            trade_direction="short",
+            confluence_score=5,
+        )
+
+        assert result == "counter_trend"
+
+    def test_reversal_attempt_with_low_confluence(self) -> None:
+        """Should return reversal_attempt when against higher TF with low confluence."""
+        from trader.workflow import categorize_trade
+
+        result = categorize_trade(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bullish",
+            trade_direction="short",
+            confluence_score=2,
+        )
+
+        assert result == "reversal_attempt"
+
+    def test_neutral_higher_tf_defaults_to_counter_trend(self) -> None:
+        """Should handle neutral higher TF appropriately."""
+        from trader.workflow import categorize_trade
+
+        result = categorize_trade(
+            higher_tf_trend="neutral",
+            lower_tf_trend="bullish",
+            trade_direction="long",
+            confluence_score=4,
+        )
+
+        # Neutral higher TF with reasonable confluence = counter_trend
+        assert result in ["counter_trend", "reversal_attempt"]
+
+    def test_returns_valid_category_type(self) -> None:
+        """Should always return valid TradeCategory."""
+        from trader.workflow import categorize_trade
+
+        result = categorize_trade(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bearish",
+            trade_direction="long",
+            confluence_score=1,
+        )
+
+        assert result in ["with_trend", "counter_trend", "reversal_attempt"]

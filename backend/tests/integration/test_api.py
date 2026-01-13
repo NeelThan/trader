@@ -1614,3 +1614,57 @@ class TestWorkflowConfirmEndpoint:
         assert "value" in data["macd"]
         assert "signal" in data["macd"]
         assert "explanation" in data["macd"]
+
+
+class TestWorkflowCategorizeEndpoint:
+    """Tests for workflow categorize endpoint."""
+
+    async def test_categorize_returns_with_trend(self, client: AsyncClient) -> None:
+        """Should return with_trend when aligned with higher TF."""
+        response = await client.get(
+            "/workflow/categorize",
+            params={
+                "higher_tf_trend": "bullish",
+                "lower_tf_trend": "bearish",
+                "trade_direction": "long",
+                "confluence_score": 3,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["category"] == "with_trend"
+
+    async def test_categorize_returns_counter_trend(self, client: AsyncClient) -> None:
+        """Should return counter_trend when against higher TF with high confluence."""
+        response = await client.get(
+            "/workflow/categorize",
+            params={
+                "higher_tf_trend": "bullish",
+                "lower_tf_trend": "bullish",
+                "trade_direction": "short",
+                "confluence_score": 5,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["category"] == "counter_trend"
+
+    async def test_categorize_returns_reversal_attempt(
+        self, client: AsyncClient
+    ) -> None:
+        """Should return reversal_attempt when against higher TF with low confluence."""
+        response = await client.get(
+            "/workflow/categorize",
+            params={
+                "higher_tf_trend": "bullish",
+                "lower_tf_trend": "bullish",
+                "trade_direction": "short",
+                "confluence_score": 2,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["category"] == "reversal_attempt"
