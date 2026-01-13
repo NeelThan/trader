@@ -7,7 +7,7 @@
 
 "use client";
 
-import { ArrowLeft, Lightbulb, X, Plus, RotateCcw } from "lucide-react";
+import { ArrowLeft, Lightbulb, X, Plus, RotateCcw, ShieldCheck, Shield, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,12 +16,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
-import type { SizingData, CapturedValidation } from "@/hooks/use-trade-execution";
+import type { SizingData, CapturedValidation, CategoryInfo } from "@/hooks/use-trade-execution";
 import type { ValidationResult } from "@/hooks/use-trade-validation";
+import type { TradeCategory } from "@/types/workflow-v2";
 
 export type SizingPanelProps = {
   opportunity: TradeOpportunity;
   sizing: SizingData;
+  /** Category-based sizing information */
+  categoryInfo: CategoryInfo;
   validation: ValidationResult;
   /** Captured validation values (persisted across phase changes) */
   capturedValidation: CapturedValidation;
@@ -32,6 +35,32 @@ export type SizingPanelProps = {
   onBack: () => void;
   onProceed: () => void;
 };
+
+/**
+ * Get category badge styling
+ */
+function getCategoryBadgeProps(category: TradeCategory) {
+  switch (category) {
+    case "with_trend":
+      return {
+        icon: ShieldCheck,
+        label: "With Trend",
+        className: "border-green-500/50 text-green-400",
+      };
+    case "counter_trend":
+      return {
+        icon: Shield,
+        label: "Counter",
+        className: "border-amber-500/50 text-amber-400",
+      };
+    case "reversal_attempt":
+      return {
+        icon: ShieldAlert,
+        label: "Reversal",
+        className: "border-red-500/50 text-red-400",
+      };
+  }
+}
 
 /**
  * Get recommendation badge styling
@@ -63,6 +92,7 @@ function formatRecommendation(
 export function SizingPanel({
   opportunity,
   sizing,
+  categoryInfo,
   validation,
   capturedValidation,
   hasCapturedSuggestions,
@@ -73,6 +103,10 @@ export function SizingPanel({
 }: SizingPanelProps) {
   const isLong = opportunity.direction === "long";
   const isHighRisk = sizing.riskPercentage > 3;
+
+  // Get category badge styling
+  const categoryProps = getCategoryBadgeProps(categoryInfo.category);
+  const CategoryIcon = categoryProps.icon;
   const [newTarget, setNewTarget] = useState("");
 
   // Direction validation: stop must be on correct side of entry
@@ -170,6 +204,11 @@ export function SizingPanel({
         >
           {opportunity.direction.toUpperCase()}
         </span>
+        {/* Category Badge */}
+        <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${categoryProps.className}`}>
+          <CategoryIcon className="w-3 h-3 mr-0.5" />
+          {categoryProps.label}
+        </Badge>
       </div>
 
       {/* Account Settings */}
@@ -199,6 +238,18 @@ export function SizingPanel({
               max={100}
               step={0.1}
             />
+            {/* Category-adjusted risk display */}
+            {categoryInfo.riskMultiplier < 1 && (
+              <div className="flex items-center gap-2 mt-2 text-xs">
+                <span className="text-muted-foreground">Adjusted:</span>
+                <span className={categoryProps.className.replace("border-", "text-").replace("/50", "")}>
+                  {categoryInfo.adjustedRiskPercentage.toFixed(1)}%
+                </span>
+                <span className="text-muted-foreground">
+                  ({(categoryInfo.riskMultiplier * 100).toFixed(0)}% of base)
+                </span>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

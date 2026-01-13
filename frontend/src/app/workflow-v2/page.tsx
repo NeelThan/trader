@@ -115,6 +115,7 @@ export default function WorkflowV2Page() {
           <SizingPanel
             opportunity={workflow.opportunity!}
             sizing={execution.sizing}
+            categoryInfo={execution.categoryInfo}
             validation={validation.result}
             capturedValidation={execution.capturedValidation}
             hasCapturedSuggestions={execution.hasCapturedSuggestions}

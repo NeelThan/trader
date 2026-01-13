@@ -7,13 +7,14 @@
  * User clicks an opportunity to enter validation phase.
  */
 
-import { TrendingUp, TrendingDown, Zap, Clock, FlaskConical, AlertTriangle, RefreshCw } from "lucide-react";
+import { TrendingUp, TrendingDown, Zap, Clock, FlaskConical, AlertTriangle, RefreshCw, ShieldCheck, Shield, ShieldAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
+import type { TradeCategory, TrendPhase } from "@/types/workflow-v2";
 
 type DiscoveryPanelProps = {
   opportunities: TradeOpportunity[];
@@ -87,7 +88,35 @@ function createTestOpportunity(symbol: MarketSymbol, direction: "long" | "short"
       isLoading: false,
       error: null,
     },
+    category: "with_trend" as TradeCategory,
+    trendPhase: "correction" as TrendPhase,
   };
+}
+
+/**
+ * Get badge styling for trade category
+ */
+function getCategoryBadgeProps(category: TradeCategory) {
+  switch (category) {
+    case "with_trend":
+      return {
+        icon: ShieldCheck,
+        label: "With Trend",
+        className: "border-green-500/50 text-green-400",
+      };
+    case "counter_trend":
+      return {
+        icon: Shield,
+        label: "Counter",
+        className: "border-amber-500/50 text-amber-400",
+      };
+    case "reversal_attempt":
+      return {
+        icon: ShieldAlert,
+        label: "Reversal",
+        className: "border-red-500/50 text-red-400",
+      };
+  }
 }
 
 type OpportunityCardProps = {
@@ -100,6 +129,10 @@ function OpportunityCard({ opportunity, onSelect }: OpportunityCardProps) {
   const Icon = isLong ? TrendingUp : TrendingDown;
   const color = isLong ? "#22c55e" : "#ef4444";
   const bgClass = isLong ? "bg-green-500/10 border-green-500/30" : "bg-red-500/10 border-red-500/30";
+
+  // Get category badge styling
+  const categoryProps = getCategoryBadgeProps(opportunity.category ?? "with_trend");
+  const CategoryIcon = categoryProps.icon;
 
   return (
     <Card
@@ -123,6 +156,11 @@ function OpportunityCard({ opportunity, onSelect }: OpportunityCardProps) {
                 ACTIVE
               </Badge>
             )}
+            {/* Category Badge */}
+            <Badge variant="outline" className={`text-[10px] h-4 px-1.5 ${categoryProps.className}`}>
+              <CategoryIcon className="w-3 h-3 mr-0.5" />
+              {categoryProps.label}
+            </Badge>
           </div>
           <span className="text-sm font-medium text-muted-foreground">
             {opportunity.confidence}%
