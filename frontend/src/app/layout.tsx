@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Nunito, Fira_Code } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { MarketDataProvider } from "@/contexts/MarketDataContext";
 import { SideNavLayout } from "@/components/layout";
 import "./globals.css";
@@ -36,11 +37,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <MarketDataProvider>
-            <SideNavLayout>
-              {children}
-            </SideNavLayout>
-          </MarketDataProvider>
+          <TooltipProvider delayDuration={0}>
+            <MarketDataProvider>
+              <SideNavLayout>
+                {children}
+              </SideNavLayout>
+            </MarketDataProvider>
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>

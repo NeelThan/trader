@@ -29,7 +29,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { Timeframe } from "@/lib/chart-constants";
@@ -485,25 +484,23 @@ export function LevelsTable({
                 </Button>
               </TableHead>
               <TableHead className="w-16">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-1 -ml-1 font-medium"
-                        onClick={() => toggleSort("heat")}
-                      >
-                        Heat
-                        <Info className="h-3 w-3 ml-1 opacity-50" />
-                        {getSortIcon("heat")}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs whitespace-pre-line text-xs">
-                      {HEAT_EXPLANATION}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-1 -ml-1 font-medium"
+                      onClick={() => toggleSort("heat")}
+                    >
+                      Heat
+                      <Info className="h-3 w-3 ml-1 opacity-50" />
+                      {getSortIcon("heat")}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs whitespace-pre-line text-xs">
+                    {HEAT_EXPLANATION}
+                  </TooltipContent>
+                </Tooltip>
               </TableHead>
               {onToggleLevelVisibility && <TableHead className="w-10" />}
               {/* Expand column */}

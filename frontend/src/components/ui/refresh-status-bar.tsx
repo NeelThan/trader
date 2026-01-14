@@ -17,7 +17,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -127,57 +126,55 @@ export function RefreshStatusBar({
 
   if (compact) {
     return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onRefresh}
-              disabled={isRefreshing}
-              className={cn("h-7 px-2 gap-1.5", className)}
-            >
-              <RefreshCw
-                className={cn("h-3 w-3", isRefreshing && "animate-spin")}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className={cn("h-7 px-2 gap-1.5", className)}
+          >
+            <RefreshCw
+              className={cn("h-3 w-3", isRefreshing && "animate-spin")}
+            />
+            <span className="text-xs text-muted-foreground">
+              {isRefreshing ? "..." : formatCountdown(countdown)}
+            </span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="text-xs">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <StatusIcon
+                isRefreshing={isRefreshing}
+                isBackendUnavailable={isBackendUnavailable}
+                provider={provider}
               />
-              <span className="text-xs text-muted-foreground">
-                {isRefreshing ? "..." : formatCountdown(countdown)}
+              <span>
+                {isRefreshing
+                  ? "Refreshing..."
+                  : isBackendUnavailable
+                    ? "Offline mode"
+                    : provider
+                      ? `via ${provider}`
+                      : "Live data"}
               </span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <StatusIcon
-                  isRefreshing={isRefreshing}
-                  isBackendUnavailable={isBackendUnavailable}
-                  provider={provider}
-                />
-                <span>
-                  {isRefreshing
-                    ? "Refreshing..."
-                    : isBackendUnavailable
-                      ? "Offline mode"
-                      : provider
-                        ? `via ${provider}`
-                        : "Live data"}
-                </span>
-              </div>
-              {lastUpdated && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Clock className="h-3 w-3" />
-                  <span>Updated {formatTimeAgo(lastUpdated)}</span>
-                </div>
-              )}
-              {autoRefreshEnabled && !isRefreshing && (
-                <div className="text-muted-foreground">
-                  Next refresh in {formatCountdown(countdown)}
-                </div>
-              )}
             </div>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+            {lastUpdated && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span>Updated {formatTimeAgo(lastUpdated)}</span>
+              </div>
+            )}
+            {autoRefreshEnabled && !isRefreshing && (
+              <div className="text-muted-foreground">
+                Next refresh in {formatCountdown(countdown)}
+              </div>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
     );
   }
 
