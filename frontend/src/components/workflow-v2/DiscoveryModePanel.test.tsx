@@ -104,7 +104,7 @@ const createMockScannerOpportunity = (
   symbol: string,
   direction: "long" | "short"
 ): ScannerOpportunity => ({
-  symbol,
+  symbol: symbol as ScannerOpportunity["symbol"],
   higher_timeframe: "1D",
   lower_timeframe: "4H",
   direction,

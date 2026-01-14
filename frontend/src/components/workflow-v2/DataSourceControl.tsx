@@ -29,7 +29,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
@@ -314,67 +313,61 @@ export function DataSourceControl({
 
       {/* Countdown badge (only in live mode) */}
       {showCountdown && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "h-6 px-1.5 text-[10px] font-mono cursor-default",
-                  countdown <= 10 && "border-blue-500/50 text-blue-400"
-                )}
-              >
-                {formatCountdown(countdown)}
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">
-              Next refresh in {formatCountdown(countdown)}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge
+              variant="outline"
+              className={cn(
+                "h-6 px-1.5 text-[10px] font-mono cursor-default",
+                countdown <= 10 && "border-blue-500/50 text-blue-400"
+              )}
+            >
+              {formatCountdown(countdown)}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            Next refresh in {formatCountdown(countdown)}
+          </TooltipContent>
+        </Tooltip>
       )}
 
       {/* Last updated (with tooltip for full details) */}
       {lastUpdated && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-[10px] text-muted-foreground hidden md:inline cursor-default">
-                {formatTimeAgo(lastUpdated)}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">
-              Last updated: {formatTime(lastUpdated)}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-[10px] text-muted-foreground hidden md:inline cursor-default">
+              {formatTimeAgo(lastUpdated)}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            Last updated: {formatTime(lastUpdated)}
+          </TooltipContent>
+        </Tooltip>
       )}
 
       {/* Refresh button */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onRefresh}
-              disabled={isRefreshing || dataMode === "simulated"}
-              className="h-7 w-7 p-0"
-            >
-              <RefreshCw
-                className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
-              />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">
-            {dataMode === "simulated"
-              ? "Cannot refresh simulated data"
-              : isRefreshing
-                ? "Refreshing..."
-                : "Refresh now"}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRefresh}
+            disabled={isRefreshing || dataMode === "simulated"}
+            className="h-7 w-7 p-0"
+          >
+            <RefreshCw
+              className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="text-xs">
+          {dataMode === "simulated"
+            ? "Cannot refresh simulated data"
+            : isRefreshing
+              ? "Refreshing..."
+              : "Refresh now"}
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 }
