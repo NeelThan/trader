@@ -9,7 +9,8 @@ test.describe("Chart Zoom Controls", () => {
   });
 
   test("should zoom in when clicking zoom in button", async ({ page }) => {
-    const zoomInBtn = page.getByRole("button", { name: "+" });
+    // Use title attribute to avoid matching "+ More" buttons
+    const zoomInBtn = page.locator('button[title*="Zoom In"]');
     const canvas = page.locator("canvas").first();
 
     // Get initial canvas state
@@ -26,7 +27,8 @@ test.describe("Chart Zoom Controls", () => {
   });
 
   test("should zoom out when clicking zoom out button", async ({ page }) => {
-    const zoomOutBtn = page.getByRole("button", { name: "−" });
+    // Use title attribute for specificity
+    const zoomOutBtn = page.locator('button[title*="Zoom Out"]');
     const canvas = page.locator("canvas").first();
 
     // Click zoom out multiple times
@@ -40,7 +42,8 @@ test.describe("Chart Zoom Controls", () => {
   });
 
   test("should reset view when clicking reset button", async ({ page }) => {
-    const zoomInBtn = page.getByRole("button", { name: "+" });
+    // Use title attribute for zoom button
+    const zoomInBtn = page.locator('button[title*="Zoom In"]');
     const resetBtn = page.getByRole("button", { name: "Reset View" });
     const canvas = page.locator("canvas").first();
 
@@ -114,7 +117,8 @@ test.describe("Chart Pan/Drag", () => {
 
   test("should maintain zoom level after panning", async ({ page }) => {
     const chartContainer = page.locator('[class*="tv-lightweight-charts"]');
-    const zoomInBtn = page.getByRole("button", { name: "+" });
+    // Use title attribute for zoom button
+    const zoomInBtn = page.locator('button[title*="Zoom In"]');
 
     // Zoom in first
     await zoomInBtn.click();

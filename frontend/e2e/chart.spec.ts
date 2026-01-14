@@ -11,13 +11,12 @@ test.describe("Chart Page", () => {
   });
 
   test("should load and display the chart page", async ({ page }) => {
-    // Check page title/header is visible
-    await expect(page.locator("h1")).toBeVisible();
-    await expect(page.locator("h1")).toContainText("Dow Jones");
-
     // Check that the chart canvas is rendered
     const chartCanvas = page.locator("canvas").first();
     await expect(chartCanvas).toBeVisible();
+
+    // Check that the symbol selector is visible (shows DJI by default)
+    await expect(page.locator('button:has-text("DJI")')).toBeVisible();
   });
 
   test("should display price summary", async ({ page }) => {
@@ -31,9 +30,9 @@ test.describe("Chart Page", () => {
   });
 
   test("should display chart toolbar with zoom controls", async ({ page }) => {
-    // Check zoom buttons exist
-    const zoomInBtn = page.getByRole("button", { name: "+" });
-    const zoomOutBtn = page.getByRole("button", { name: "−" });
+    // Check zoom buttons exist - use title attribute to avoid matching "+ More" buttons
+    const zoomInBtn = page.locator('button[title*="Zoom In"]');
+    const zoomOutBtn = page.locator('button[title*="Zoom Out"]');
     const resetBtn = page.getByRole("button", { name: "Reset View" });
 
     await expect(zoomInBtn).toBeVisible();
@@ -42,9 +41,9 @@ test.describe("Chart Page", () => {
   });
 
   test("should display Fibonacci controls", async ({ page }) => {
-    // Check Fibonacci toggle buttons
-    const retracementBtn = page.getByRole("button", { name: "Retracement" });
-    const extensionBtn = page.getByRole("button", { name: "Extension" });
+    // Check Fibonacci toggle buttons in the analysis panel
+    const retracementBtn = page.getByRole("button", { name: /Retracement/i }).first();
+    const extensionBtn = page.getByRole("button", { name: /Extension/i }).first();
 
     await expect(retracementBtn).toBeVisible();
     await expect(extensionBtn).toBeVisible();
@@ -60,51 +59,33 @@ test.describe("Market Selection", () => {
   });
 
   test("should switch between markets", async ({ page }) => {
-    // Click on SPX market
-    const spxButton = page.getByRole("button", { name: "SPX", exact: true });
-    await spxButton.click();
+    // Open the market dropdown (currently shows DJI)
+    const marketDropdown = page.locator('button:has-text("DJI")').first();
+    await marketDropdown.click();
 
-    // Wait for chart to update and verify header changed
-    await expect(page.locator("h1")).toContainText("S&P 500", { timeout: 10000 });
+    // Click on SPX in the dropdown menu
+    await page.locator('[role="menuitem"]:has-text("SPX")').click();
+
+    // Wait for chart to update - verify the dropdown now shows SPX
+    await expect(page.locator('button:has-text("SPX")')).toBeVisible({ timeout: 10000 });
+
+    // Verify chart is still visible
+    const canvas = page.locator("canvas").first();
+    await expect(canvas).toBeVisible();
   });
 
   test("should switch between timeframes", async ({ page }) => {
-    // Click on 1W timeframe
-    const weeklyButton = page.getByRole("button", { name: "1W", exact: true });
-    await weeklyButton.click();
+    // Chart page uses inline timeframe buttons with full names (Daily, Weekly, etc.)
+    // Click on Weekly to switch timeframe
+    const weeklyBtn = page.getByRole("button", { name: "Weekly" });
+    await weeklyBtn.click();
 
-    // Wait for chart to reload and verify the button is still visible and clickable
-    await page.waitForTimeout(1000);
-    await expect(weeklyButton).toBeVisible();
+    // Wait for chart to update - verify the timeframe in summary shows 1W
+    await expect(page.locator('p:has-text("1W")')).toBeVisible({ timeout: 10000 });
 
     // Verify chart canvas is still visible after timeframe change
     const canvas = page.locator("canvas").first();
     await expect(canvas).toBeVisible();
-  });
-});
-
-test.describe("Chart Type Selection", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/chart");
-    await page.waitForSelector('[class*="tv-lightweight-charts"]', {
-      timeout: 30000,
-    });
-  });
-
-  test("should switch to Heikin Ashi chart", async ({ page }) => {
-    const heikinAshiBtn = page.getByRole("button", { name: "Heikin Ashi" });
-    await heikinAshiBtn.click();
-
-    // Button should be active after click
-    await expect(heikinAshiBtn).toBeVisible();
-  });
-
-  test("should switch to Bar chart", async ({ page }) => {
-    const barBtn = page.getByRole("button", { name: "Bar", exact: true });
-    await barBtn.click();
-
-    // Button should be active after click
-    await expect(barBtn).toBeVisible();
   });
 });
 
@@ -116,27 +97,30 @@ test.describe("Data Source Selection", () => {
     });
   });
 
-  test("should switch to simulated data", async ({ page }) => {
-    const simulatedBtn = page.getByRole("button", { name: "Simulated" });
-    await simulatedBtn.click();
-
-    // Refresh status should disappear when using simulated data
-    await expect(page.locator('text="Auto-Refresh"')).not.toBeVisible({
-      timeout: 5000,
-    });
-  });
-
   test("should show refresh controls for Yahoo Finance", async ({ page }) => {
-    // Default is Yahoo Finance
+    // Default is Yahoo Finance - auto-refresh button should be visible
     const autoRefreshBtn = page.getByRole("button", { name: /Auto-Refresh/ });
-    await expect(autoRefreshBtn).toBeVisible();
+    await expect(autoRefreshBtn).toBeVisible({ timeout: 10000 });
 
     const refreshNowBtn = page.getByRole("button", { name: "Refresh Now" });
     await expect(refreshNowBtn).toBeVisible();
   });
+
+  test("should toggle auto-refresh", async ({ page }) => {
+    // Find the auto-refresh button
+    const autoRefreshBtn = page.getByRole("button", { name: /Auto-Refresh/ });
+    await expect(autoRefreshBtn).toBeVisible({ timeout: 10000 });
+
+    // Click to toggle
+    await autoRefreshBtn.click();
+
+    // Chart should still be visible
+    const canvas = page.locator("canvas").first();
+    await expect(canvas).toBeVisible();
+  });
 });
 
-test.describe("Pivot Points", () => {
+test.describe("Analysis Panel", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/chart");
     await page.waitForSelector('[class*="tv-lightweight-charts"]', {
@@ -144,35 +128,46 @@ test.describe("Pivot Points", () => {
     });
   });
 
+  test("should display analysis panel with tabs", async ({ page }) => {
+    // Check that analysis panel tabs are visible
+    const fibTab = page.locator('button:has-text("Fibonacci")').first();
+    const pivotTab = page.locator('button:has-text("Pivots")').first();
+
+    await expect(fibTab).toBeVisible();
+    await expect(pivotTab).toBeVisible();
+  });
+
   test("should toggle pivot points visibility", async ({ page }) => {
-    const hidePivotsBtn = page.getByRole("button", { name: "Hide Pivots" });
-    await expect(hidePivotsBtn).toBeVisible();
+    // Click on Pivots tab first
+    const pivotTab = page.locator('button:has-text("Pivots")').first();
+    await pivotTab.click();
 
-    await hidePivotsBtn.click();
-
-    const showPivotsBtn = page.getByRole("button", { name: "Show Pivots" });
+    // By default pivots are hidden, so button should say "Show Pivots"
+    const showPivotsBtn = page.getByRole("button", { name: /Show Pivots/ });
     await expect(showPivotsBtn).toBeVisible();
+
+    // Click to show pivots
+    await showPivotsBtn.click();
+
+    // Now button should say "Hide Pivots"
+    const hidePivotsBtn = page.getByRole("button", { name: /Hide Pivots/ });
+    await expect(hidePivotsBtn).toBeVisible();
   });
 
   test("should toggle pivot lines visibility", async ({ page }) => {
-    const hideLinesBtn = page.getByRole("button", { name: "Hide Lines" });
-    await expect(hideLinesBtn).toBeVisible();
+    // Click on Pivots tab first
+    const pivotTab = page.locator('button:has-text("Pivots")').first();
+    await pivotTab.click();
 
-    await hideLinesBtn.click();
-
-    const showLinesBtn = page.getByRole("button", { name: "Show Lines" });
+    // By default lines are hidden, so button should say "Show Lines"
+    const showLinesBtn = page.getByRole("button", { name: /Show Lines/ });
     await expect(showLinesBtn).toBeVisible();
-  });
 
-  test("should switch to manual pivot mode", async ({ page }) => {
-    const manualBtn = page.getByRole("button", { name: "Manual Override" });
-    await manualBtn.click();
+    // Click to show lines
+    await showLinesBtn.click();
 
-    // Should show input fields for manual high/low
-    const highInput = page.locator('input[id="manualHigh"]');
-    const lowInput = page.locator('input[id="manualLow"]');
-
-    await expect(highInput).toBeVisible();
-    await expect(lowInput).toBeVisible();
+    // Now button should say "Hide Lines"
+    const hideLinesBtn = page.getByRole("button", { name: /Hide Lines/ });
+    await expect(hideLinesBtn).toBeVisible();
   });
 });

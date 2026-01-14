@@ -42,8 +42,10 @@ test.describe('Workflow Dashboard', () => {
     // Wait for stepper to load
     await expect(page.locator('[data-slot="card-title"]:has-text("Market & Timeframe Selection")')).toBeVisible({ timeout: 5000 });
 
-    // Click back to all workflows
-    await page.click('text=All Workflows');
+    // Click back to all workflows - wait for button to be ready
+    const allWorkflowsBtn = page.locator('button:has-text("All Workflows")');
+    await expect(allWorkflowsBtn).toBeVisible({ timeout: 5000 });
+    await allWorkflowsBtn.click();
 
     // Should show dashboard again
     await expect(page.locator('h2:has-text("Trading Workflows")')).toBeVisible({ timeout: 5000 });
@@ -58,7 +60,9 @@ test.describe('Workflow Dashboard', () => {
 
     // Go back to dashboard
     await page.waitForSelector('[data-slot="card-title"]:has-text("Market & Timeframe Selection")', { timeout: 5000 });
-    await page.click('text=All Workflows');
+    const allWorkflowsBtn = page.locator('button:has-text("All Workflows")');
+    await expect(allWorkflowsBtn).toBeVisible({ timeout: 5000 });
+    await allWorkflowsBtn.click();
 
     // Should show workflow card with symbol
     await expect(page.locator('.font-mono.font-semibold:has-text("SPX")')).toBeVisible({ timeout: 5000 });
@@ -71,7 +75,9 @@ test.describe('Workflow Dashboard', () => {
     await page.waitForSelector('h2:has-text("Trading Workflows")', { timeout: 10000 });
     await page.getByRole('button', { name: 'New Workflow' }).first().click();
     await page.waitForSelector('[data-slot="card-title"]:has-text("Market & Timeframe Selection")', { timeout: 5000 });
-    await page.click('text=All Workflows');
+    const allWorkflowsBtn1 = page.locator('button:has-text("All Workflows")');
+    await expect(allWorkflowsBtn1).toBeVisible({ timeout: 5000 });
+    await allWorkflowsBtn1.click();
 
     // Wait for dashboard
     await page.waitForSelector('h2:has-text("Trading Workflows")', { timeout: 5000 });
@@ -96,7 +102,9 @@ test.describe('Workflow Dashboard', () => {
     await page.waitForSelector('h2:has-text("Trading Workflows")', { timeout: 10000 });
     await page.getByRole('button', { name: 'New Workflow' }).first().click();
     await page.waitForSelector('[data-slot="card-title"]:has-text("Market & Timeframe Selection")', { timeout: 5000 });
-    await page.click('text=All Workflows');
+    const allWorkflowsBtn2 = page.locator('button:has-text("All Workflows")');
+    await expect(allWorkflowsBtn2).toBeVisible({ timeout: 5000 });
+    await allWorkflowsBtn2.click();
 
     // Wait for dashboard and workflow card
     await page.waitForSelector('.font-mono.font-semibold:has-text("SPX")', { timeout: 5000 });
