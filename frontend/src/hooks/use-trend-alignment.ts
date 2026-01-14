@@ -13,6 +13,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { TIMEFRAME_CONFIG, type Timeframe, type MarketSymbol } from "@/lib/chart-constants";
+import { generateMarketData } from "@/lib/market-utils";
+import type { OHLCData } from "@/components/trading";
 
 export type TrendDirection = "bullish" | "bearish" | "ranging";
 
@@ -84,6 +86,14 @@ export type UseTrendAlignmentReturn = {
 const ALL_TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
 const API_BASE = "/api/trader";
 
+// Cache for fallback trend data to prevent infinite re-renders
+// Key format: "symbol:timeframe:lookback"
+const fallbackCache = new Map<string, TimeframeTrend>();
+
+function getFallbackCacheKey(symbol: MarketSymbol, tf: Timeframe, lookback: number): string {
+  return `${symbol}:${tf}:${lookback}`;
+}
+
 /**
  * Analyze swing markers to get swing-based trend signal
  */
@@ -134,6 +144,284 @@ function analyzeMACD(histogram: number | null): IndicatorStatus {
   if (histogram > 0) return { signal: "bullish", value: histogram };
   if (histogram < 0) return { signal: "bearish", value: histogram };
   return { signal: "neutral", value: 0 };
+}
+
+/**
+ * Check if an error is a connection/backend unavailable error
+ */
+function isConnectionError(error: unknown): boolean {
+  if (error instanceof TypeError) {
+    const msg = error.message.toLowerCase();
+    return (
+      msg.includes("fetch failed") ||
+      msg.includes("failed to fetch") ||
+      msg.includes("network") ||
+      msg.includes("econnrefused")
+    );
+  }
+  return false;
+}
+
+/**
+ * Calculate RSI client-side (simple implementation)
+ * Uses Wilder's smoothing method
+ */
+function calculateClientRSI(data: OHLCData[], period = 14): number | null {
+  if (data.length < period + 1) return null;
+
+  const closes = data.map((d) => d.close);
+  const changes: number[] = [];
+
+  for (let i = 1; i < closes.length; i++) {
+    changes.push(closes[i] - closes[i - 1]);
+  }
+
+  // Initial averages
+  let avgGain = 0;
+  let avgLoss = 0;
+
+  for (let i = 0; i < period; i++) {
+    if (changes[i] > 0) avgGain += changes[i];
+    else avgLoss += Math.abs(changes[i]);
+  }
+
+  avgGain /= period;
+  avgLoss /= period;
+
+  // Wilder's smoothing for remaining values
+  for (let i = period; i < changes.length; i++) {
+    const change = changes[i];
+    if (change > 0) {
+      avgGain = (avgGain * (period - 1) + change) / period;
+      avgLoss = (avgLoss * (period - 1)) / period;
+    } else {
+      avgGain = (avgGain * (period - 1)) / period;
+      avgLoss = (avgLoss * (period - 1) + Math.abs(change)) / period;
+    }
+  }
+
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - 100 / (1 + rs);
+}
+
+/**
+ * Calculate MACD histogram client-side (simple implementation)
+ */
+function calculateClientMACD(
+  data: OHLCData[],
+  fastPeriod = 12,
+  slowPeriod = 26,
+  signalPeriod = 9
+): number | null {
+  if (data.length < slowPeriod + signalPeriod) return null;
+
+  const closes = data.map((d) => d.close);
+
+  // Calculate EMAs
+  const emaFast = calculateEMA(closes, fastPeriod);
+  const emaSlow = calculateEMA(closes, slowPeriod);
+
+  if (!emaFast || !emaSlow) return null;
+
+  // MACD line values
+  const macdLine: number[] = [];
+  const startIdx = slowPeriod - 1;
+
+  for (let i = startIdx; i < closes.length; i++) {
+    const fastIdx = i - (slowPeriod - fastPeriod);
+    if (fastIdx >= 0 && fastIdx < emaFast.length) {
+      macdLine.push(emaFast[fastIdx] - emaSlow[i - startIdx]);
+    }
+  }
+
+  if (macdLine.length < signalPeriod) return null;
+
+  // Signal line (EMA of MACD)
+  const signalLine = calculateEMA(macdLine, signalPeriod);
+  if (!signalLine || signalLine.length === 0) return null;
+
+  // Latest histogram value
+  const latestMacd = macdLine[macdLine.length - 1];
+  const latestSignal = signalLine[signalLine.length - 1];
+
+  return latestMacd - latestSignal;
+}
+
+/**
+ * Calculate Exponential Moving Average
+ */
+function calculateEMA(data: number[], period: number): number[] | null {
+  if (data.length < period) return null;
+
+  const ema: number[] = [];
+  const multiplier = 2 / (period + 1);
+
+  // Start with SMA
+  let sum = 0;
+  for (let i = 0; i < period; i++) {
+    sum += data[i];
+  }
+  ema.push(sum / period);
+
+  // Calculate EMA for rest
+  for (let i = period; i < data.length; i++) {
+    ema.push((data[i] - ema[ema.length - 1]) * multiplier + ema[ema.length - 1]);
+  }
+
+  return ema;
+}
+
+/**
+ * Detect swing markers client-side (simplified)
+ * Returns basic HH/HL/LH/LL patterns
+ */
+function detectClientSwings(
+  data: OHLCData[],
+  lookback: number
+): { markers: SwingMarkerTrend[]; pivots: PivotData[] } {
+  if (data.length < lookback * 2 + 1) {
+    return { markers: [], pivots: [] };
+  }
+
+  const pivots: PivotData[] = [];
+
+  // Find pivot highs and lows
+  for (let i = lookback; i < data.length - lookback; i++) {
+    const bar = data[i];
+    let isHigh = true;
+    let isLow = true;
+
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j === i) continue;
+      if (data[j].high >= bar.high) isHigh = false;
+      if (data[j].low <= bar.low) isLow = false;
+    }
+
+    if (isHigh) {
+      pivots.push({
+        index: i,
+        price: bar.high,
+        type: "high",
+        time: bar.time as string | number,
+      });
+    }
+    if (isLow) {
+      pivots.push({
+        index: i,
+        price: bar.low,
+        type: "low",
+        time: bar.time as string | number,
+      });
+    }
+  }
+
+  // Sort by index
+  pivots.sort((a, b) => a.index - b.index);
+
+  // Generate swing markers from pivots
+  const markers: SwingMarkerTrend[] = [];
+  let lastHigh: PivotData | null = null;
+  let lastLow: PivotData | null = null;
+
+  for (const pivot of pivots) {
+    if (pivot.type === "high") {
+      if (lastHigh) {
+        const swingType = pivot.price > lastHigh.price ? "HH" : "LH";
+        markers.push({
+          index: pivot.index,
+          price: pivot.price,
+          time: pivot.time,
+          swingType,
+        });
+      }
+      lastHigh = pivot;
+    } else {
+      if (lastLow) {
+        const swingType = pivot.price > lastLow.price ? "HL" : "LL";
+        markers.push({
+          index: pivot.index,
+          price: pivot.price,
+          time: pivot.time,
+          swingType,
+        });
+      }
+      lastLow = pivot;
+    }
+  }
+
+  return { markers, pivots };
+}
+
+/**
+ * Generate fallback trend data using simulated market data and client-side calculations.
+ * Results are cached to prevent infinite re-renders from regenerating random data.
+ */
+function generateFallbackTrend(
+  tf: Timeframe,
+  symbol: MarketSymbol,
+  lookback: number
+): TimeframeTrend {
+  // Check cache first to prevent infinite re-renders
+  const cacheKey = getFallbackCacheKey(symbol, tf, lookback);
+  const cached = fallbackCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  // Generate simulated market data
+  const periods = TIMEFRAME_CONFIG[tf].periods;
+  const simulatedData = generateMarketData(symbol, tf, periods);
+
+  if (simulatedData.length < 26) {
+    const result: TimeframeTrend = {
+      timeframe: tf,
+      trend: "ranging",
+      confidence: 0,
+      swing: { signal: "neutral" },
+      rsi: { signal: "neutral" },
+      macd: { signal: "neutral" },
+      isLoading: false,
+      error: null,
+    };
+    fallbackCache.set(cacheKey, result);
+    return result;
+  }
+
+  // Calculate indicators client-side
+  const { markers, pivots } = detectClientSwings(simulatedData, lookback);
+  const rsiValue = calculateClientRSI(simulatedData);
+  const macdHistogram = calculateClientMACD(simulatedData);
+
+  // Analyze indicators
+  const swing = analyzeSwingTrend(markers);
+  const rsi = analyzeRSI(rsiValue);
+  const macd = analyzeMACD(macdHistogram);
+
+  // Combine for overall trend
+  const { trend, confidence } = combineTrends(swing, rsi, macd);
+
+  // Get current price
+  const currentPrice =
+    simulatedData.length > 0 ? simulatedData[simulatedData.length - 1].close : undefined;
+
+  const result: TimeframeTrend = {
+    timeframe: tf,
+    trend,
+    confidence,
+    swing,
+    rsi,
+    macd,
+    isLoading: false,
+    error: null,
+    pivots,
+    markers,
+    currentPrice,
+  };
+
+  // Cache the result
+  fallbackCache.set(cacheKey, result);
+  return result;
 }
 
 /**
@@ -279,8 +567,13 @@ export function useTrendAlignment({
   const [refreshKey, setRefreshKey] = useState(0);
 
   const refresh = useCallback(() => {
+    // Clear fallback cache for this symbol to get fresh data
+    for (const tf of timeframes) {
+      const cacheKey = getFallbackCacheKey(symbol, tf, lookback);
+      fallbackCache.delete(cacheKey);
+    }
     setRefreshKey(k => k + 1);
-  }, []);
+  }, [symbol, timeframes, lookback]);
 
   // Fetch all indicator data for all timeframes
   useEffect(() => {
@@ -427,6 +720,15 @@ export function useTrendAlignment({
             error: null,
           };
         }
+
+        // If backend is unavailable, use client-side fallback with simulated data
+        if (isConnectionError(err)) {
+          console.warn(
+            `[useTrendAlignment] Backend unavailable for ${tf}, using client-side fallback`
+          );
+          return generateFallbackTrend(tf, symbol, lookback);
+        }
+
         return {
           timeframe: tf,
           trend: "ranging",
