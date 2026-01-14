@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect } from "react";
 import { WorkflowV2Layout } from "@/components/workflow-v2/WorkflowV2Layout";
-import { DiscoveryPanel } from "@/components/workflow-v2/DiscoveryPanel";
+import { DiscoveryModePanel } from "@/components/workflow-v2/DiscoveryModePanel";
 import { ValidationPanel } from "@/components/workflow-v2/ValidationPanel";
 import { SizingPanel } from "@/components/workflow-v2/SizingPanel";
 import { ExecutionPanel } from "@/components/workflow-v2/ExecutionPanel";
@@ -90,7 +90,7 @@ export default function WorkflowV2Page() {
     switch (workflow.phase) {
       case "discover":
         return (
-          <DiscoveryPanel
+          <DiscoveryModePanel
             opportunities={discovery.opportunities}
             isLoading={discovery.isLoading}
             hasError={discovery.hasError}
@@ -98,6 +98,7 @@ export default function WorkflowV2Page() {
             onRefresh={discovery.refresh}
             onSelectOpportunity={workflow.selectOpportunity}
             symbol={workflow.symbol}
+            onSymbolChange={workflow.setSymbol}
           />
         );
       case "validate":
