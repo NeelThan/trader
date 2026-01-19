@@ -120,6 +120,9 @@ const createMockValidationResult = (
   suggestedEntry: 42100,
   suggestedStop: 41800,
   suggestedTargets: [42700, 43000],
+  confluenceScore: null,
+  isRanging: false,
+  rangingWarning: null,
 });
 
 describe("useValidationWithOverrides", () => {

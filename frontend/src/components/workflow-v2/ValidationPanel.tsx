@@ -7,7 +7,7 @@
  * Must pass validation to proceed to position sizing.
  */
 
-import { CheckCircle, XCircle, Loader2, ArrowLeft, ArrowRight, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, ArrowLeft, ArrowRight, AlertTriangle, Flame, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { ValidationResult, ValidationCheck } from "@/hooks/use-trade-validation";
+import type { ConfluenceScore } from "@/types/workflow-v2";
 
 type ValidationPanelProps = {
   opportunity: TradeOpportunity;
@@ -41,6 +42,84 @@ function CheckItem({ check }: { check: ValidationCheck }) {
         <p className="text-xs text-muted-foreground">{check.explanation}</p>
       </div>
     </div>
+  );
+}
+
+/** Get color class based on confluence interpretation */
+function getConfluenceColor(interpretation: string): string {
+  switch (interpretation) {
+    case "major": return "text-purple-400 bg-purple-500/20 border-purple-500/30";
+    case "significant": return "text-amber-400 bg-amber-500/20 border-amber-500/30";
+    case "important": return "text-blue-400 bg-blue-500/20 border-blue-500/30";
+    default: return "text-slate-400 bg-slate-500/20 border-slate-500/30";
+  }
+}
+
+/** Get flame icons based on confluence score */
+function ConfluenceFlames({ score }: { score: number }) {
+  const flames = Math.min(Math.max(1, Math.ceil(score / 2)), 5);
+  return (
+    <div className="flex items-center gap-0.5">
+      {Array.from({ length: flames }).map((_, i) => (
+        <Flame
+          key={i}
+          className={`w-3 h-3 ${
+            score >= 7 ? "text-purple-400" :
+            score >= 5 ? "text-amber-400" :
+            score >= 3 ? "text-blue-400" :
+            "text-slate-400"
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Confluence score display component */
+function ConfluenceDisplay({ confluenceScore }: { confluenceScore: ConfluenceScore }) {
+  const { total, breakdown, interpretation } = confluenceScore;
+  const colorClass = getConfluenceColor(interpretation);
+
+  const breakdownItems = [
+    { label: "Base Fib Level", value: breakdown.baseFibLevel, max: 1 },
+    { label: "Same TF Confluence", value: breakdown.sameTFConfluence, max: 3 },
+    { label: "Higher TF Confluence", value: breakdown.higherTFConfluence, max: 6 },
+    { label: "Cross-Tool", value: breakdown.crossToolConfluence, max: 2 },
+    { label: "Psychological Level", value: breakdown.psychologicalLevel, max: 1 },
+  ].filter(item => item.value > 0);
+
+  return (
+    <Card>
+      <CardHeader className="py-3">
+        <CardTitle className="text-sm flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span>Confluence Score</span>
+            <InfoTooltip
+              content="Higher confluence = stronger support/resistance. Major (7+) levels are high-probability zones."
+              side="right"
+            />
+          </div>
+          <Badge variant="outline" className={colorClass}>
+            <ConfluenceFlames score={total} />
+            <span className="ml-1.5 font-semibold">{total}</span>
+            <span className="ml-1 text-[10px] uppercase">{interpretation}</span>
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1.5">
+          {breakdownItems.map((item) => (
+            <div key={item.label} className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">{item.label}</span>
+              <span className="font-mono">+{item.value}</span>
+            </div>
+          ))}
+          {breakdownItems.length === 0 && (
+            <p className="text-xs text-muted-foreground">No confluence factors detected</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -121,6 +200,26 @@ export function ValidationPanel({
           </div>
         </CardContent>
       </Card>
+
+      {/* Ranging Market Warning */}
+      {validation.isRanging && validation.rangingWarning && (
+        <Card className="bg-amber-500/10 border-amber-500/30">
+          <CardContent className="py-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-400">Ranging Market Detected</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{validation.rangingWarning}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Confluence Score */}
+      {validation.confluenceScore && validation.confluenceScore.total > 0 && (
+        <ConfluenceDisplay confluenceScore={validation.confluenceScore} />
+      )}
 
       {/* Validation Checks */}
       <Card>
