@@ -63,7 +63,7 @@ import {
 } from "@/lib/chart-pro/strategy-types";
 
 const SYMBOLS: MarketSymbol[] = ["DJI", "SPX", "NDX", "BTCUSD", "EURUSD", "GOLD"];
-const TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
+const TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"];
 
 // Default chart colors (fallback when settings haven't loaded)
 const DEFAULT_CHART_COLORS = { up: "#22c55e", down: "#ef4444" } as const;
@@ -263,6 +263,7 @@ export default function ChartProPage() {
     result: swingResult,
     isLoading: isLoadingSwings,
     error: swingError,
+    isBackendUnavailable: isSwingBackendUnavailable,
     isFromCache: swingFromCache,
     cacheTTL: swingCacheTTL,
     forceRefresh: forceRefreshSwings,
@@ -457,9 +458,9 @@ export default function ChartProPage() {
           </div>
 
           {/* Backend Status */}
-          {isBackendUnavailable && (
+          {(isBackendUnavailable || isSwingBackendUnavailable) && (
             <div className="p-4 rounded-lg bg-orange-500/20 border border-orange-500/30 text-orange-400">
-              Backend Offline - Cannot load market data
+              Backend Offline - Some features unavailable (swing detection, indicators)
             </div>
           )}
 

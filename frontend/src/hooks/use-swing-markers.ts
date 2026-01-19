@@ -61,6 +61,8 @@ export type UseSwingMarkersReturn = {
   result: SwingDetectionResult | null;
   isLoading: boolean;
   error: string | null;
+  /** Whether the backend is unavailable (503 or connection error) */
+  isBackendUnavailable: boolean;
   refresh: () => void;
   /** Force refresh bypassing cache */
   forceRefresh: () => void;
@@ -86,6 +88,7 @@ export function useSwingMarkers({
   const [result, setResult] = useState<SwingDetectionResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isBackendUnavailable, setIsBackendUnavailable] = useState(false);
   const [isFromCache, setIsFromCache] = useState(false);
   const [cacheTTL, setCacheTTL] = useState<number | null>(null);
 
@@ -125,6 +128,7 @@ export function useSwingMarkers({
 
       setIsLoading(true);
       setError(null);
+      setIsBackendUnavailable(false);
       setIsFromCache(false);
 
       try {
@@ -148,9 +152,16 @@ export function useSwingMarkers({
           }),
         });
 
+        if (response.status === 503) {
+          setIsBackendUnavailable(true);
+          setResult(null);
+          setError(null); // Not an error, just backend unavailable
+          return;
+        }
+
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.detail || `HTTP ${response.status}`);
+          throw new Error(errorData.detail || errorData.error || `HTTP ${response.status}`);
         }
 
         const data_result = await response.json();
@@ -189,9 +200,16 @@ export function useSwingMarkers({
 
         setResult({ pivots, markers });
       } catch (err) {
-        console.error("Failed to fetch swing markers:", err);
-        setError(err instanceof Error ? err.message : "Failed to fetch swing markers");
-        setResult(null);
+        // Check for connection errors (backend not running)
+        if (err instanceof TypeError && err.message.toLowerCase().includes("fetch")) {
+          setIsBackendUnavailable(true);
+          setResult(null);
+          setError(null);
+        } else {
+          console.error("Failed to fetch swing markers:", err);
+          setError(err instanceof Error ? err.message : "Failed to fetch swing markers");
+          setResult(null);
+        }
         setCacheTTL(null);
       } finally {
         setIsLoading(false);
@@ -222,6 +240,7 @@ export function useSwingMarkers({
     result,
     isLoading,
     error,
+    isBackendUnavailable,
     refresh,
     forceRefresh,
     isFromCache,

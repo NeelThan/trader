@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * Hook for calculating RSI indicator from the backend API.
+ * Hook for fetching RSI indicator from the backend API.
  *
  * Per ADR-20260101, technical indicators are calculated in the backend
- * following the thin client architecture.
+ * following the thin client architecture. Frontend is a dumb client.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -24,6 +24,7 @@ export type UseRSIReturn = {
   rsiData: RSIData | null;
   isLoading: boolean;
   error: string | null;
+  isBackendUnavailable: boolean;
   refresh: () => void;
 };
 
@@ -31,6 +32,7 @@ const API_BASE = "/api/trader";
 
 /**
  * Fetches RSI indicator values from the backend API.
+ * Frontend is a dumb client - all calculations done by backend.
  */
 export function useRSI({
   data,
@@ -40,6 +42,7 @@ export function useRSI({
   const [rsiData, setRsiData] = useState<RSIData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isBackendUnavailable, setIsBackendUnavailable] = useState(false);
 
   const fetchRSI = useCallback(async () => {
     // Need enough data for period + 1
@@ -51,6 +54,7 @@ export function useRSI({
 
     setIsLoading(true);
     setError(null);
+    setIsBackendUnavailable(false);
 
     try {
       // Convert OHLCData to the format expected by the API
@@ -73,9 +77,16 @@ export function useRSI({
         }),
       });
 
+      if (response.status === 503) {
+        setIsBackendUnavailable(true);
+        setRsiData(null);
+        setError(null); // Not an error, just backend unavailable
+        return;
+      }
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
+        throw new Error(errorData.detail || errorData.error || `HTTP ${response.status}`);
       }
 
       const result = await response.json();
@@ -83,9 +94,15 @@ export function useRSI({
         rsi: result.rsi,
       });
     } catch (err) {
-      console.error("Failed to fetch RSI:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch RSI");
-      setRsiData(null);
+      // Check for connection errors (backend not running)
+      if (err instanceof TypeError && err.message.toLowerCase().includes("fetch")) {
+        setIsBackendUnavailable(true);
+        setRsiData(null);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to fetch RSI");
+        setRsiData(null);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -104,6 +121,7 @@ export function useRSI({
     rsiData,
     isLoading,
     error,
+    isBackendUnavailable,
     refresh,
   };
 }
