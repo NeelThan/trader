@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRef, useEffect, useCallback, useLayoutEffect, useImperativeHandle, forwardRef } from "react";
+import { useRef, useEffect, useCallback, useLayoutEffect, useImperativeHandle, forwardRef, useState, useMemo } from "react";
 import {
   createChart,
   IChartApi,
@@ -43,6 +43,12 @@ export type PriceLine = {
   lineStyle?: LineStyle;
   axisLabelVisible?: boolean;
   title?: string;
+  /** Timeframe this level belongs to (for left-side label positioning) */
+  timeframe?: string;
+  /** Strategy type (e.g., "RETRACEMENT", "EXTENSION") for tooltip */
+  strategy?: string;
+  /** Direction bias ("long" or "short") for marker color */
+  direction?: "long" | "short";
 };
 
 export type LineOverlay = {
@@ -63,6 +69,17 @@ export type ChartMarker = {
 
 export type ChartType = "candlestick" | "bar" | "heikin-ashi";
 
+/** Timeframe order for label positioning (higher TF = more left) */
+const TIMEFRAME_ORDER: string[] = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"];
+
+/** Get x-position percentage based on timeframe (higher TF = more left) */
+function getTimeframeXPosition(timeframe: string): number {
+  const index = TIMEFRAME_ORDER.indexOf(timeframe);
+  if (index === -1) return 50; // Default to middle if unknown
+  // Position from 2% (1M) to 26% (1m) - compact spacing for dot markers
+  return 2 + index * 3;
+}
+
 export type CandlestickChartProps = {
   data: OHLCData[];
   priceLines?: PriceLine[];
@@ -80,6 +97,8 @@ export type CandlestickChartProps = {
   className?: string;
   onCrosshairMove?: (price: number | null, time: Time | null) => void;
   onLoadMore?: (oldestTime: Time) => void; // Called when user scrolls to start of data
+  /** Show Fib labels on left side of chart instead of price axis */
+  showLeftSideLabels?: boolean;
 };
 
 export type CandlestickChartHandle = {
@@ -219,6 +238,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       className,
       onCrosshairMove,
       onLoadMore,
+      showLeftSideLabels = false,
     },
     ref
   ) {
@@ -229,6 +249,9 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     const priceLinesRef = useRef<IPriceLine[]>([]);
     const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     const hasInitializedRef = useRef(false);
+
+    // State for left-side label positions (y-coordinates)
+    const [labelPositions, setLabelPositions] = useState<Map<number, number>>(new Map());
 
     // Expose chart control methods via ref
     useImperativeHandle(ref, () => ({
@@ -709,12 +732,168 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     };
   }, []);
 
+  // Update label positions for left-side rendering
+  useEffect(() => {
+    if (!showLeftSideLabels || !seriesRef.current || priceLines.length === 0) {
+      setLabelPositions(new Map());
+      return;
+    }
+
+    const updatePositions = () => {
+      const series = seriesRef.current;
+      if (!series) return;
+
+      const newPositions = new Map<number, number>();
+      priceLines.forEach((line, index) => {
+        // Use priceToCoordinate to get Y pixel position
+        const y = series.priceToCoordinate(line.price);
+        if (y !== null) {
+          newPositions.set(index, y);
+        }
+      });
+      setLabelPositions(newPositions);
+    };
+
+    // Update immediately
+    updatePositions();
+
+    // Subscribe to visible range changes to update positions on pan/zoom
+    const chart = chartRef.current;
+    if (chart) {
+      const timeScale = chart.timeScale();
+      timeScale.subscribeVisibleLogicalRangeChange(updatePositions);
+      return () => {
+        timeScale.unsubscribeVisibleLogicalRangeChange(updatePositions);
+      };
+    }
+  }, [showLeftSideLabels, priceLines]);
+
+  // Flatten all labels with positions for rendering
+  const allMarkers = useMemo(() => {
+    if (!showLeftSideLabels) return [];
+
+    const markers: Array<{ index: number; line: PriceLine; y: number; xPercent: number }> = [];
+    priceLines.forEach((line, index) => {
+      const y = labelPositions.get(index);
+      if (y === undefined || !line.timeframe) return;
+
+      const xPercent = getTimeframeXPosition(line.timeframe);
+      markers.push({ index, line, y, xPercent });
+    });
+
+    return markers;
+  }, [showLeftSideLabels, priceLines, labelPositions]);
+
+  // State for hovered marker tooltip
+  const [hoveredMarker, setHoveredMarker] = useState<{ index: number; x: number; y: number } | null>(null);
+
+  // Format price for display
+  const formatLevelPrice = useCallback((price: number) => {
+    if (price >= 10000) return price.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    if (price >= 100) return price.toFixed(2);
+    if (price >= 1) return price.toFixed(4);
+    return price.toFixed(5);
+  }, []);
+
     return (
       <div
         ref={containerRef}
-        className={cn("w-full", fillContainer && "h-full", className)}
+        className={cn("w-full relative", fillContainer && "h-full", className)}
         style={fillContainer ? undefined : { height }}
-      />
+      >
+        {/* Left-side Fib markers overlay - pointer-events-none on container, auto on markers */}
+        {showLeftSideLabels && allMarkers.length > 0 && (
+          <div className="absolute inset-0 overflow-hidden z-10 pointer-events-none">
+            {allMarkers.map(({ index, line, y, xPercent }) => {
+              const isLong = line.direction === "long";
+              const markerColor = isLong ? "#3b82f6" : "#ef4444"; // blue for support/buy, red for resistance/sell
+
+              return (
+                <div
+                  key={`marker-${index}`}
+                  className="absolute cursor-pointer pointer-events-auto group p-2 -m-2"
+                  style={{
+                    left: `${xPercent}%`,
+                    top: y,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const containerRect = containerRef.current?.getBoundingClientRect();
+                    if (containerRect) {
+                      setHoveredMarker({
+                        index,
+                        x: rect.left - containerRect.left + rect.width / 2,
+                        y: rect.top - containerRect.top,
+                      });
+                    }
+                  }}
+                  onMouseLeave={() => setHoveredMarker(null)}
+                >
+                  {/* Small marker dot with larger hover area */}
+                  <div
+                    className="w-2 h-2 rounded-full border border-white/50 shadow-sm transition-transform group-hover:scale-150 pointer-events-none"
+                    style={{ backgroundColor: markerColor }}
+                  />
+                </div>
+              );
+            })}
+
+            {/* Tooltip for hovered marker */}
+            {hoveredMarker && (() => {
+              const marker = allMarkers.find(m => m.index === hoveredMarker.index);
+              if (!marker) return null;
+              const { line } = marker;
+              const isLong = line.direction === "long";
+
+              return (
+                <div
+                  className="absolute z-20 pointer-events-none"
+                  style={{
+                    left: hoveredMarker.x,
+                    top: hoveredMarker.y - 8,
+                    transform: "translate(-50%, -100%)",
+                  }}
+                >
+                  <div className="bg-popover border border-border rounded-md shadow-lg px-3 py-2 text-xs whitespace-nowrap">
+                    {/* Header with timeframe and direction */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-muted-foreground">{line.timeframe}</span>
+                      <span
+                        className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                        style={{
+                          backgroundColor: isLong ? "rgba(59, 130, 246, 0.2)" : "rgba(239, 68, 68, 0.2)",
+                          color: isLong ? "#3b82f6" : "#ef4444",
+                        }}
+                      >
+                        {isLong ? "SUPPORT" : "RESISTANCE"}
+                      </span>
+                    </div>
+                    {/* Strategy and ratio */}
+                    <div className="text-foreground font-medium">
+                      {line.strategy && <span className="mr-1">{line.strategy}</span>}
+                      {line.title}
+                    </div>
+                    {/* Price - prominent */}
+                    <div className="text-sm font-bold mt-1" style={{ color: isLong ? "#3b82f6" : "#ef4444" }}>
+                      {formatLevelPrice(line.price)}
+                    </div>
+                  </div>
+                  {/* Tooltip arrow */}
+                  <div
+                    className="absolute left-1/2 -translate-x-1/2 w-0 h-0"
+                    style={{
+                      borderLeft: "6px solid transparent",
+                      borderRight: "6px solid transparent",
+                      borderTop: "6px solid hsl(var(--border))",
+                    }}
+                  />
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
     );
   }
 );
