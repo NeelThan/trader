@@ -23,6 +23,8 @@ SYMBOL_MAP: dict[str, str] = {
 # Map internal timeframes to Yahoo interval values
 INTERVAL_MAP: dict[str, str] = {
     "1m": "1m",
+    "3m": "1m",  # Yahoo doesn't have 3m, use 1m and aggregate
+    "5m": "5m",
     "15m": "15m",
     "1H": "1h",
     "4H": "1h",  # Yahoo doesn't have 4h, use 1h and aggregate
@@ -34,6 +36,8 @@ INTERVAL_MAP: dict[str, str] = {
 # Map timeframes to period for history fetch
 PERIOD_MAP: dict[str, str] = {
     "1m": "7d",     # 1m data limited to 7 days
+    "3m": "7d",     # 3m uses 1m data, same limitation
+    "5m": "60d",    # 5m data limited to 60 days
     "15m": "60d",   # 15m data limited to 60 days
     "1H": "730d",   # 1h data limited to 730 days
     "4H": "730d",

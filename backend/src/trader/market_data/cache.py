@@ -12,6 +12,8 @@ from trader.market_data.models import MarketDataResult
 # TTL in seconds per timeframe
 TTL_MAP: dict[str, int] = {
     "1m": 30,      # 30 seconds for 1-minute data
+    "3m": 30,      # 30 seconds for 3-minute data
+    "5m": 45,      # 45 seconds for 5-minute data
     "15m": 60,     # 1 minute for 15-minute data
     "1H": 120,     # 2 minutes for hourly data
     "4H": 300,     # 5 minutes for 4-hour data

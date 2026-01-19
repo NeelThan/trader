@@ -77,6 +77,8 @@ export type ConfluenceBreakdown = {
   sameTFConfluence: number;
   /** Higher TF confluence: +2 per level */
   higherTFConfluence: number;
+  /** Cross-tool confluence: +2 when different Fib tools converge (e.g., retracement + extension) */
+  crossToolConfluence: number;
   /** Previous pivot nearby: +2 */
   previousPivot: number;
   /** Psychological level (round number): +1 */
@@ -122,6 +124,27 @@ export function getCategoryAdjustedRisk(
 // ============================================================================
 // Trade Opportunity Types (for multi-symbol scanning)
 // ============================================================================
+
+/**
+ * Trend assessment from swing pattern analysis.
+ * Returned by the /workflow/assess endpoint.
+ */
+export type TrendAssessment = {
+  /** Trend direction (bullish/bearish/neutral) */
+  trend: "bullish" | "bearish" | "neutral";
+  /** Current trend phase */
+  phase: TrendPhase;
+  /** Latest swing type detected */
+  swing_type: "HH" | "HL" | "LH" | "LL";
+  /** Human-readable explanation */
+  explanation: string;
+  /** Confidence score 0-100 */
+  confidence: number;
+  /** True if price is moving sideways within a range */
+  is_ranging: boolean;
+  /** Warning message when ranging detected */
+  ranging_warning: string | null;
+};
 
 /**
  * A trade opportunity identified through multi-timeframe analysis.
@@ -320,6 +343,8 @@ export const AUTO_REFRESH_INTERVALS: Record<Timeframe, number> = {
   "4H": 60,
   "1H": 60,
   "15m": 10,
+  "5m": 10,
+  "3m": 10,
   "1m": 10,
 };
 
@@ -380,6 +405,8 @@ export const DEFAULT_TIMEFRAME_VISIBILITY: TimeframeVisibility = {
   "4H": true,
   "1H": true,
   "15m": true,
+  "5m": true,
+  "3m": true,
   "1m": true,
 };
 
@@ -464,7 +491,9 @@ export const WORKFLOW_TIMEFRAME_PAIRS: WorkflowTimeframePair[] = [
   { id: "1D-4H", name: "Daily/4-Hour", higherTimeframe: "1D", lowerTimeframe: "4H", tradingStyle: "swing" },
   { id: "4H-1H", name: "4-Hour/1-Hour", higherTimeframe: "4H", lowerTimeframe: "1H", tradingStyle: "day" },
   { id: "1H-15m", name: "1-Hour/15-Min", higherTimeframe: "1H", lowerTimeframe: "15m", tradingStyle: "day" },
-  { id: "15m-1m", name: "15-Min/1-Min", higherTimeframe: "15m", lowerTimeframe: "1m", tradingStyle: "scalping" },
+  { id: "15m-5m", name: "15-Min/5-Min", higherTimeframe: "15m", lowerTimeframe: "5m", tradingStyle: "scalping" },
+  { id: "5m-3m", name: "5-Min/3-Min", higherTimeframe: "5m", lowerTimeframe: "3m", tradingStyle: "scalping" },
+  { id: "3m-1m", name: "3-Min/1-Min", higherTimeframe: "3m", lowerTimeframe: "1m", tradingStyle: "scalping" },
 ];
 
 // ============================================================================

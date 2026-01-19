@@ -3,7 +3,7 @@
  * Centralized location for all chart-related configuration.
  */
 
-export type Timeframe = "1m" | "15m" | "1H" | "4H" | "1D" | "1W" | "1M";
+export type Timeframe = "1m" | "3m" | "5m" | "15m" | "1H" | "4H" | "1D" | "1W" | "1M";
 export type MarketSymbol = "DJI" | "SPX" | "NDX" | "BTCUSD" | "EURUSD" | "GOLD";
 export type DataSource = "simulated" | "yahoo";
 
@@ -47,6 +47,8 @@ export const TIMEFRAME_CONFIG: Record<
 > = {
   // Intraday timeframes - enough for zooming and pivot detection
   "1m": { label: "1m", periods: 720, description: "12 hours of 1-minute data", refreshInterval: 60 },
+  "3m": { label: "3m", periods: 480, description: "24 hours of 3-minute data", refreshInterval: 60 },
+  "5m": { label: "5m", periods: 288, description: "24 hours of 5-minute data", refreshInterval: 60 },
   "15m": {
     label: "15m",
     periods: 576,
@@ -254,9 +256,23 @@ export const TIMEFRAME_PAIR_PRESETS: TimeframePair[] = [
     tradingStyle: "day",
   },
   {
-    id: "15m-1m",
-    name: "15-Minute / 1-Minute",
+    id: "15m-5m",
+    name: "15-Minute / 5-Minute",
     higherTF: "15m",
+    lowerTF: "5m",
+    tradingStyle: "scalping",
+  },
+  {
+    id: "5m-3m",
+    name: "5-Minute / 3-Minute",
+    higherTF: "5m",
+    lowerTF: "3m",
+    tradingStyle: "scalping",
+  },
+  {
+    id: "3m-1m",
+    name: "3-Minute / 1-Minute",
+    higherTF: "3m",
     lowerTF: "1m",
     tradingStyle: "scalping",
   },
