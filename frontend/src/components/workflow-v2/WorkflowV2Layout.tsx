@@ -112,6 +112,7 @@ export function WorkflowV2Layout({
   const showTrendPanel = panels.trendPanel;
   const showConfluenceZones = panels.confluenceZones;
   const showPsychologicalLevels = panels.psychologicalLevels;
+  const showVolume = panels.volumePane;
   const showFibLabels = chart.fibLabels;
   const showFibLines = chart.fibLines;
   const showLevelsTable = panels.levelsTable;
@@ -998,6 +999,18 @@ export function WorkflowV2Layout({
                   {/* Other toggles */}
                   <div className="flex items-center gap-1">
                     <button
+                      onClick={() => dispatch(layoutActions.togglePanel("volumePane"))}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        showVolume
+                          ? "bg-primary/20 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                      title="Toggle volume bars"
+                    >
+                      Vol
+                    </button>
+                    <button
                       onClick={() => dispatch(layoutActions.togglePanel("indicators"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
@@ -1154,6 +1167,7 @@ export function WorkflowV2Layout({
                     onCrosshairMove={handleCrosshairMove}
                     fillContainer
                     showLeftSideLabels={showFibLabels}
+                    showVolume={showVolume}
                   />
                   {/* Level tooltip - shows when crosshair is near a Fib level */}
                   {showFibLevels && (

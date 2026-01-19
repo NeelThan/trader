@@ -9,9 +9,11 @@ import {
   CandlestickSeries,
   BarSeries,
   LineSeries,
+  HistogramSeries,
   CandlestickData,
   BarData,
   LineData,
+  HistogramData,
   Time,
   IPriceLine,
   DeepPartial,
@@ -34,6 +36,7 @@ export type OHLCData = {
   high: number;
   low: number;
   close: number;
+  volume?: number;
 };
 
 export type PriceLine = {
@@ -99,6 +102,8 @@ export type CandlestickChartProps = {
   onLoadMore?: (oldestTime: Time) => void; // Called when user scrolls to start of data
   /** Show Fib labels on left side of chart instead of price axis */
   showLeftSideLabels?: boolean;
+  /** Show volume bars below the price chart */
+  showVolume?: boolean;
 };
 
 export type CandlestickChartHandle = {
@@ -239,12 +244,14 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       onCrosshairMove,
       onLoadMore,
       showLeftSideLabels = false,
+      showVolume = false,
     },
     ref
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Bar"> | null>(null);
+    const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
     const lineSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
     const priceLinesRef = useRef<IPriceLine[]>([]);
     const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
@@ -320,6 +327,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
   const onCrosshairMoveRef = useRef(onCrosshairMove);
   const onLoadMoreRef = useRef(onLoadMore);
   const isLoadingMoreRef = useRef(false);
+  const showVolumeRef = useRef(showVolume);
 
   // Update refs in layout effect (runs synchronously before paint)
   useIsomorphicLayoutEffect(() => {
@@ -329,6 +337,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     markersPropsRef.current = markers;
     onCrosshairMoveRef.current = onCrosshairMove;
     onLoadMoreRef.current = onLoadMore;
+    showVolumeRef.current = showVolume;
   });
 
   // Create chart on mount
@@ -457,6 +466,41 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     chartRef.current = chart;
     seriesRef.current = series;
 
+    // Add volume series if enabled and data has volume
+    if (showVolumeRef.current && dataRef.current.some(d => d.volume !== undefined && d.volume !== null)) {
+      const volumeSeries = chart.addSeries(HistogramSeries, {
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'volume',
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+
+      // Configure volume price scale (separate from main price)
+      chart.priceScale('volume').applyOptions({
+        scaleMargins: {
+          top: 0.85, // Volume in bottom 15% of chart
+          bottom: 0,
+        },
+        borderVisible: false,
+      });
+
+      // Set volume data with colors based on price direction
+      const cleanedData = deduplicateAndSort(dataRef.current);
+      const volumeData: HistogramData[] = cleanedData
+        .filter(d => d.volume !== undefined && d.volume !== null)
+        .map(d => ({
+          time: d.time,
+          value: d.volume as number,
+          color: d.close >= d.open ? upColor + '80' : downColor + '80', // 50% opacity
+        }));
+
+      if (volumeData.length > 0) {
+        volumeSeries.setData(volumeData);
+      }
+
+      volumeSeriesRef.current = volumeSeries;
+    }
+
     // Set up initial markers from ref (v5 API)
     if (markersPropsRef.current.length > 0) {
       const seriesMarkers: SeriesMarker<Time>[] = markersPropsRef.current.map((m) => ({
@@ -512,12 +556,13 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      volumeSeriesRef.current = null;
       priceLinesRef.current = [];
       lineSeriesRef.current = [];
       markersPluginRef.current = null;
       hasInitializedRef.current = false; // Reset so new chart fits content
     };
-  }, [theme, height, width, upColor, downColor, chartType]);
+  }, [theme, height, width, upColor, downColor, chartType, showVolume]);
 
   // Update data when it changes
   useEffect(() => {
@@ -527,6 +572,21 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       chartType === "heikin-ashi" ? calculateHeikinAshi(cleanedData) : cleanedData;
     seriesRef.current.setData(chartData as (CandlestickData | BarData)[]);
 
+    // Update volume data if volume series exists
+    if (volumeSeriesRef.current) {
+      const volumeData: HistogramData[] = cleanedData
+        .filter(d => d.volume !== undefined && d.volume !== null)
+        .map(d => ({
+          time: d.time,
+          value: d.volume as number,
+          color: d.close >= d.open ? upColor + '80' : downColor + '80', // 50% opacity
+        }));
+
+      if (volumeData.length > 0) {
+        volumeSeriesRef.current.setData(volumeData);
+      }
+    }
+
     // Reset loading flag so we can load more again
     isLoadingMoreRef.current = false;
 
@@ -535,7 +595,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       chartRef.current?.timeScale().fitContent();
       hasInitializedRef.current = true;
     }
-  }, [data, chartType]);
+  }, [data, chartType, upColor, downColor]);
 
   // Update price lines when they change
   useEffect(() => {

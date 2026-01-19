@@ -41,6 +41,7 @@ from trader.position_sizing import (
     calculate_risk_reward,
 )
 from trader.signals import Bar, detect_signal
+from trader.volume_indicators import analyze_volume
 from trader.workflow import (
     AlignmentResult,
     IndicatorConfirmation,
@@ -249,6 +250,7 @@ class OHLCBarModel(BaseModel):
     high: float
     low: float
     close: float
+    volume: int | None = None
 
 
 class PivotDetectRequest(BaseModel):
@@ -319,6 +321,7 @@ class MarketDataBarModel(BaseModel):
     high: float
     low: float
     close: float
+    volume: int | None = None
 
 
 class MarketStatusModel(BaseModel):
@@ -474,6 +477,31 @@ class RSIResponse(BaseModel):
     """Response model for RSI calculation."""
 
     rsi: list[float | None]
+
+
+class VolumeAnalysisRequest(BaseModel):
+    """Request model for volume analysis."""
+
+    data: list[OHLCBarModel]
+    ma_period: int = 20
+
+
+class VolumeAnalysisData(BaseModel):
+    """Volume analysis data in response."""
+
+    volume_ma: float
+    current_volume: int
+    relative_volume: float
+    is_high_volume: bool
+    is_above_average: bool
+    interpretation: str
+
+
+class VolumeAnalysisResponse(BaseModel):
+    """Response model for volume analysis."""
+
+    analysis: VolumeAnalysisData | None
+    error: str | None = None
 
 
 # --- Endpoints ---
@@ -777,6 +805,7 @@ async def get_market_data(
             high=bar.high,
             low=bar.low,
             close=bar.close,
+            volume=bar.volume,
         )
         for bar in result.data
     ]
@@ -1039,6 +1068,52 @@ async def rsi_indicator(request: RSIRequest) -> RSIResponse:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     return RSIResponse(rsi=result.rsi)
+
+
+@app.post("/indicators/volume-analysis", response_model=VolumeAnalysisResponse)
+async def volume_analysis_indicator(
+    request: VolumeAnalysisRequest,
+) -> VolumeAnalysisResponse:
+    """Calculate volume analysis from OHLC data.
+
+    Analyzes volume to determine trade conviction:
+    - RVOL >= 2.0: Very high volume (strong conviction)
+    - RVOL >= 1.5: High volume (good confirmation)
+    - RVOL >= 1.0: Normal volume (acceptable)
+    - RVOL < 1.0: Below average (low conviction warning)
+    """
+    if not request.data:
+        return VolumeAnalysisResponse(
+            analysis=None, error="No data provided"
+        )
+
+    # Extract volumes from OHLC data
+    volumes: list[int | None] = [bar.volume for bar in request.data]
+    valid_volumes = [v for v in volumes if v is not None]
+
+    if len(valid_volumes) < request.ma_period:
+        return VolumeAnalysisResponse(
+            analysis=None,
+            error=f"Need at least {request.ma_period} bars with volume data",
+        )
+
+    result = analyze_volume(volumes, ma_period=request.ma_period)
+
+    if result is None:
+        return VolumeAnalysisResponse(
+            analysis=None, error="Unable to calculate volume analysis"
+        )
+
+    return VolumeAnalysisResponse(
+        analysis=VolumeAnalysisData(
+            volume_ma=result.volume_ma,
+            current_volume=result.current_volume,
+            relative_volume=result.relative_volume,
+            is_high_volume=result.is_high_volume,
+            is_above_average=result.is_above_average,
+            interpretation=result.interpretation,
+        )
+    )
 
 
 # --- Workflow Endpoints ---

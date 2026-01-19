@@ -34,6 +34,8 @@ export type PanelVisibility = {
   chartExpanded: boolean;
   /** Psychological (round number) levels */
   psychologicalLevels: boolean;
+  /** Volume bars below price chart */
+  volumePane: boolean;
 };
 
 export type ChartDisplaySettings = {
@@ -75,6 +77,7 @@ export const initialLayoutState: WorkflowLayoutState = {
     levelsTable: false,
     chartExpanded: false,
     psychologicalLevels: false,
+    volumePane: false,
   },
   chart: {
     chartType: "bar",

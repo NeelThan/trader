@@ -5,6 +5,7 @@ yfinance library. It has highest priority (1) and is the primary
 data source.
 """
 
+import pandas as pd  # type: ignore[import-untyped]
 import yfinance as yf  # type: ignore[import-untyped]
 
 from trader.market_data.models import MarketDataResult, MarketStatus, OHLCBar
@@ -116,6 +117,11 @@ class YahooFinanceProvider(MarketDataProvider):
                 else:
                     time = int(idx.timestamp())
 
+                # Capture volume (may be NaN or missing)
+                volume: int | None = None
+                if "Volume" in row and pd.notna(row["Volume"]):
+                    volume = int(row["Volume"])
+
                 bars.append(
                     OHLCBar(
                         time=time,
@@ -123,6 +129,7 @@ class YahooFinanceProvider(MarketDataProvider):
                         high=round(float(row["High"]), 2),
                         low=round(float(row["Low"]), 2),
                         close=round(float(row["Close"]), 2),
+                        volume=volume,
                     )
                 )
 

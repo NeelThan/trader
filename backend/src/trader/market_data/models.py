@@ -18,6 +18,7 @@ class OHLCBar:
         high: Highest price
         low: Lowest price
         close: Closing price
+        volume: Trading volume (optional, may not be available from all providers)
     """
 
     time: str | int
@@ -25,6 +26,7 @@ class OHLCBar:
     high: float
     low: float
     close: float
+    volume: int | None = None
 
 
 @dataclass(frozen=True)

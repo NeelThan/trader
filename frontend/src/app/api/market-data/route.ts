@@ -212,6 +212,7 @@ export async function GET(request: NextRequest) {
         high: Number(q.high.toFixed(2)),
         low: Number(q.low.toFixed(2)),
         close: Number(q.close.toFixed(2)),
+        volume: q.volume ?? undefined,
       };
     });
 

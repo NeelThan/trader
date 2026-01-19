@@ -1597,10 +1597,10 @@ class TestValidateTradeFunction:
 
         assert isinstance(result, ValidationResult)
 
-    async def test_validate_trade_has_five_checks(
+    async def test_validate_trade_has_six_checks(
         self, mock_market_service: MagicMock
     ) -> None:
-        """Should perform exactly 5 validation checks."""
+        """Should perform exactly 6 validation checks."""
         from trader.workflow import validate_trade
 
         result = await validate_trade(
@@ -1611,13 +1611,13 @@ class TestValidateTradeFunction:
             market_service=mock_market_service,
         )
 
-        assert result.total_count == 5
-        assert len(result.checks) == 5
+        assert result.total_count == 6
+        assert len(result.checks) == 6
 
     async def test_validate_trade_check_names(
         self, mock_market_service: MagicMock
     ) -> None:
-        """Should have the 5 required check names."""
+        """Should have the 6 required check names."""
         from trader.workflow import validate_trade
 
         result = await validate_trade(
@@ -1634,6 +1634,7 @@ class TestValidateTradeFunction:
         assert "Target Zones" in check_names
         assert "RSI Confirmation" in check_names
         assert "MACD Confirmation" in check_names
+        assert "Volume Confirmation" in check_names
 
     async def test_validate_trade_calculates_pass_percentage(
         self, mock_market_service: MagicMock

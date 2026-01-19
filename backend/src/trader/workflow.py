@@ -27,6 +27,7 @@ from trader.indicators import calculate_macd, calculate_rsi
 from trader.market_data import MarketDataService
 from trader.pivots import OHLCBar as PivotOHLCBar
 from trader.pivots import PivotPoint, detect_pivots
+from trader.volume_indicators import analyze_volume
 
 # --- Type Aliases ---
 TrendDirection = Literal["bullish", "bearish", "neutral"]
@@ -1117,7 +1118,7 @@ async def validate_trade(
     direction: Literal["long", "short"],
     market_service: MarketDataService,
 ) -> ValidationResult:
-    """Validate a trade opportunity with 5 checks.
+    """Validate a trade opportunity with 6 checks.
 
     Performs the following validation checks:
     1. Trend Alignment - Higher/lower TF alignment per rules
@@ -1125,8 +1126,9 @@ async def validate_trade(
     3. Target Zones - Extension targets found
     4. RSI Confirmation - Momentum confirmation
     5. MACD Confirmation - Trend momentum intact
+    6. Volume Confirmation - RVOL >= 1.0 (above average volume)
 
-    Trade is valid when pass_percentage >= 60% (3+ checks).
+    Trade is valid when pass_percentage >= 60% (4+ checks).
 
     Args:
         symbol: Market symbol.
@@ -1271,6 +1273,35 @@ async def validate_trade(
             passed=macd_passed,
             explanation=macd_explanation,
             details=f"Higher TF MACD: {higher_confirmation.macd.signal}",
+        )
+    )
+
+    # 6. Volume Confirmation (on lower timeframe for entry timing)
+    lower_data = await market_service.get_ohlc(symbol, lower_timeframe, periods=50)
+    volumes: list[int | None] = [bar.volume for bar in lower_data.data]
+
+    volume_passed = False
+    volume_explanation = "Insufficient volume data"
+    volume_details = None
+
+    valid_volume_count = sum(1 for v in volumes if v is not None)
+    if valid_volume_count >= 20:
+        volume_analysis = analyze_volume(volumes, ma_period=20)
+        if volume_analysis:
+            volume_passed = volume_analysis.is_above_average
+            volume_explanation = volume_analysis.interpretation
+            volume_details = (
+                f"RVOL: {volume_analysis.relative_volume:.2f}x "
+                f"(Current: {volume_analysis.current_volume:,}, "
+                f"Avg: {volume_analysis.volume_ma:,.0f})"
+            )
+
+    checks.append(
+        ValidationCheck(
+            name="Volume Confirmation",
+            passed=volume_passed,
+            explanation=volume_explanation,
+            details=volume_details,
         )
     )
 
