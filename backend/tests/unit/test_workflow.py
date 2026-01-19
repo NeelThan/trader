@@ -150,6 +150,131 @@ class TestTrendAssessment:
                 confidence=50,
             )
 
+    def test_is_ranging_defaults_to_false(self) -> None:
+        """is_ranging should default to False."""
+        from trader.workflow import TrendAssessment
+
+        assessment = TrendAssessment(
+            trend="bullish",
+            phase="impulse",
+            swing_type="HH",
+            explanation="test",
+            confidence=75,
+        )
+
+        assert assessment.is_ranging is False
+        assert assessment.ranging_warning is None
+
+    def test_can_set_is_ranging_true(self) -> None:
+        """Should be able to set is_ranging to True with warning."""
+        from trader.workflow import TrendAssessment
+
+        warning = "Market ranging within 1.5% range. Fibonacci levels less reliable."
+        assessment = TrendAssessment(
+            trend="neutral",
+            phase="correction",
+            swing_type="HL",
+            explanation="Mixed signals",
+            confidence=40,
+            is_ranging=True,
+            ranging_warning=warning,
+        )
+
+        assert assessment.is_ranging is True
+        assert assessment.ranging_warning == warning
+
+
+class TestRangingDetection:
+    """Tests for ranging market detection."""
+
+    def test_detect_ranging_with_narrow_range(self) -> None:
+        """Should detect ranging when price is in narrow range (<2%)."""
+        from trader.pivots import PivotPoint
+        from trader.workflow import _detect_ranging_condition
+
+        # Pivots with prices in narrow range (1% of avg)
+        pivots = [
+            PivotPoint(index=0, price=100.0, type="low", time="2024-01-01"),
+            PivotPoint(index=5, price=101.0, type="high", time="2024-01-02"),
+            PivotPoint(index=10, price=100.2, type="low", time="2024-01-03"),
+            PivotPoint(index=15, price=100.8, type="high", time="2024-01-04"),
+        ]
+
+        is_ranging, warning = _detect_ranging_condition(pivots)
+
+        assert is_ranging is True
+        assert warning is not None
+        assert "ranging" in warning.lower()
+
+    def test_not_ranging_with_wide_range(self) -> None:
+        """Should not detect ranging when price range is wide with trending patterns."""
+        from trader.pivots import PivotPoint
+        from trader.workflow import _detect_ranging_condition
+
+        # Trending pattern: clear HH/HL sequence with progressive highs and lows
+        pivots = [
+            PivotPoint(index=0, price=100.0, type="low", time="2024-01-01"),
+            PivotPoint(index=5, price=108.0, type="high", time="2024-01-02"),
+            PivotPoint(index=10, price=104.0, type="low", time="2024-01-03"),  # HL
+            PivotPoint(index=15, price=115.0, type="high", time="2024-01-04"),  # HH
+        ]
+
+        is_ranging, warning = _detect_ranging_condition(pivots)
+
+        assert is_ranging is False
+        assert warning is None
+
+    def test_not_ranging_with_insufficient_pivots(self) -> None:
+        """Should not detect ranging with less than 4 pivots."""
+        from trader.pivots import PivotPoint
+        from trader.workflow import _detect_ranging_condition
+
+        pivots = [
+            PivotPoint(index=0, price=100.0, type="low", time="2024-01-01"),
+            PivotPoint(index=5, price=100.5, type="high", time="2024-01-02"),
+        ]
+
+        is_ranging, warning = _detect_ranging_condition(pivots)
+
+        assert is_ranging is False
+        assert warning is None
+
+    def test_detect_ranging_with_mixed_patterns(self) -> None:
+        """Should detect ranging when highs and lows stay at similar levels."""
+        from trader.pivots import PivotPoint
+        from trader.workflow import _detect_ranging_condition
+
+        # Mixed pattern: highs at same level, lows at same level
+        pivots = [
+            PivotPoint(index=0, price=99.0, type="low", time="2024-01-01"),
+            PivotPoint(index=5, price=101.0, type="high", time="2024-01-02"),
+            PivotPoint(index=10, price=99.2, type="low", time="2024-01-03"),
+            PivotPoint(index=15, price=101.2, type="high", time="2024-01-04"),
+        ]
+
+        is_ranging, warning = _detect_ranging_condition(pivots)
+
+        assert is_ranging is True
+        assert warning is not None
+
+    def test_ranging_warning_contains_advice(self) -> None:
+        """Ranging warning should contain advice about Fibonacci reliability."""
+        from trader.pivots import PivotPoint
+        from trader.workflow import _detect_ranging_condition
+
+        pivots = [
+            PivotPoint(index=0, price=100.0, type="low", time="2024-01-01"),
+            PivotPoint(index=5, price=100.5, type="high", time="2024-01-02"),
+            PivotPoint(index=10, price=100.1, type="low", time="2024-01-03"),
+            PivotPoint(index=15, price=100.6, type="high", time="2024-01-04"),
+        ]
+
+        _, warning = _detect_ranging_condition(pivots)
+
+        assert warning is not None
+        assert "fibonacci" in warning.lower()
+        assert "breakout" in warning.lower()
+
 
 class TestAlignmentResult:
     """Tests for AlignmentResult model."""
@@ -807,6 +932,115 @@ class TestCalculateConfluenceScore:
         assert score.breakdown.higher_tf_confluence == 0
         assert score.breakdown.previous_pivot == 0
         assert score.total == 1  # Only base score
+
+    def test_cross_tool_adds_two_per_tool(self) -> None:
+        """Each different Fib tool converging at same price adds +2."""
+        from trader.workflow import LevelWithStrategy, calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=101.0,  # Non-psychological level
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[],
+            level_strategy="retracement",
+            other_tool_levels=[
+                LevelWithStrategy(price=101.2, strategy="extension"),  # Within tolerance
+            ],
+        )
+
+        assert score.breakdown.cross_tool_confluence == 2
+        assert score.total == 3  # 1 base + 2 cross-tool
+
+    def test_cross_tool_multiple_tools(self) -> None:
+        """Multiple different tools converging should add +2 each."""
+        from trader.workflow import LevelWithStrategy, calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=101.0,  # Non-psychological level
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[],
+            level_strategy="retracement",
+            other_tool_levels=[
+                LevelWithStrategy(price=101.2, strategy="extension"),  # +2
+                LevelWithStrategy(price=100.9, strategy="projection"),  # +2
+            ],
+        )
+
+        assert score.breakdown.cross_tool_confluence == 4  # 2 tools x 2 points
+        assert score.total == 5  # 1 base + 4 cross-tool
+
+    def test_cross_tool_same_strategy_ignored(self) -> None:
+        """Levels from same strategy should not count as cross-tool."""
+        from trader.workflow import LevelWithStrategy, calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=101.0,  # Non-psychological level
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[],
+            level_strategy="retracement",
+            other_tool_levels=[
+                LevelWithStrategy(price=101.2, strategy="retracement"),  # Same strategy
+            ],
+        )
+
+        assert score.breakdown.cross_tool_confluence == 0
+        assert score.total == 1  # Only base score
+
+    def test_cross_tool_outside_tolerance_ignored(self) -> None:
+        """Cross-tool levels outside tolerance should not count."""
+        from trader.workflow import LevelWithStrategy, calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=101.0,  # Non-psychological level
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[],
+            level_strategy="retracement",
+            other_tool_levels=[
+                LevelWithStrategy(price=111.0, strategy="extension"),  # Outside tolerance
+            ],
+        )
+
+        assert score.breakdown.cross_tool_confluence == 0
+        assert score.total == 1  # Only base score
+
+    def test_cross_tool_defaults_to_zero_without_strategy(self) -> None:
+        """Cross-tool should be 0 when level_strategy is not provided."""
+        from trader.workflow import LevelWithStrategy, calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=101.0,  # Non-psychological level
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[],
+            # level_strategy not provided
+            other_tool_levels=[
+                LevelWithStrategy(price=101.2, strategy="extension"),
+            ],
+        )
+
+        assert score.breakdown.cross_tool_confluence == 0
+
+    def test_cross_tool_with_full_confluence(self) -> None:
+        """Cross-tool confluence combined with other factors should reach major."""
+        from trader.workflow import LevelWithStrategy, calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=50000.0,  # +1 psychological
+            same_tf_levels=[50010.0],  # +1
+            higher_tf_levels=[50005.0],  # +2
+            previous_pivots=[50020.0],  # +2
+            level_strategy="retracement",
+            other_tool_levels=[
+                LevelWithStrategy(price=50015.0, strategy="extension"),  # +2
+            ],
+        )
+
+        # 1 base + 1 same TF + 2 higher TF + 2 cross-tool + 2 pivot + 1 psychological = 9
+        assert score.total >= 7
+        assert score.interpretation == "major"
 
 
 class TestTradeOpportunityModel:

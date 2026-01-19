@@ -25,6 +25,7 @@ import type { Timeframe } from "@/lib/chart-constants";
 import { TIMEFRAME_COLORS } from "@/lib/chart-pro/strategy-types";
 import { detectTrendPhaseFromTrend } from "@/hooks/use-trade-discovery";
 import type { TrendPhase } from "@/types/workflow-v2";
+import { RangingWarningBanner } from "./RangingWarningBanner";
 
 type TrendAlignmentPanelProps = {
   /** Per-timeframe trend data */
@@ -91,7 +92,7 @@ function strengthToConfidence(strength: "strong" | "moderate" | "weak"): number 
 /**
  * Order timeframes from highest to lowest
  */
-const TIMEFRAME_ORDER: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
+const TIMEFRAME_ORDER: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"];
 
 /**
  * Indicator weights used in calculation
@@ -460,6 +461,18 @@ export function TrendAlignmentPanel({
         </CardTitle>
       </CardHeader>
       <CardContent className="px-3 pb-3 pt-0">
+        {/* Ranging market warning */}
+        {sortedTrends.some(t => t.isRanging && t.rangingWarning) && (
+          <RangingWarningBanner
+            warning={
+              sortedTrends.find(t => t.isRanging && t.rangingWarning)?.rangingWarning ||
+              "Market is ranging - Fibonacci levels less reliable. Consider waiting for breakout."
+            }
+            variant="inline"
+            className="mb-2"
+          />
+        )}
+
         {/* Hint text */}
         <div className="text-[10px] text-muted-foreground mb-2 flex items-center gap-1">
           <Info size={10} />
@@ -476,12 +489,24 @@ export function TrendAlignmentPanel({
                 <PopoverTrigger asChild>
                   <button
                     className={cn(
-                      "flex flex-col items-center p-1.5 rounded cursor-pointer",
-                      "border border-border/50 hover:border-border hover:scale-105 transition-all"
+                      "flex flex-col items-center p-1.5 rounded cursor-pointer relative",
+                      "border border-border/50 hover:border-border hover:scale-105 transition-all",
+                      trend.isRanging && "border-amber-500/50"
                     )}
                     style={{ backgroundColor: info.bgColor }}
-                    title={`Click to see ${trend.timeframe} calculation`}
+                    title={
+                      trend.isRanging
+                        ? `${trend.timeframe}: Ranging market detected`
+                        : `Click to see ${trend.timeframe} calculation`
+                    }
                   >
+                    {/* Ranging indicator */}
+                    {trend.isRanging && (
+                      <AlertTriangle
+                        size={10}
+                        className="absolute -top-1 -right-1 text-amber-400"
+                      />
+                    )}
                     <span
                       className="text-[10px] font-medium mb-0.5"
                       style={{ color: tfColor }}

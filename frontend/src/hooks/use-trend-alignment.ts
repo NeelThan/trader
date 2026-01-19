@@ -58,6 +58,10 @@ export type TimeframeTrend = {
   markers?: SwingMarkerTrend[];
   /** Current (latest) price for this timeframe */
   currentPrice?: number;
+  /** True if price is moving sideways within a range */
+  isRanging?: boolean;
+  /** Warning message when ranging detected */
+  rangingWarning?: string | null;
 };
 
 export type OverallAlignment = {
@@ -83,7 +87,7 @@ export type UseTrendAlignmentReturn = {
   refresh: () => void;
 };
 
-const ALL_TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
+const ALL_TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"];
 const API_BASE = "/api/trader";
 
 // Cache for fallback trend data to prevent infinite re-renders
@@ -596,6 +600,13 @@ export function useTrendAlignment({
         );
 
         if (!marketRes.ok) {
+          // If backend is unavailable (503), use client-side fallback
+          if (marketRes.status === 503) {
+            console.warn(
+              `[useTrendAlignment] Backend unavailable for ${tf}, using client-side fallback`
+            );
+            return generateFallbackTrend(tf, symbol, lookback);
+          }
           throw new Error(`Market data: ${marketRes.status}`);
         }
 
@@ -624,7 +635,7 @@ export function useTrendAlignment({
           close: bar.close,
         }));
 
-        // Fetch swing markers, RSI, and MACD in parallel
+        // Fetch swing markers, RSI, and MACD from backend in parallel
         const [swingRes, rsiRes, macdRes] = await Promise.all([
           fetch(`${API_BASE}/pivot/swings`, {
             method: "POST",
@@ -657,8 +668,24 @@ export function useTrendAlignment({
           }),
         ]);
 
-        // Parse responses
-        const swingData = swingRes.ok ? await swingRes.json() : { markers: [] };
+        // Check if backend is unavailable (503 errors)
+        const backendUnavailable = [swingRes, rsiRes, macdRes].some(r => r.status === 503);
+        if (backendUnavailable) {
+          return {
+            timeframe: tf,
+            trend: "ranging",
+            confidence: 0,
+            swing: { signal: "neutral" },
+            rsi: { signal: "neutral" },
+            macd: { signal: "neutral" },
+            isLoading: false,
+            error: "Backend unavailable - start the backend server for full analysis",
+            currentPrice: bars.length > 0 ? bars[bars.length - 1].close : undefined,
+          };
+        }
+
+        // Parse responses from backend
+        const swingData = swingRes.ok ? await swingRes.json() : { markers: [], pivots: [] };
         const rsiData = rsiRes.ok ? await rsiRes.json() : { rsi: [] };
         const macdData = macdRes.ok ? await macdRes.json() : { histogram: [] };
 
@@ -677,6 +704,7 @@ export function useTrendAlignment({
           time: m.time,
           swingType: m.swing_type as "HH" | "HL" | "LH" | "LL",
         }));
+
         const rsiValues = rsiData.rsi || [];
         const histogramValues = macdData.histogram || [];
 

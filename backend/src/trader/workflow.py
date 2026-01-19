@@ -39,6 +39,14 @@ OverallConfirmation = Literal["strong", "partial", "wait"]
 TrendPhase = Literal["impulse", "correction", "continuation", "exhaustion"]
 TradeCategory = Literal["with_trend", "counter_trend", "reversal_attempt"]
 ConfluenceInterpretation = Literal["standard", "important", "significant", "major"]
+FibStrategy = Literal["retracement", "extension", "projection", "expansion"]
+
+
+class LevelWithStrategy(BaseModel):
+    """A Fibonacci level with its strategy type for cross-tool confluence detection."""
+
+    price: float
+    strategy: FibStrategy
 
 
 # --- Response Models ---
@@ -51,6 +59,7 @@ class ConfluenceBreakdown(BaseModel):
     - base_fib_level: Always 1 (every Fib level starts with this)
     - same_tf_confluence: +1 per same-timeframe level within tolerance
     - higher_tf_confluence: +2 per higher-timeframe level within tolerance
+    - cross_tool_confluence: +2 when different Fib tools converge (e.g., retracement + extension)
     - previous_pivot: +2 if near a previous major pivot
     - psychological_level: +1 if at a round number
     """
@@ -58,6 +67,7 @@ class ConfluenceBreakdown(BaseModel):
     base_fib_level: int = 1
     same_tf_confluence: int = 0
     higher_tf_confluence: int = 0
+    cross_tool_confluence: int = 0
     previous_pivot: int = 0
     psychological_level: int = 0
 
@@ -86,6 +96,8 @@ class TrendAssessment(BaseModel):
         swing_type: Last detected swing type (HH/HL/LH/LL).
         explanation: Human-readable explanation of the assessment.
         confidence: Confidence level 0-100.
+        is_ranging: True if price is moving sideways within a range.
+        ranging_warning: Warning message when ranging detected.
     """
 
     trend: TrendDirection
@@ -93,6 +105,8 @@ class TrendAssessment(BaseModel):
     swing_type: SwingType
     explanation: str
     confidence: int = Field(ge=0, le=100)
+    is_ranging: bool = False
+    ranging_warning: str | None = None
 
 
 class TimeframeTrend(BaseModel):
@@ -295,6 +309,65 @@ def _combine_confirmations(
     return "wait"
 
 
+def _detect_ranging_condition(
+    pivots: list[PivotPoint],
+    range_threshold_percent: float = 2.0,
+) -> tuple[bool, str | None]:
+    """Detect if price is moving sideways (ranging market).
+
+    Ranging conditions:
+    - Price oscillating within a narrow range (<threshold% of avg price)
+    - No clear progression of highs or lows
+    - Mixed swing patterns (HH followed by LL, or vice versa)
+
+    Args:
+        pivots: Recent pivot points.
+        range_threshold_percent: Max range as % of price for ranging (default 2%).
+
+    Returns:
+        Tuple of (is_ranging, warning_message).
+    """
+    if len(pivots) < 4:
+        return False, None
+
+    # Get all pivot prices
+    prices = [p.price for p in pivots]
+    avg_price = sum(prices) / len(prices)
+    price_range = max(prices) - min(prices)
+    range_percent = (price_range / avg_price) * 100
+
+    # Check 1: Price contained in narrow range
+    is_narrow_range = range_percent < range_threshold_percent
+
+    # Check 2: Analyze swing pattern sequence for mixed signals
+    highs = [p for p in pivots if p.type == "high"]
+    lows = [p for p in pivots if p.type == "low"]
+
+    has_mixed_pattern = False
+    if len(highs) >= 2 and len(lows) >= 2:
+        # Check if highs are roughly at same level
+        high_prices = [h.price for h in highs[-2:]]
+        high_diff_pct = abs(high_prices[0] - high_prices[1]) / avg_price * 100
+
+        # Check if lows are roughly at same level
+        low_prices = [low.price for low in lows[-2:]]
+        low_diff_pct = abs(low_prices[0] - low_prices[1]) / avg_price * 100
+
+        # Mixed pattern: both highs and lows staying at similar levels
+        has_mixed_pattern = high_diff_pct < 1.0 and low_diff_pct < 1.0
+
+    is_ranging = is_narrow_range or has_mixed_pattern
+
+    if is_ranging:
+        warning = (
+            f"Market ranging within {range_percent:.1f}% range. "
+            "Fibonacci levels less reliable - consider waiting for breakout."
+        )
+        return True, warning
+
+    return False, None
+
+
 def _detect_trend_phase(
     pivots: list[PivotPoint],
     current_price: float,
@@ -376,6 +449,8 @@ def calculate_confluence_score(
     higher_tf_levels: list[float],
     previous_pivots: list[float],
     tolerance_percent: float = 0.5,
+    level_strategy: FibStrategy | None = None,
+    other_tool_levels: list[LevelWithStrategy] | None = None,
 ) -> ConfluenceScore:
     """Calculate weighted confluence score for a price level.
 
@@ -383,6 +458,7 @@ def calculate_confluence_score(
     - Base Fib level: +1 (always)
     - Same TF confluence: +1 per level within tolerance
     - Higher TF confluence: +2 per level within tolerance
+    - Cross-tool confluence: +2 when different Fib tools converge
     - Previous major pivot: +2 if any pivot within tolerance
     - Psychological level: +1 if round number
 
@@ -392,6 +468,8 @@ def calculate_confluence_score(
         higher_tf_levels: Fib levels from higher timeframes.
         previous_pivots: Previous major pivot prices.
         tolerance_percent: Percentage tolerance for confluence (default 0.5%).
+        level_strategy: The Fib strategy of this level (for cross-tool detection).
+        other_tool_levels: Levels from other Fib tools with their strategy types.
 
     Returns:
         ConfluenceScore with total, breakdown, and interpretation.
@@ -402,6 +480,8 @@ def calculate_confluence_score(
         higher_tf_levels,
         previous_pivots,
         tolerance_percent,
+        level_strategy,
+        other_tool_levels,
     )
     total = _sum_breakdown(breakdown)
     interpretation = _get_interpretation(total)
@@ -417,12 +497,17 @@ def _calculate_breakdown(
     higher_tf_levels: list[float],
     previous_pivots: list[float],
     tolerance_percent: float,
+    level_strategy: FibStrategy | None = None,
+    other_tool_levels: list[LevelWithStrategy] | None = None,
 ) -> ConfluenceBreakdown:
     """Calculate confluence breakdown from inputs."""
     tolerance = level_price * (tolerance_percent / 100)
 
     same_tf = _count_levels_in_tolerance(level_price, same_tf_levels, tolerance)
     higher_tf = _count_levels_in_tolerance(level_price, higher_tf_levels, tolerance) * 2
+    cross_tool = _calculate_cross_tool_confluence(
+        level_price, tolerance, level_strategy, other_tool_levels
+    )
     pivot = 2 if _any_level_in_tolerance(level_price, previous_pivots, tolerance) else 0
     psychological = 1 if _is_psychological_level(level_price) else 0
 
@@ -430,9 +515,38 @@ def _calculate_breakdown(
         base_fib_level=1,
         same_tf_confluence=same_tf,
         higher_tf_confluence=higher_tf,
+        cross_tool_confluence=cross_tool,
         previous_pivot=pivot,
         psychological_level=psychological,
     )
+
+
+def _calculate_cross_tool_confluence(
+    level_price: float,
+    tolerance: float,
+    level_strategy: FibStrategy | None,
+    other_tool_levels: list[LevelWithStrategy] | None,
+) -> int:
+    """Calculate cross-tool confluence score.
+
+    Returns +2 for each different Fib tool that has a level within tolerance.
+    Only counts tools that are different from the level's own strategy.
+    """
+    if level_strategy is None or other_tool_levels is None:
+        return 0
+
+    # Find unique strategies that have levels within tolerance (excluding our own strategy)
+    converging_strategies: set[FibStrategy] = set()
+
+    for other_level in other_tool_levels:
+        if other_level.strategy == level_strategy:
+            continue  # Skip same strategy
+
+        if abs(other_level.price - level_price) <= tolerance:
+            converging_strategies.add(other_level.strategy)
+
+    # +2 per different tool that converges
+    return len(converging_strategies) * 2
 
 
 def _count_levels_in_tolerance(
@@ -466,6 +580,7 @@ def _sum_breakdown(breakdown: ConfluenceBreakdown) -> int:
         breakdown.base_fib_level
         + breakdown.same_tf_confluence
         + breakdown.higher_tf_confluence
+        + breakdown.cross_tool_confluence
         + breakdown.previous_pivot
         + breakdown.psychological_level
     )
@@ -509,6 +624,8 @@ async def assess_trend(
             swing_type="HL",
             explanation="Unable to fetch market data",
             confidence=0,
+            is_ranging=False,
+            ranging_warning=None,
         )
 
     pivot_bars = [
@@ -527,6 +644,8 @@ async def assess_trend(
             swing_type="HL",
             explanation="Insufficient pivot data",
             confidence=30,
+            is_ranging=False,
+            ranging_warning=None,
         )
 
     swing_type = _detect_latest_swing_type(pivot_result.recent_pivots)
@@ -535,12 +654,21 @@ async def assess_trend(
     current_price = market_result.data[-1].close
     phase = _detect_trend_phase(pivot_result.recent_pivots, current_price, trend)
 
+    # Check for ranging condition
+    is_ranging, ranging_warning = _detect_ranging_condition(pivot_result.recent_pivots)
+
+    # Reduce confidence when ranging
+    base_confidence = 75 if trend != "neutral" else 50
+    confidence = base_confidence - 20 if is_ranging else base_confidence
+
     return TrendAssessment(
         trend=trend,
         phase=phase,
         swing_type=swing_type,
         explanation=explanation,
-        confidence=75 if trend != "neutral" else 50,
+        confidence=confidence,
+        is_ranging=is_ranging,
+        ranging_warning=ranging_warning,
     )
 
 
