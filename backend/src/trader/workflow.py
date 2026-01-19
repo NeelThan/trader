@@ -49,6 +49,52 @@ class LevelWithStrategy(BaseModel):
     strategy: FibStrategy
 
 
+class TradeActionResult(BaseModel):
+    """Result of multi-timeframe alignment analysis.
+
+    Determines whether to trade and in which direction based on
+    the SignalPro spec rules:
+    - Higher TF UP + Lower TF DOWN = GO LONG (buy the dip)
+    - Higher TF DOWN + Lower TF UP = GO SHORT (sell the rally)
+    - Same direction = STAND ASIDE (wait for pullback)
+    - Neutral in either TF = STAND ASIDE
+    """
+
+    should_trade: bool
+    direction: Literal["long", "short"] | None
+    reason: str
+
+
+class ValidationCheck(BaseModel):
+    """Single validation check result.
+
+    Attributes:
+        name: Check name (e.g., "Trend Alignment", "RSI Confirmation").
+        passed: Whether the check passed.
+        explanation: Human-readable explanation of result.
+        details: Additional details (optional).
+    """
+
+    name: str
+    passed: bool
+    explanation: str
+    details: str | None = None
+
+
+class ValidationResult(BaseModel):
+    """Complete validation result for a trade.
+
+    Contains all 5 validation checks and summary statistics.
+    Trade is valid when pass_percentage >= 60%.
+    """
+
+    checks: list[ValidationCheck]
+    passed_count: int
+    total_count: int
+    is_valid: bool
+    pass_percentage: float
+
+
 # --- Response Models ---
 
 
@@ -59,7 +105,7 @@ class ConfluenceBreakdown(BaseModel):
     - base_fib_level: Always 1 (every Fib level starts with this)
     - same_tf_confluence: +1 per same-timeframe level within tolerance
     - higher_tf_confluence: +2 per higher-timeframe level within tolerance
-    - cross_tool_confluence: +2 when different Fib tools converge (e.g., retracement + extension)
+    - cross_tool_confluence: +2 when different Fib tools converge
     - previous_pivot: +2 if near a previous major pivot
     - psychological_level: +1 if at a round number
     """
@@ -443,6 +489,74 @@ def _is_aligned_with_higher_tf(
     return False
 
 
+def determine_trade_action(
+    higher_tf_trend: TrendDirection,
+    lower_tf_trend: TrendDirection,
+) -> TradeActionResult:
+    """Determine trade action based on multi-timeframe alignment.
+
+    SignalPro Spec Rules (lines 78-83):
+    | Higher TF | Lower TF | Action      |
+    |-----------|----------|-------------|
+    | UP        | DOWN     | GO LONG     | (buy the dip)
+    | DOWN      | UP       | GO SHORT    | (sell the rally)
+    | UP        | UP       | STAND ASIDE |
+    | DOWN      | DOWN     | STAND ASIDE |
+
+    Args:
+        higher_tf_trend: Trend direction of higher timeframe.
+        lower_tf_trend: Trend direction of lower timeframe.
+
+    Returns:
+        TradeActionResult with should_trade, direction, and reason.
+    """
+    # Neutral in either TF = no trade
+    if higher_tf_trend == "neutral":
+        return TradeActionResult(
+            should_trade=False,
+            direction=None,
+            reason="Stand aside - no clear trend on higher timeframe",
+        )
+
+    if lower_tf_trend == "neutral":
+        return TradeActionResult(
+            should_trade=False,
+            direction=None,
+            reason="Stand aside - wait for pullback on lower timeframe",
+        )
+
+    # Same direction = stand aside (no pullback opportunity)
+    if higher_tf_trend == lower_tf_trend:
+        return TradeActionResult(
+            should_trade=False,
+            direction=None,
+            reason="Stand aside - both timeframes aligned, wait for pullback",
+        )
+
+    # UP + DOWN = GO LONG (buy the dip)
+    if higher_tf_trend == "bullish" and lower_tf_trend == "bearish":
+        return TradeActionResult(
+            should_trade=True,
+            direction="long",
+            reason="Buy the dip - higher TF bullish, lower TF pullback",
+        )
+
+    # DOWN + UP = GO SHORT (sell the rally)
+    if higher_tf_trend == "bearish" and lower_tf_trend == "bullish":
+        return TradeActionResult(
+            should_trade=True,
+            direction="short",
+            reason="Sell the rally - higher TF bearish, lower TF rally",
+        )
+
+    # Fallback (shouldn't reach here)
+    return TradeActionResult(
+        should_trade=False,
+        direction=None,
+        reason="Stand aside - unclear market conditions",
+    )
+
+
 def calculate_confluence_score(
     level_price: float,
     same_tf_levels: list[float],
@@ -535,7 +649,7 @@ def _calculate_cross_tool_confluence(
     if level_strategy is None or other_tool_levels is None:
         return 0
 
-    # Find unique strategies that have levels within tolerance (excluding our own strategy)
+    # Find unique strategies with levels within tolerance (excluding our own)
     converging_strategies: set[FibStrategy] = set()
 
     for other_level in other_tool_levels:
@@ -942,24 +1056,29 @@ async def _analyze_symbol_pair(
 ) -> TradeOpportunity | None:
     """Analyze a symbol for opportunities on a timeframe pair.
 
-    Returns an opportunity if higher TF shows clear trend and lower TF
-    shows potential entry (correction phase).
+    Uses multi-timeframe alignment rules per SignalPro spec:
+    - Higher TF UP + Lower TF DOWN = GO LONG (buy the dip)
+    - Higher TF DOWN + Lower TF UP = GO SHORT (sell the rally)
+    - Same direction or neutral = STAND ASIDE
     """
     higher_assessment = await assess_trend(symbol, higher_tf, market_service)
     lower_assessment = await assess_trend(symbol, lower_tf, market_service)
-
-    # Skip if higher TF has no clear trend
-    if higher_assessment.trend == "neutral":
-        return None
 
     # Skip if confidence is too low
     if higher_assessment.confidence < 60:
         return None
 
-    # Determine trade direction from higher TF trend
-    direction: Literal["long", "short"] = (
-        "long" if higher_assessment.trend == "bullish" else "short"
+    # Use multi-timeframe alignment rules to determine trade action
+    trade_action = determine_trade_action(
+        higher_tf_trend=higher_assessment.trend,
+        lower_tf_trend=lower_assessment.trend,
     )
+
+    # No trade if rules say stand aside
+    if not trade_action.should_trade or trade_action.direction is None:
+        return None
+
+    direction = trade_action.direction
 
     # Calculate combined confidence
     combined = higher_assessment.confidence + lower_assessment.confidence
@@ -989,3 +1108,321 @@ async def _analyze_symbol_pair(
         phase=lower_assessment.phase,
         description=description,
     )
+
+
+async def validate_trade(
+    symbol: str,
+    higher_timeframe: str,
+    lower_timeframe: str,
+    direction: Literal["long", "short"],
+    market_service: MarketDataService,
+) -> ValidationResult:
+    """Validate a trade opportunity with 5 checks.
+
+    Performs the following validation checks:
+    1. Trend Alignment - Higher/lower TF alignment per rules
+    2. Entry Zone - Fibonacci entry levels found
+    3. Target Zones - Extension targets found
+    4. RSI Confirmation - Momentum confirmation
+    5. MACD Confirmation - Trend momentum intact
+
+    Trade is valid when pass_percentage >= 60% (3+ checks).
+
+    Args:
+        symbol: Market symbol.
+        higher_timeframe: Higher timeframe for trend context.
+        lower_timeframe: Lower timeframe for entry timing.
+        direction: Trade direction (long/short).
+        market_service: Service for fetching market data.
+
+    Returns:
+        ValidationResult with all 5 checks and summary statistics.
+    """
+    checks: list[ValidationCheck] = []
+
+    # Fetch trend assessments
+    higher_assessment = await assess_trend(symbol, higher_timeframe, market_service)
+    lower_assessment = await assess_trend(symbol, lower_timeframe, market_service)
+
+    # 1. Trend Alignment Check
+    trade_action = determine_trade_action(
+        higher_tf_trend=higher_assessment.trend,
+        lower_tf_trend=lower_assessment.trend,
+    )
+    alignment_passed = (
+        trade_action.should_trade
+        and trade_action.direction == direction
+        and higher_assessment.confidence >= 60
+    )
+    alignment_explanation = (
+        trade_action.reason
+        if alignment_passed
+        else "Timeframes not aligned for this trade direction"
+    )
+    alignment_details = (
+        f"Higher TF: {higher_assessment.trend}, "
+        f"Lower TF: {lower_assessment.trend}, "
+        f"Confidence: {higher_assessment.confidence}%"
+    )
+    checks.append(
+        ValidationCheck(
+            name="Trend Alignment",
+            passed=alignment_passed,
+            explanation=alignment_explanation,
+            details=alignment_details,
+        )
+    )
+
+    # 2. Entry Zone Check (Fibonacci retracement levels)
+    fib_direction: Literal["buy", "sell"] = "buy" if direction == "long" else "sell"
+    levels_result = await identify_fibonacci_levels(
+        symbol, lower_timeframe, fib_direction, market_service
+    )
+    entry_zone_passed = len(levels_result.entry_zones) > 0
+    entry_count = len(levels_result.entry_zones)
+    entry_explanation = (
+        f"Found {entry_count} Fibonacci entry levels"
+        if entry_zone_passed
+        else "No Fibonacci entry zones found"
+    )
+    entry_details = None
+    if entry_zone_passed:
+        best = levels_result.entry_zones[0]
+        entry_details = f"Best: {best.label} at {best.price:.2f}"
+    checks.append(
+        ValidationCheck(
+            name="Entry Zone",
+            passed=entry_zone_passed,
+            explanation=entry_explanation,
+            details=entry_details,
+        )
+    )
+
+    # 3. Target Zone Check (Fibonacci extension levels)
+    target_zones_passed = len(levels_result.target_zones) > 0
+    target_count = len(levels_result.target_zones)
+    target_explanation = (
+        f"Found {target_count} extension targets"
+        if target_zones_passed
+        else "No extension targets found"
+    )
+    target_details = None
+    if target_zones_passed:
+        first = levels_result.target_zones[0]
+        target_details = f"First: {first.label} at {first.price:.2f}"
+    checks.append(
+        ValidationCheck(
+            name="Target Zones",
+            passed=target_zones_passed,
+            explanation=target_explanation,
+            details=target_details,
+        )
+    )
+
+    # 4. RSI Confirmation
+    confirmation = await confirm_with_indicators(
+        symbol, lower_timeframe, market_service
+    )
+    rsi_passed = _check_rsi_confirmation(
+        direction,
+        confirmation.rsi.signal,
+        higher_assessment.trend,
+        lower_assessment.trend,
+    )
+    rsi_explanation = _get_rsi_explanation(
+        direction,
+        confirmation.rsi.signal,
+        confirmation.rsi.value,
+        higher_assessment.trend,
+        lower_assessment.trend,
+    )
+    rsi_details = None
+    if confirmation.rsi.value:
+        rsi_details = f"RSI: {confirmation.rsi.value:.1f}"
+    checks.append(
+        ValidationCheck(
+            name="RSI Confirmation",
+            passed=rsi_passed,
+            explanation=rsi_explanation,
+            details=rsi_details,
+        )
+    )
+
+    # 5. MACD Confirmation
+    higher_confirmation = await confirm_with_indicators(
+        symbol, higher_timeframe, market_service
+    )
+    macd_passed = _check_macd_confirmation(
+        direction,
+        higher_confirmation.macd.signal,
+        higher_assessment.trend,
+        lower_assessment.trend,
+    )
+    macd_explanation = _get_macd_explanation(
+        direction,
+        higher_confirmation.macd.signal,
+        higher_timeframe,
+        higher_assessment.trend,
+        lower_assessment.trend,
+    )
+    checks.append(
+        ValidationCheck(
+            name="MACD Confirmation",
+            passed=macd_passed,
+            explanation=macd_explanation,
+            details=f"Higher TF MACD: {higher_confirmation.macd.signal}",
+        )
+    )
+
+    # Calculate summary
+    passed_count = sum(1 for c in checks if c.passed)
+    total_count = len(checks)
+    pass_percentage = (passed_count / total_count) * 100
+    is_valid = pass_percentage >= 60
+
+    return ValidationResult(
+        checks=checks,
+        passed_count=passed_count,
+        total_count=total_count,
+        is_valid=is_valid,
+        pass_percentage=pass_percentage,
+    )
+
+
+def _check_rsi_confirmation(
+    direction: Literal["long", "short"],
+    rsi_signal: SignalType,
+    higher_trend: TrendDirection,
+    lower_trend: TrendDirection,
+) -> bool:
+    """Check RSI confirmation based on pullback logic.
+
+    For pullback setups (higher TF trending, lower TF counter-trend):
+    - LONG: RSI bearish/oversold = GOOD (pullback entry opportunity)
+    - SHORT: RSI bullish/overbought = GOOD (rally entry opportunity)
+    """
+    is_long_pullback = (
+        direction == "long"
+        and higher_trend == "bullish"
+        and lower_trend == "bearish"
+    )
+    is_short_pullback = (
+        direction == "short"
+        and higher_trend == "bearish"
+        and lower_trend == "bullish"
+    )
+    is_pullback = is_long_pullback or is_short_pullback
+
+    if is_pullback:
+        if direction == "long":
+            return rsi_signal in ("bearish", "oversold")
+        return rsi_signal in ("bullish", "overbought")
+
+    # Non-pullback: check trend alignment
+    if direction == "long":
+        return rsi_signal in ("bullish", "oversold", "neutral")
+    return rsi_signal in ("bearish", "overbought", "neutral")
+
+
+def _get_rsi_explanation(
+    direction: Literal["long", "short"],
+    rsi_signal: SignalType,
+    rsi_value: float | None,
+    higher_trend: TrendDirection,
+    lower_trend: TrendDirection,
+) -> str:
+    """Get RSI explanation based on direction and signal."""
+    is_long_pullback = (
+        direction == "long"
+        and higher_trend == "bullish"
+        and lower_trend == "bearish"
+    )
+    is_short_pullback = (
+        direction == "short"
+        and higher_trend == "bearish"
+        and lower_trend == "bullish"
+    )
+    is_pullback = is_long_pullback or is_short_pullback
+
+    rsi_str = f"{rsi_value:.1f}" if rsi_value else "N/A"
+
+    if is_pullback:
+        if direction == "long":
+            if rsi_signal in ("bearish", "oversold"):
+                return f"RSI {rsi_str} - pullback entry opportunity"
+            return f"RSI {rsi_str} - wait for deeper pullback"
+        if rsi_signal in ("bullish", "overbought"):
+            return f"RSI {rsi_str} - rally entry opportunity"
+        return f"RSI {rsi_str} - wait for stronger rally"
+
+    return f"RSI {rsi_signal} ({rsi_str})"
+
+
+def _check_macd_confirmation(
+    direction: Literal["long", "short"],
+    macd_signal: SignalType,
+    higher_trend: TrendDirection,
+    lower_trend: TrendDirection,
+) -> bool:
+    """Check MACD confirmation.
+
+    For pullbacks, we check the higher TF MACD for trend confirmation.
+    """
+    is_long_pullback = (
+        direction == "long"
+        and higher_trend == "bullish"
+        and lower_trend == "bearish"
+    )
+    is_short_pullback = (
+        direction == "short"
+        and higher_trend == "bearish"
+        and lower_trend == "bullish"
+    )
+    is_pullback = is_long_pullback or is_short_pullback
+
+    if is_pullback:
+        # Check that higher TF MACD confirms trend direction
+        if direction == "long":
+            return macd_signal == "bullish"
+        return macd_signal == "bearish"
+
+    # Non-pullback: direct momentum check
+    if direction == "long":
+        return macd_signal == "bullish"
+    return macd_signal == "bearish"
+
+
+def _get_macd_explanation(
+    direction: Literal["long", "short"],
+    macd_signal: SignalType,
+    higher_timeframe: str,
+    higher_trend: TrendDirection,
+    lower_trend: TrendDirection,
+) -> str:
+    """Get MACD explanation based on direction and signal."""
+    is_long_pullback = (
+        direction == "long"
+        and higher_trend == "bullish"
+        and lower_trend == "bearish"
+    )
+    is_short_pullback = (
+        direction == "short"
+        and higher_trend == "bearish"
+        and lower_trend == "bullish"
+    )
+    is_pullback = is_long_pullback or is_short_pullback
+
+    if is_pullback:
+        expected = "bullish" if direction == "long" else "bearish"
+        if macd_signal == expected:
+            return f"{higher_timeframe} MACD {macd_signal} - trend momentum intact"
+        return f"{higher_timeframe} MACD {macd_signal} - trend momentum weakening"
+
+    if direction == "long":
+        if macd_signal == "bullish":
+            return f"MACD bullish confirms {direction} momentum"
+        return f"MACD {macd_signal} - momentum not confirmed"
+
+    if macd_signal == "bearish":
+        return f"MACD bearish confirms {direction} momentum"
+    return f"MACD {macd_signal} - momentum not confirmed"

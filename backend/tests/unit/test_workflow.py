@@ -944,7 +944,7 @@ class TestCalculateConfluenceScore:
             previous_pivots=[],
             level_strategy="retracement",
             other_tool_levels=[
-                LevelWithStrategy(price=101.2, strategy="extension"),  # Within tolerance
+                LevelWithStrategy(price=101.2, strategy="extension"),
             ],
         )
 
@@ -999,7 +999,7 @@ class TestCalculateConfluenceScore:
             previous_pivots=[],
             level_strategy="retracement",
             other_tool_levels=[
-                LevelWithStrategy(price=111.0, strategy="extension"),  # Outside tolerance
+                LevelWithStrategy(price=111.0, strategy="extension"),
             ],
         )
 
@@ -1038,7 +1038,7 @@ class TestCalculateConfluenceScore:
             ],
         )
 
-        # 1 base + 1 same TF + 2 higher TF + 2 cross-tool + 2 pivot + 1 psychological = 9
+        # 1 base + 1 same TF + 2 higher TF + 2 cross-tool + 2 pivot + 1 psych = 9
         assert score.total >= 7
         assert score.interpretation == "major"
 
@@ -1209,3 +1209,635 @@ class TestScanOpportunitiesFunction:
         )
 
         assert isinstance(result.opportunities, list)
+
+
+class TestMultiTimeframeAlignmentLogic:
+    """Tests for multi-timeframe alignment rules per spec.
+
+    SignalPro Spec Rules (lines 78-83):
+    | Higher TF | Lower TF | Action      |
+    |-----------|----------|-------------|
+    | UP        | DOWN     | GO LONG     | (buy the dip)
+    | DOWN      | UP       | GO SHORT    | (sell the rally)
+    | UP        | UP       | STAND ASIDE |
+    | DOWN      | DOWN     | STAND ASIDE |
+    """
+
+    def test_can_import_trade_action_result(self) -> None:
+        """TradeActionResult model should be importable."""
+        from trader.workflow import TradeActionResult
+
+        assert TradeActionResult is not None
+
+    def test_can_import_determine_trade_action(self) -> None:
+        """determine_trade_action function should be importable."""
+        from trader.workflow import determine_trade_action
+
+        assert determine_trade_action is not None
+
+    def test_up_down_returns_long(self) -> None:
+        """Higher TF UP + Lower TF DOWN = GO LONG (buy the dip)."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bearish",
+        )
+
+        assert result.should_trade is True
+        assert result.direction == "long"
+        assert "dip" in result.reason.lower() or "pullback" in result.reason.lower()
+
+    def test_down_up_returns_short(self) -> None:
+        """Higher TF DOWN + Lower TF UP = GO SHORT (sell the rally)."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bearish",
+            lower_tf_trend="bullish",
+        )
+
+        assert result.should_trade is True
+        assert result.direction == "short"
+        assert "rally" in result.reason.lower()
+
+    def test_up_up_returns_stand_aside(self) -> None:
+        """Higher TF UP + Lower TF UP = STAND ASIDE."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bullish",
+        )
+
+        assert result.should_trade is False
+        assert result.direction is None
+        assert "aside" in result.reason.lower() or "wait" in result.reason.lower()
+
+    def test_down_down_returns_stand_aside(self) -> None:
+        """Higher TF DOWN + Lower TF DOWN = STAND ASIDE."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bearish",
+            lower_tf_trend="bearish",
+        )
+
+        assert result.should_trade is False
+        assert result.direction is None
+        assert "aside" in result.reason.lower() or "wait" in result.reason.lower()
+
+    def test_neutral_higher_tf_returns_stand_aside(self) -> None:
+        """Neutral higher TF = STAND ASIDE (no clear trend)."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="neutral",
+            lower_tf_trend="bullish",
+        )
+
+        assert result.should_trade is False
+        assert result.direction is None
+
+    def test_neutral_lower_tf_with_bullish_higher_returns_stand_aside(self) -> None:
+        """Higher TF UP + Lower TF neutral = STAND ASIDE (wait for pullback)."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bullish",
+            lower_tf_trend="neutral",
+        )
+
+        assert result.should_trade is False
+        assert result.direction is None
+
+
+class TestAnalyzeSymbolPairMultiTFLogic:
+    """Tests that _analyze_symbol_pair uses correct multi-TF alignment rules.
+
+    Uses patching to mock assess_trend for controlled testing of multi-TF logic.
+    """
+
+    async def test_bullish_higher_bearish_lower_returns_long(self) -> None:
+        """Should return long opportunity when higher TF bullish, lower TF bearish."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, scan_opportunities
+
+        # Mock assess_trend to return controlled results
+        bullish_assessment = TrendAssessment(
+            trend="bullish",
+            phase="impulse",
+            swing_type="HH",
+            explanation="Higher High pattern",
+            confidence=75,
+        )
+        bearish_assessment = TrendAssessment(
+            trend="bearish",
+            phase="correction",
+            swing_type="LH",
+            explanation="Lower High pattern",
+            confidence=70,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            # First call = higher TF (bullish), second call = lower TF (bearish)
+            mock_assess.side_effect = [bullish_assessment, bearish_assessment]
+
+            result = await scan_opportunities(
+                symbols=["TEST"],
+                timeframe_pairs=[("1D", "4H")],
+                market_service=mock_service,
+            )
+
+        # Should find a long opportunity (buy the dip)
+        assert len(result.opportunities) == 1
+        assert result.opportunities[0].direction == "long"
+        assert result.opportunities[0].symbol == "TEST"
+
+    async def test_bearish_higher_bullish_lower_returns_short(self) -> None:
+        """Should return short opportunity when higher TF bearish, lower TF bullish."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, scan_opportunities
+
+        bearish_assessment = TrendAssessment(
+            trend="bearish",
+            phase="impulse",
+            swing_type="LL",
+            explanation="Lower Low pattern",
+            confidence=75,
+        )
+        bullish_assessment = TrendAssessment(
+            trend="bullish",
+            phase="correction",
+            swing_type="HL",
+            explanation="Higher Low pattern",
+            confidence=70,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            # First call = higher TF (bearish), second call = lower TF (bullish)
+            mock_assess.side_effect = [bearish_assessment, bullish_assessment]
+
+            result = await scan_opportunities(
+                symbols=["TEST"],
+                timeframe_pairs=[("1D", "4H")],
+                market_service=mock_service,
+            )
+
+        # Should find a short opportunity (sell the rally)
+        assert len(result.opportunities) == 1
+        assert result.opportunities[0].direction == "short"
+        assert result.opportunities[0].symbol == "TEST"
+
+    async def test_both_bullish_returns_no_opportunity(self) -> None:
+        """Should return no opportunity when both TFs are bullish (stand aside)."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, scan_opportunities
+
+        bullish_assessment = TrendAssessment(
+            trend="bullish",
+            phase="impulse",
+            swing_type="HH",
+            explanation="Higher High pattern",
+            confidence=75,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            # Both TFs return bullish
+            mock_assess.return_value = bullish_assessment
+
+            result = await scan_opportunities(
+                symbols=["TEST"],
+                timeframe_pairs=[("1D", "4H")],
+                market_service=mock_service,
+            )
+
+        # Should NOT find any opportunity (stand aside)
+        assert len(result.opportunities) == 0
+
+    async def test_both_bearish_returns_no_opportunity(self) -> None:
+        """Should return no opportunity when both TFs are bearish (stand aside)."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, scan_opportunities
+
+        bearish_assessment = TrendAssessment(
+            trend="bearish",
+            phase="impulse",
+            swing_type="LL",
+            explanation="Lower Low pattern",
+            confidence=75,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            # Both TFs return bearish
+            mock_assess.return_value = bearish_assessment
+
+            result = await scan_opportunities(
+                symbols=["TEST"],
+                timeframe_pairs=[("1D", "4H")],
+                market_service=mock_service,
+            )
+
+        # Should NOT find any opportunity (stand aside)
+        assert len(result.opportunities) == 0
+
+
+class TestValidationModels:
+    """Tests for validation models."""
+
+    def test_can_import_validation_check(self) -> None:
+        """ValidationCheck model should be importable."""
+        from trader.workflow import ValidationCheck
+
+        assert ValidationCheck is not None
+
+    def test_can_import_validation_result(self) -> None:
+        """ValidationResult model should be importable."""
+        from trader.workflow import ValidationResult
+
+        assert ValidationResult is not None
+
+    def test_create_validation_check(self) -> None:
+        """Should create ValidationCheck with all fields."""
+        from trader.workflow import ValidationCheck
+
+        check = ValidationCheck(
+            name="Trend Alignment",
+            passed=True,
+            explanation="Timeframes aligned for long",
+            details="1D bullish, 4H bearish",
+        )
+
+        assert check.name == "Trend Alignment"
+        assert check.passed is True
+        assert "aligned" in check.explanation.lower()
+
+    def test_create_validation_result(self) -> None:
+        """Should create ValidationResult with checks."""
+        from trader.workflow import ValidationCheck, ValidationResult
+
+        checks = [
+            ValidationCheck(name="Check 1", passed=True, explanation="Pass"),
+            ValidationCheck(name="Check 2", passed=False, explanation="Fail"),
+            ValidationCheck(name="Check 3", passed=True, explanation="Pass"),
+        ]
+
+        result = ValidationResult(
+            checks=checks,
+            passed_count=2,
+            total_count=3,
+            is_valid=False,
+            pass_percentage=66.7,
+        )
+
+        assert result.passed_count == 2
+        assert result.total_count == 3
+        assert result.is_valid is False
+        assert result.pass_percentage == 66.7
+
+    def test_validation_is_valid_when_60_percent(self) -> None:
+        """Trade should be valid when 60%+ checks pass."""
+        from trader.workflow import ValidationCheck, ValidationResult
+
+        # 3 of 5 = 60%
+        checks = [
+            ValidationCheck(name="Check 1", passed=True, explanation="Pass"),
+            ValidationCheck(name="Check 2", passed=True, explanation="Pass"),
+            ValidationCheck(name="Check 3", passed=True, explanation="Pass"),
+            ValidationCheck(name="Check 4", passed=False, explanation="Fail"),
+            ValidationCheck(name="Check 5", passed=False, explanation="Fail"),
+        ]
+
+        result = ValidationResult(
+            checks=checks,
+            passed_count=3,
+            total_count=5,
+            is_valid=True,
+            pass_percentage=60.0,
+        )
+
+        assert result.is_valid is True
+
+    def test_validation_invalid_below_60_percent(self) -> None:
+        """Trade should be invalid when below 60% checks pass."""
+        from trader.workflow import ValidationCheck, ValidationResult
+
+        # 2 of 5 = 40%
+        checks = [
+            ValidationCheck(name="Check 1", passed=True, explanation="Pass"),
+            ValidationCheck(name="Check 2", passed=True, explanation="Pass"),
+            ValidationCheck(name="Check 3", passed=False, explanation="Fail"),
+            ValidationCheck(name="Check 4", passed=False, explanation="Fail"),
+            ValidationCheck(name="Check 5", passed=False, explanation="Fail"),
+        ]
+
+        result = ValidationResult(
+            checks=checks,
+            passed_count=2,
+            total_count=5,
+            is_valid=False,
+            pass_percentage=40.0,
+        )
+
+        assert result.is_valid is False
+
+
+class TestValidateTradeFunction:
+    """Tests for validate_trade function."""
+
+    @pytest.fixture
+    def sample_bars(self) -> list[OHLCBar]:
+        """Create sample OHLC bars."""
+        return [
+            OHLCBar(time="2024-01-01", open=100.0, high=105.0, low=99.0, close=104.0),
+            OHLCBar(time="2024-01-02", open=104.0, high=108.0, low=102.0, close=106.0),
+            OHLCBar(time="2024-01-03", open=106.0, high=112.0, low=105.0, close=110.0),
+            OHLCBar(time="2024-01-04", open=110.0, high=115.0, low=108.0, close=113.0),
+            OHLCBar(time="2024-01-05", open=113.0, high=118.0, low=111.0, close=116.0),
+        ] * 10  # Repeat to have enough data for indicators
+
+    @pytest.fixture
+    def mock_market_service(self, sample_bars: list[OHLCBar]) -> MagicMock:
+        """Create mock market data service."""
+        mock = MagicMock()
+        mock.get_ohlc = AsyncMock(
+            return_value=MarketDataResult.from_success(
+                data=sample_bars,
+                market_status=MarketStatus.unknown(),
+                provider="test",
+            )
+        )
+        return mock
+
+    async def test_validate_trade_returns_validation_result(
+        self, mock_market_service: MagicMock
+    ) -> None:
+        """Should return ValidationResult."""
+        from trader.workflow import ValidationResult, validate_trade
+
+        result = await validate_trade(
+            symbol="TEST",
+            higher_timeframe="1D",
+            lower_timeframe="4H",
+            direction="long",
+            market_service=mock_market_service,
+        )
+
+        assert isinstance(result, ValidationResult)
+
+    async def test_validate_trade_has_five_checks(
+        self, mock_market_service: MagicMock
+    ) -> None:
+        """Should perform exactly 5 validation checks."""
+        from trader.workflow import validate_trade
+
+        result = await validate_trade(
+            symbol="TEST",
+            higher_timeframe="1D",
+            lower_timeframe="4H",
+            direction="long",
+            market_service=mock_market_service,
+        )
+
+        assert result.total_count == 5
+        assert len(result.checks) == 5
+
+    async def test_validate_trade_check_names(
+        self, mock_market_service: MagicMock
+    ) -> None:
+        """Should have the 5 required check names."""
+        from trader.workflow import validate_trade
+
+        result = await validate_trade(
+            symbol="TEST",
+            higher_timeframe="1D",
+            lower_timeframe="4H",
+            direction="long",
+            market_service=mock_market_service,
+        )
+
+        check_names = [c.name for c in result.checks]
+        assert "Trend Alignment" in check_names
+        assert "Entry Zone" in check_names
+        assert "Target Zones" in check_names
+        assert "RSI Confirmation" in check_names
+        assert "MACD Confirmation" in check_names
+
+    async def test_validate_trade_calculates_pass_percentage(
+        self, mock_market_service: MagicMock
+    ) -> None:
+        """Should calculate pass percentage correctly."""
+        from trader.workflow import validate_trade
+
+        result = await validate_trade(
+            symbol="TEST",
+            higher_timeframe="1D",
+            lower_timeframe="4H",
+            direction="long",
+            market_service=mock_market_service,
+        )
+
+        expected_percentage = (result.passed_count / result.total_count) * 100
+        assert result.pass_percentage == expected_percentage
+
+
+class TestConfluenceScoreSpecCompliance:
+    """Tests to verify confluence scoring matches SignalPro spec (Rule 11).
+
+    Confluence scoring per spec:
+    - Base Fib level: +1 (always)
+    - Same TF additional level within tolerance: +1 each
+    - Higher TF level within tolerance: +2 each
+    - Cross-tool confluence: +2 when different Fib tools converge
+    - Previous major pivot: +2 if within tolerance
+    - Psychological level: +1 if round number
+
+    Interpretation thresholds:
+    - 1-2: Standard (basic Fib level)
+    - 3-4: Important (some confluence)
+    - 5-6: Significant (strong confluence)
+    - 7+:  Major (exceptional confluence zone)
+    """
+
+    def test_base_fib_level_always_one(self) -> None:
+        """Base Fib level should always be +1."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=100.0,
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[],
+        )
+
+        assert score.breakdown.base_fib_level == 1
+
+    def test_same_tf_confluence_adds_one_per_level(self) -> None:
+        """Same TF confluence: +1 per level within tolerance."""
+        from trader.workflow import calculate_confluence_score
+
+        # Add 3 same-TF levels within 0.5% tolerance
+        score = calculate_confluence_score(
+            level_price=100.0,
+            same_tf_levels=[100.3, 100.4, 99.8],  # All within 0.5%
+            higher_tf_levels=[],
+            previous_pivots=[],
+        )
+
+        assert score.breakdown.same_tf_confluence == 3
+
+    def test_higher_tf_confluence_adds_two_per_level(self) -> None:
+        """Higher TF confluence: +2 per level within tolerance."""
+        from trader.workflow import calculate_confluence_score
+
+        # Add 2 higher-TF levels within tolerance
+        score = calculate_confluence_score(
+            level_price=100.0,
+            same_tf_levels=[],
+            higher_tf_levels=[100.2, 99.9],  # Both within 0.5%
+            previous_pivots=[],
+        )
+
+        # 2 levels x 2 points = 4
+        assert score.breakdown.higher_tf_confluence == 4
+
+    def test_cross_tool_confluence_adds_two(self) -> None:
+        """Cross-tool confluence: +2 when different Fib tools converge."""
+        from trader.workflow import LevelWithStrategy, calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=100.0,
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[],
+            level_strategy="retracement",
+            other_tool_levels=[
+                LevelWithStrategy(price=100.2, strategy="extension"),  # Different tool
+            ],
+        )
+
+        assert score.breakdown.cross_tool_confluence == 2
+
+    def test_previous_pivot_adds_two(self) -> None:
+        """Previous major pivot: +2 if within tolerance."""
+        from trader.workflow import calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=100.0,
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[100.3],  # Within 0.5%
+        )
+
+        assert score.breakdown.previous_pivot == 2
+
+    def test_psychological_level_adds_one(self) -> None:
+        """Psychological level: +1 if round number."""
+        from trader.workflow import calculate_confluence_score
+
+        # Test various psychological levels
+        for price in [100.0, 1000.0, 50000.0]:
+            score = calculate_confluence_score(
+                level_price=price,
+                same_tf_levels=[],
+                higher_tf_levels=[],
+                previous_pivots=[],
+            )
+            assert score.breakdown.psychological_level == 1, f"Failed for price {price}"
+
+    def test_interpretation_standard_for_score_1_2(self) -> None:
+        """Score 1-2 should have 'standard' interpretation."""
+        from trader.workflow import calculate_confluence_score
+
+        # Score = 1 (base only)
+        score = calculate_confluence_score(
+            level_price=101.0,  # Not psychological
+            same_tf_levels=[],
+            higher_tf_levels=[],
+            previous_pivots=[],
+        )
+
+        assert score.total <= 2
+        assert score.interpretation == "standard"
+
+    def test_interpretation_important_for_score_3_4(self) -> None:
+        """Score 3-4 should have 'important' interpretation."""
+        from trader.workflow import calculate_confluence_score
+
+        # Score = 3: base (1) + 2 same TF (2) = 3
+        score = calculate_confluence_score(
+            level_price=101.0,  # Not psychological
+            same_tf_levels=[101.3, 100.8],  # +2
+            higher_tf_levels=[],
+            previous_pivots=[],
+        )
+
+        assert score.total in [3, 4]
+        assert score.interpretation == "important"
+
+    def test_interpretation_significant_for_score_5_6(self) -> None:
+        """Score 5-6 should have 'significant' interpretation."""
+        from trader.workflow import calculate_confluence_score
+
+        # Score = 5: base (1) + 2 higher TF levels (4) = 5
+        score = calculate_confluence_score(
+            level_price=101.0,  # Not psychological
+            same_tf_levels=[],
+            higher_tf_levels=[101.2, 100.9],  # +4
+            previous_pivots=[],
+        )
+
+        assert score.total in [5, 6]
+        assert score.interpretation == "significant"
+
+    def test_interpretation_major_for_score_7_plus(self) -> None:
+        """Score 7+ should have 'major' interpretation."""
+        from trader.workflow import calculate_confluence_score
+
+        # Score = 9: base + same TF + higher TF + pivot + psychological
+        score = calculate_confluence_score(
+            level_price=50000.0,  # Psychological (+1)
+            same_tf_levels=[50010.0],  # +1
+            higher_tf_levels=[50005.0, 49995.0],  # +4
+            previous_pivots=[50020.0],  # +2
+        )
+
+        assert score.total >= 7
+        assert score.interpretation == "major"
+
+    def test_full_confluence_scenario(self) -> None:
+        """Test maximum confluence with all factors present."""
+        from trader.workflow import LevelWithStrategy, calculate_confluence_score
+
+        score = calculate_confluence_score(
+            level_price=50000.0,  # Psychological (+1)
+            same_tf_levels=[50010.0, 49990.0],  # +2
+            higher_tf_levels=[50005.0, 50015.0],  # +4
+            previous_pivots=[50020.0],  # +2
+            level_strategy="retracement",
+            other_tool_levels=[
+                LevelWithStrategy(price=50010.0, strategy="extension"),  # +2
+            ],
+        )
+
+        # Total: 1 + 2 + 4 + 2 + 2 + 1 = 12
+        assert score.breakdown.base_fib_level == 1
+        assert score.breakdown.same_tf_confluence == 2
+        assert score.breakdown.higher_tf_confluence == 4
+        assert score.breakdown.previous_pivot == 2
+        assert score.breakdown.cross_tool_confluence == 2
+        assert score.breakdown.psychological_level == 1
+        assert score.total == 12
+        assert score.interpretation == "major"

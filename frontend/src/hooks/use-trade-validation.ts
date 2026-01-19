@@ -2,10 +2,11 @@
  * Trade Validation Hook
  *
  * Validates a selected trade opportunity against system criteria.
- * Checks trend alignment, Fibonacci levels, and indicator confirmation.
+ * Calls backend /workflow/validate endpoint for server-side validation.
+ * Falls back to local calculation if backend unavailable.
  */
 
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { useMultiTFLevels } from "./use-multi-tf-levels";
 import type { TradeOpportunity } from "./use-trade-discovery";
 import {
@@ -19,6 +20,24 @@ import {
   type ConfluenceBreakdown,
   getConfluenceInterpretation,
 } from "@/types/workflow-v2";
+
+/**
+ * Backend validation response types
+ */
+interface BackendValidationCheck {
+  name: string;
+  passed: boolean;
+  explanation: string;
+  details?: string | null;
+}
+
+interface BackendValidationResult {
+  checks: BackendValidationCheck[];
+  passed_count: number;
+  total_count: number;
+  is_valid: boolean;
+  pass_percentage: number;
+}
 
 /**
  * Single validation check result
@@ -291,12 +310,95 @@ function calculateConfluenceScore(
 }
 
 /**
+ * Fetch validation from backend API
+ */
+async function fetchBackendValidation(
+  opportunity: TradeOpportunity
+): Promise<BackendValidationResult | null> {
+  try {
+    const response = await fetch("/api/trader/workflow/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symbol: opportunity.symbol,
+        higher_timeframe: opportunity.higherTimeframe,
+        lower_timeframe: opportunity.lowerTimeframe,
+        direction: opportunity.direction,
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn("Backend validation failed, using local fallback");
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.warn("Backend validation error, using local fallback:", error);
+    return null;
+  }
+}
+
+/**
+ * Convert backend validation response to frontend format
+ */
+function convertBackendToFrontend(
+  backend: BackendValidationResult
+): Pick<ValidationResult, "checks" | "passedCount" | "totalCount" | "isValid" | "passPercentage"> {
+  return {
+    checks: backend.checks.map((c) => ({
+      name: c.name,
+      passed: c.passed,
+      status: c.passed ? "passed" : "failed",
+      explanation: c.explanation,
+      details: c.details ?? undefined,
+    })),
+    passedCount: backend.passed_count,
+    totalCount: backend.total_count,
+    isValid: backend.is_valid,
+    passPercentage: backend.pass_percentage,
+  };
+}
+
+/**
  * Hook to validate a trade opportunity
+ *
+ * Calls backend /workflow/validate endpoint for server-side validation.
+ * Falls back to local calculation if backend unavailable.
  */
 export function useTradeValidation({
   opportunity,
   enabled,
 }: UseTradeValidationOptions): UseTradeValidationResult {
+  // State for backend validation result
+  const [backendResult, setBackendResult] = useState<BackendValidationResult | null>(null);
+  const [isLoadingBackend, setIsLoadingBackend] = useState(false);
+  const [backendError, setBackendError] = useState(false);
+
+  // Fetch backend validation when opportunity changes
+  useEffect(() => {
+    if (!enabled || !opportunity) {
+      setBackendResult(null);
+      setBackendError(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingBackend(true);
+
+    fetchBackendValidation(opportunity).then((result) => {
+      if (!cancelled) {
+        setBackendResult(result);
+        setBackendError(result === null);
+        setIsLoadingBackend(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [opportunity, enabled]);
+
   // Create visibility config for this specific opportunity
   const visibilityConfig = useMemo((): VisibilityConfig => {
     if (!opportunity) {
@@ -306,14 +408,14 @@ export function useTradeValidation({
     return createValidationVisibilityConfig(opportunity);
   }, [opportunity]);
 
-  // Fetch Fibonacci levels for the opportunity's timeframes
+  // Fetch Fibonacci levels for entry/target details (always needed)
   const { allLevels, isLoading: isLoadingLevels } = useMultiTFLevels({
     symbol: opportunity?.symbol ?? "DJI",
     visibilityConfig,
     enabled: enabled && opportunity !== null,
   });
 
-  // Build validation result
+  // Build validation result - prefer backend, fallback to local
   const result = useMemo((): ValidationResult => {
     if (!opportunity) {
       return {
@@ -333,6 +435,47 @@ export function useTradeValidation({
       };
     }
 
+    // Get entry and target levels (needed for both paths)
+    const entryLevels = getEntryLevels(allLevels, opportunity);
+    const targetLevels = getTargetLevels(allLevels, opportunity);
+
+    // Sort entry levels by price for proper entry/stop selection
+    const sortedEntryLevels =
+      opportunity.direction === "long"
+        ? [...entryLevels].sort((a, b) => b.price - a.price)
+        : [...entryLevels].sort((a, b) => a.price - b.price);
+
+    // Calculate suggested prices
+    const suggestedEntry = sortedEntryLevels[0]?.price ?? null;
+    const suggestedStop = sortedEntryLevels[sortedEntryLevels.length - 1]?.price ?? null;
+    const suggestedTargets = targetLevels.slice(0, 3).map((l) => l.price);
+
+    // Calculate confluence score for entry levels
+    const confluenceScore = calculateConfluenceScore(entryLevels, allLevels, opportunity);
+
+    // Check for ranging market condition
+    const isRanging = opportunity.higherTrend?.isRanging || opportunity.higherTrend?.trend === "ranging" || false;
+    const rangingWarning = isRanging
+      ? (opportunity.higherTrend?.rangingWarning || "Market is ranging - Fibonacci levels may be less reliable")
+      : null;
+
+    // Use backend validation if available
+    if (backendResult && !backendError) {
+      const backendValidation = convertBackendToFrontend(backendResult);
+      return {
+        ...backendValidation,
+        entryLevels,
+        targetLevels,
+        suggestedEntry,
+        suggestedStop,
+        suggestedTargets,
+        confluenceScore,
+        isRanging,
+        rangingWarning,
+      };
+    }
+
+    // Fallback: Local validation calculation
     const checks: ValidationCheck[] = [];
 
     // 1. Trend Alignment Check
@@ -349,7 +492,6 @@ export function useTradeValidation({
     );
 
     // 2. Entry Zone Check
-    const entryLevels = getEntryLevels(allLevels, opportunity);
     const hasEntryZone = entryLevels.length > 0;
     checks.push(
       createCheck(
@@ -365,7 +507,6 @@ export function useTradeValidation({
     );
 
     // 3. Target Zone Check
-    const targetLevels = getTargetLevels(allLevels, opportunity);
     const hasTargets = targetLevels.length > 0;
     checks.push(
       createCheck(
@@ -473,35 +614,11 @@ export function useTradeValidation({
       )
     );
 
-    // Calculate summary
+    // Calculate summary for local fallback
     const passedCount = checks.filter((c) => c.passed).length;
     const totalCount = checks.length;
     const passPercentage = Math.round((passedCount / totalCount) * 100);
     const isValid = passPercentage >= 60; // At least 3 of 5 checks
-
-    // Sort entry levels by price for proper entry/stop selection
-    // LONG: sort descending (highest first = closest to current price for support)
-    // SHORT: sort ascending (lowest first = closest to current price for resistance)
-    const sortedEntryLevels =
-      opportunity.direction === "long"
-        ? [...entryLevels].sort((a, b) => b.price - a.price)
-        : [...entryLevels].sort((a, b) => a.price - b.price);
-
-    // Calculate suggested prices
-    // Entry: first level (closest to current price)
-    // Stop: last level (furthest retracement - used as stop reference)
-    const suggestedEntry = sortedEntryLevels[0]?.price ?? null;
-    const suggestedStop = sortedEntryLevels[sortedEntryLevels.length - 1]?.price ?? null;
-    const suggestedTargets = targetLevels.slice(0, 3).map((l) => l.price);
-
-    // Calculate confluence score for entry levels
-    const confluenceScore = calculateConfluenceScore(entryLevels, allLevels, opportunity);
-
-    // Check for ranging market condition from higher TF trend
-    const isRanging = opportunity.higherTrend?.isRanging || opportunity.higherTrend?.trend === "ranging" || false;
-    const rangingWarning = isRanging
-      ? (opportunity.higherTrend?.rangingWarning || "Market is ranging - Fibonacci levels may be less reliable")
-      : null;
 
     return {
       checks,
@@ -518,10 +635,10 @@ export function useTradeValidation({
       isRanging,
       rangingWarning,
     };
-  }, [opportunity, allLevels]);
+  }, [opportunity, allLevels, backendResult, backendError]);
 
   return {
     result,
-    isLoading: isLoadingLevels,
+    isLoading: isLoadingLevels || isLoadingBackend,
   };
 }

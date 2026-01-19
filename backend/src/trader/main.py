@@ -54,6 +54,7 @@ from trader.workflow import (
     confirm_with_indicators,
     identify_fibonacci_levels,
     scan_opportunities,
+    validate_trade,
 )
 
 # Initialize singleton services
@@ -1177,4 +1178,73 @@ async def workflow_opportunities(
         symbols=symbol_list,
         timeframe_pairs=pairs,
         market_service=_market_data_service,
+    )
+
+
+class ValidateTradeRequest(BaseModel):
+    """Request model for trade validation."""
+
+    symbol: str
+    higher_timeframe: str
+    lower_timeframe: str
+    direction: Literal["long", "short"]
+
+
+class ValidationCheckData(BaseModel):
+    """Validation check data in response."""
+
+    name: str
+    passed: bool
+    explanation: str
+    details: str | None = None
+
+
+class ValidationResultData(BaseModel):
+    """Validation result data in response."""
+
+    checks: list[ValidationCheckData]
+    passed_count: int
+    total_count: int
+    is_valid: bool
+    pass_percentage: float
+
+
+@app.post("/workflow/validate", response_model=ValidationResultData)
+async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultData:
+    """Validate a trade opportunity with 5 checks.
+
+    Performs the following validation checks:
+    1. Trend Alignment - Higher/lower TF alignment per spec rules
+    2. Entry Zone - Fibonacci entry levels found
+    3. Target Zones - Extension targets found
+    4. RSI Confirmation - Momentum confirmation
+    5. MACD Confirmation - Trend momentum intact
+
+    Trade is valid when pass_percentage >= 60% (3+ checks pass).
+
+    Returns:
+        ValidationResultData with all 5 checks and summary statistics.
+    """
+    result = await validate_trade(
+        symbol=request.symbol,
+        higher_timeframe=request.higher_timeframe,
+        lower_timeframe=request.lower_timeframe,
+        direction=request.direction,
+        market_service=_market_data_service,
+    )
+
+    return ValidationResultData(
+        checks=[
+            ValidationCheckData(
+                name=c.name,
+                passed=c.passed,
+                explanation=c.explanation,
+                details=c.details,
+            )
+            for c in result.checks
+        ],
+        passed_count=result.passed_count,
+        total_count=result.total_count,
+        is_valid=result.is_valid,
+        pass_percentage=result.pass_percentage,
     )
