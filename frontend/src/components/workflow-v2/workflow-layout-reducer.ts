@@ -36,6 +36,8 @@ export type PanelVisibility = {
   psychologicalLevels: boolean;
   /** Volume bars below price chart */
   volumePane: boolean;
+  /** ATR indicator pane below price chart */
+  atrPane: boolean;
 };
 
 export type ChartDisplaySettings = {
@@ -78,6 +80,7 @@ export const initialLayoutState: WorkflowLayoutState = {
     chartExpanded: false,
     psychologicalLevels: false,
     volumePane: false,
+    atrPane: false,
   },
   chart: {
     chartType: "bar",

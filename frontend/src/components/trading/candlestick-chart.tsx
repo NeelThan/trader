@@ -104,6 +104,10 @@ export type CandlestickChartProps = {
   showLeftSideLabels?: boolean;
   /** Show volume bars below the price chart */
   showVolume?: boolean;
+  /** Show ATR indicator pane below price chart */
+  showAtr?: boolean;
+  /** ATR values for the ATR pane (from useATR hook) */
+  atrData?: (number | null)[];
 };
 
 export type CandlestickChartHandle = {
@@ -245,6 +249,8 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       onLoadMore,
       showLeftSideLabels = false,
       showVolume = false,
+      showAtr = false,
+      atrData,
     },
     ref
   ) {
@@ -252,6 +258,7 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     const chartRef = useRef<IChartApi | null>(null);
     const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Bar"> | null>(null);
     const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+    const atrSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
     const lineSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
     const priceLinesRef = useRef<IPriceLine[]>([]);
     const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
@@ -328,6 +335,8 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
   const onLoadMoreRef = useRef(onLoadMore);
   const isLoadingMoreRef = useRef(false);
   const showVolumeRef = useRef(showVolume);
+  const showAtrRef = useRef(showAtr);
+  const atrDataRef = useRef(atrData);
 
   // Update refs in layout effect (runs synchronously before paint)
   useIsomorphicLayoutEffect(() => {
@@ -338,6 +347,8 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     onCrosshairMoveRef.current = onCrosshairMove;
     onLoadMoreRef.current = onLoadMore;
     showVolumeRef.current = showVolume;
+    showAtrRef.current = showAtr;
+    atrDataRef.current = atrData;
   });
 
   // Create chart on mount
@@ -466,6 +477,12 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
     chartRef.current = chart;
     seriesRef.current = series;
 
+    // Calculate pane positions based on what's enabled
+    // When both volume and ATR are shown, they need separate areas
+    const bothIndicatorsEnabled = showVolumeRef.current && showAtrRef.current;
+    const volumeTop = bothIndicatorsEnabled ? 0.80 : 0.85; // Volume: bottom 20% or 15%
+    const atrTop = bothIndicatorsEnabled ? 0.90 : 0.85;    // ATR: bottom 10% or 15%
+
     // Add volume series if enabled and data has volume
     if (showVolumeRef.current && dataRef.current.some(d => d.volume !== undefined && d.volume !== null)) {
       const volumeSeries = chart.addSeries(HistogramSeries, {
@@ -478,8 +495,8 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       // Configure volume price scale (separate from main price)
       chart.priceScale('volume').applyOptions({
         scaleMargins: {
-          top: 0.85, // Volume in bottom 15% of chart
-          bottom: 0,
+          top: volumeTop,
+          bottom: bothIndicatorsEnabled ? 0.10 : 0, // Leave room for ATR if both shown
         },
         borderVisible: false,
       });
@@ -499,6 +516,45 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       }
 
       volumeSeriesRef.current = volumeSeries;
+    }
+
+    // Add ATR series if enabled (data will be set via effect when available)
+    if (showAtrRef.current) {
+      const atrSeries = chart.addSeries(LineSeries, {
+        color: '#f59e0b', // Amber/orange color for ATR
+        lineWidth: 2,
+        priceScaleId: 'atr',
+        priceLineVisible: false,
+        lastValueVisible: true,
+        crosshairMarkerVisible: true,
+        title: 'ATR',
+      });
+
+      // Configure ATR price scale (separate from main price and volume)
+      chart.priceScale('atr').applyOptions({
+        scaleMargins: {
+          top: atrTop,
+          bottom: 0,
+        },
+        borderVisible: false,
+      });
+
+      // Set ATR data if already available
+      if (atrDataRef.current && atrDataRef.current.some(v => v !== null)) {
+        const cleanedData = deduplicateAndSort(dataRef.current);
+        const atrLineData: LineData[] = cleanedData
+          .map((d, i) => ({
+            time: d.time,
+            value: atrDataRef.current?.[i] ?? null,
+          }))
+          .filter((d): d is LineData => d.value !== null);
+
+        if (atrLineData.length > 0) {
+          atrSeries.setData(atrLineData);
+        }
+      }
+
+      atrSeriesRef.current = atrSeries;
     }
 
     // Set up initial markers from ref (v5 API)
@@ -557,12 +613,13 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       chartRef.current = null;
       seriesRef.current = null;
       volumeSeriesRef.current = null;
+      atrSeriesRef.current = null;
       priceLinesRef.current = [];
       lineSeriesRef.current = [];
       markersPluginRef.current = null;
       hasInitializedRef.current = false; // Reset so new chart fits content
     };
-  }, [theme, height, width, upColor, downColor, chartType, showVolume]);
+  }, [theme, height, width, upColor, downColor, chartType, showVolume, showAtr]);
 
   // Update data when it changes
   useEffect(() => {
@@ -596,6 +653,23 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
       hasInitializedRef.current = true;
     }
   }, [data, chartType, upColor, downColor]);
+
+  // Update ATR data when it changes
+  useEffect(() => {
+    if (!atrSeriesRef.current || !atrData || data.length === 0) return;
+
+    const cleanedData = deduplicateAndSort(data);
+    const atrLineData: LineData[] = cleanedData
+      .map((d, i) => ({
+        time: d.time,
+        value: atrData[i] ?? null,
+      }))
+      .filter((d): d is LineData => d.value !== null);
+
+    if (atrLineData.length > 0) {
+      atrSeriesRef.current.setData(atrLineData);
+    }
+  }, [atrData, data]);
 
   // Update price lines when they change
   useEffect(() => {

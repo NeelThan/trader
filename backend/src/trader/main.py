@@ -10,6 +10,7 @@ from trader.analysis import (
     FullAnalysisRequest,
     FullAnalysisResponse,
 )
+from trader.atr_indicators import analyze_atr, get_atr_series
 from trader.fibonacci import (
     calculate_expansion_levels,
     calculate_extension_levels,
@@ -501,6 +502,34 @@ class VolumeAnalysisResponse(BaseModel):
     """Response model for volume analysis."""
 
     analysis: VolumeAnalysisData | None
+    error: str | None = None
+
+
+class ATRRequest(BaseModel):
+    """Request model for ATR calculation."""
+
+    data: list[OHLCBarModel]
+    period: int = 14
+
+
+class ATRAnalysisData(BaseModel):
+    """ATR analysis data in response."""
+
+    atr: float
+    atr_percent: float
+    volatility_level: str
+    current_price: float
+    suggested_stop_1x: float
+    suggested_stop_1_5x: float
+    suggested_stop_2x: float
+    interpretation: str
+
+
+class ATRSeriesResponse(BaseModel):
+    """Response model for ATR series (for charting)."""
+
+    atr_values: list[float | None]
+    analysis: ATRAnalysisData | None
     error: str | None = None
 
 
@@ -1113,6 +1142,60 @@ async def volume_analysis_indicator(
             is_above_average=result.is_above_average,
             interpretation=result.interpretation,
         )
+    )
+
+
+@app.post("/indicators/atr", response_model=ATRSeriesResponse)
+async def atr_indicator(request: ATRRequest) -> ATRSeriesResponse:
+    """Calculate ATR indicator from OHLC data.
+
+    ATR (Average True Range) measures volatility:
+    - Low (<0.5%): Quiet market, may lack movement
+    - Normal (0.5-1.5%): Typical conditions
+    - High (1.5-3%): Elevated volatility, use caution
+    - Extreme (>3%): Very volatile, reduce size or avoid
+
+    Returns ATR series for charting and analysis with stop suggestions.
+    """
+    if not request.data:
+        return ATRSeriesResponse(
+            atr_values=[], analysis=None, error="No data provided"
+        )
+
+    if len(request.data) < request.period:
+        return ATRSeriesResponse(
+            atr_values=[],
+            analysis=None,
+            error=f"Need at least {request.period} bars for ATR calculation",
+        )
+
+    # Extract OHLC data
+    highs = [bar.high for bar in request.data]
+    lows = [bar.low for bar in request.data]
+    closes = [bar.close for bar in request.data]
+
+    # Get ATR series for charting
+    atr_values = get_atr_series(highs, lows, closes, request.period)
+
+    # Get analysis for current bar
+    analysis_result = analyze_atr(highs, lows, closes, request.period)
+
+    analysis_data = None
+    if analysis_result:
+        analysis_data = ATRAnalysisData(
+            atr=analysis_result.atr,
+            atr_percent=analysis_result.atr_percent,
+            volatility_level=analysis_result.volatility_level,
+            current_price=analysis_result.current_price,
+            suggested_stop_1x=analysis_result.suggested_stop_1x,
+            suggested_stop_1_5x=analysis_result.suggested_stop_1_5x,
+            suggested_stop_2x=analysis_result.suggested_stop_2x,
+            interpretation=analysis_result.interpretation,
+        )
+
+    return ATRSeriesResponse(
+        atr_values=atr_values,
+        analysis=analysis_data,
     )
 
 

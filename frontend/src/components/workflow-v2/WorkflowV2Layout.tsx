@@ -32,6 +32,7 @@ import { usePersistedEditablePivots } from "@/hooks/use-persisted-editable-pivot
 import { useMACD } from "@/hooks/use-macd";
 import { useRSI } from "@/hooks/use-rsi";
 import { useTrendAlignment } from "@/hooks/use-trend-alignment";
+import { useATR } from "@/hooks/use-atr";
 import { usePersistedVisibilityConfig } from "@/hooks/use-persisted-visibility-config";
 import { usePersistedSwingSettings } from "@/hooks/use-persisted-swing-settings";
 import { generateSwingLineOverlays } from "@/lib/chart-pro/swing-overlays";
@@ -113,6 +114,7 @@ export function WorkflowV2Layout({
   const showConfluenceZones = panels.confluenceZones;
   const showPsychologicalLevels = panels.psychologicalLevels;
   const showVolume = panels.volumePane;
+  const showAtr = panels.atrPane;
   const showFibLabels = chart.fibLabels;
   const showFibLines = chart.fibLines;
   const showLevelsTable = panels.levelsTable;
@@ -573,6 +575,12 @@ export function WorkflowV2Layout({
     enabled: showIndicators && marketData.length >= 26,
   });
 
+  // ATR indicator
+  const { atrData, isLoading: isLoadingATR } = useATR({
+    data: marketData,
+    enabled: showAtr && marketData.length >= 14,
+  });
+
   // Trend alignment
   const { trends: trendData, overall: overallTrend, isLoading: isLoadingTrend } = useTrendAlignment({
     symbol,
@@ -1011,6 +1019,18 @@ export function WorkflowV2Layout({
                       Vol
                     </button>
                     <button
+                      onClick={() => dispatch(layoutActions.togglePanel("atrPane"))}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        showAtr
+                          ? "bg-primary/20 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
+                      )}
+                      title="Toggle ATR indicator"
+                    >
+                      ATR
+                    </button>
+                    <button
                       onClick={() => dispatch(layoutActions.togglePanel("indicators"))}
                       className={cn(
                         "px-2 py-1 text-xs rounded transition-colors",
@@ -1168,6 +1188,8 @@ export function WorkflowV2Layout({
                     fillContainer
                     showLeftSideLabels={showFibLabels}
                     showVolume={showVolume}
+                    showAtr={showAtr}
+                    atrData={atrData?.atr_values}
                   />
                   {/* Level tooltip - shows when crosshair is near a Fib level */}
                   {showFibLevels && (
