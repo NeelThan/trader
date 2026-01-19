@@ -51,7 +51,8 @@ import { LevelTooltip, ConfluenceZoneIndicator, calculateConfluenceZones } from 
 import type { UseTradeDiscoveryResult, TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
 import type { WorkflowPhase } from "@/app/workflow-v2/page";
-import { MARKET_CONFIG, TIMEFRAME_CONFIG } from "@/lib/chart-constants";
+import { MARKET_CONFIG, TIMEFRAME_CONFIG, FIB_COLORS } from "@/lib/chart-constants";
+import { calculatePsychologicalLevels } from "@/lib/market-utils";
 import {
   layoutReducer,
   initialLayoutState,
@@ -110,6 +111,7 @@ export function WorkflowV2Layout({
   const showTradeView = panels.tradeView;
   const showTrendPanel = panels.trendPanel;
   const showConfluenceZones = panels.confluenceZones;
+  const showPsychologicalLevels = panels.psychologicalLevels;
   const showFibLabels = chart.fibLabels;
   const showFibLines = chart.fibLines;
   const showLevelsTable = panels.levelsTable;
@@ -526,10 +528,32 @@ export function WorkflowV2Layout({
     return lines;
   }, [confluenceZones, showConfluenceZones, hiddenZones]);
 
+  // Calculate psychological (round number) levels from visible price range
+  const psychologicalPriceLines = useMemo<PriceLine[]>(() => {
+    if (!showPsychologicalLevels || marketData.length === 0) return [];
+
+    // Get the price range from market data
+    const prices = marketData.flatMap((bar) => [bar.high, bar.low]);
+    const dataLow = Math.min(...prices);
+    const dataHigh = Math.max(...prices);
+
+    if (dataLow <= 0 || dataHigh <= dataLow) return [];
+
+    const levels = calculatePsychologicalLevels(dataLow, dataHigh, 8);
+    return levels.map((price) => ({
+      price,
+      color: FIB_COLORS.psychological,
+      lineWidth: 1,
+      lineStyle: 1, // Dotted
+      axisLabelVisible: true,
+      title: `Ψ ${price.toLocaleString()}`,
+    }));
+  }, [showPsychologicalLevels, marketData]);
+
   // Combine all price lines
   const allPriceLines = useMemo<PriceLine[]>(() => {
-    return [...strategyPriceLines, ...zonePriceLines];
-  }, [strategyPriceLines, zonePriceLines]);
+    return [...strategyPriceLines, ...zonePriceLines, ...psychologicalPriceLines];
+  }, [strategyPriceLines, zonePriceLines, psychologicalPriceLines]);
 
   // Crosshair move handler
   const handleCrosshairMove = useCallback((price: number | null) => {
@@ -952,6 +976,18 @@ export function WorkflowV2Layout({
                           title="Toggle levels table"
                         >
                           Table
+                        </button>
+                        <button
+                          onClick={() => dispatch(layoutActions.togglePanel("psychologicalLevels"))}
+                          className={cn(
+                            "px-1.5 py-0.5 text-[10px] rounded transition-colors",
+                            showPsychologicalLevels
+                              ? "bg-slate-500/20 text-slate-400 font-medium"
+                              : "text-muted-foreground/50 hover:text-muted-foreground"
+                          )}
+                          title="Toggle psychological (round number) levels"
+                        >
+                          Ψ
                         </button>
                       </>
                     )}

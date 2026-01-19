@@ -12,6 +12,7 @@ export type FibonacciVisibility = {
   extension: boolean;
   expansion: boolean;
   projection: boolean;
+  psychological?: boolean;
 };
 
 export type PivotPoint = {
@@ -89,7 +90,10 @@ export type FibonacciRatioConfig = {
   useExtended: boolean;
 };
 
-export const DEFAULT_RATIO_CONFIG: Record<keyof FibonacciVisibility, FibonacciRatioConfig> = {
+// Fibonacci types that use ratio configurations (excludes psychological which is round numbers)
+export type FibonacciRatioType = "retracement" | "extension" | "expansion" | "projection";
+
+export const DEFAULT_RATIO_CONFIG: Record<FibonacciRatioType, FibonacciRatioConfig> = {
   retracement: { backend: RETRACEMENT_RATIOS_BACKEND, extended: RETRACEMENT_RATIOS_EXTENDED, useExtended: false },
   extension: { backend: EXTENSION_RATIOS_BACKEND, extended: EXTENSION_RATIOS_EXTENDED, useExtended: false },
   expansion: { backend: EXPANSION_RATIOS_BACKEND, extended: EXPANSION_RATIOS_EXTENDED, useExtended: false },
@@ -111,6 +115,7 @@ export const FIB_COLORS = {
   expansion: "#ec4899",
   projection: "#14b8a6",
   pivotLine: "#f59e0b",
+  psychological: "#64748b", // Slate gray for psychological levels
 };
 
 // Market status display colors

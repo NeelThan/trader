@@ -323,3 +323,114 @@ export function checkPivotFibonacciAlignment(
     signalBoost,
   };
 }
+
+/**
+ * Calculate psychological price levels within a given range.
+ *
+ * Psychological levels are round numbers where traders psychologically
+ * place orders. These act as support/resistance due to human behavior.
+ *
+ * The function automatically determines appropriate intervals based on
+ * the price magnitude:
+ * - Prices < 10: intervals of 1 (e.g., 5, 6, 7)
+ * - Prices 10-100: intervals of 5 or 10 (e.g., 50, 55, 60)
+ * - Prices 100-1000: intervals of 25 or 50 (e.g., 150, 175, 200)
+ * - Prices 1000-10000: intervals of 250 or 500 (e.g., 5000, 5500)
+ * - Prices 10000-100000: intervals of 1000 or 2500 (e.g., 42000, 43000)
+ * - Prices > 100000: intervals of 5000 or 10000
+ *
+ * @param low - Lower bound of the price range
+ * @param high - Upper bound of the price range
+ * @param maxLevels - Maximum number of levels to return (default 10)
+ * @returns Array of psychological price levels
+ */
+export function calculatePsychologicalLevels(
+  low: number,
+  high: number,
+  maxLevels: number = 10
+): number[] {
+  const range = high - low;
+  const midPrice = (high + low) / 2;
+
+  // Extend range by 25% on each side to catch nearby major levels
+  const extendedLow = low - range * 0.25;
+  const extendedHigh = high + range * 0.25;
+
+  // Determine base interval based on price magnitude
+  // Use smaller intervals for more granularity
+  let interval: number;
+  if (midPrice < 10) {
+    interval = 0.5;
+  } else if (midPrice < 100) {
+    interval = 5;
+  } else if (midPrice < 1000) {
+    interval = 25;
+  } else if (midPrice < 10000) {
+    interval = 250;
+  } else if (midPrice < 100000) {
+    interval = 1000;
+  } else {
+    interval = 5000;
+  }
+
+  // Find the first round number at or above extended low
+  const firstLevel = Math.ceil(extendedLow / interval) * interval;
+
+  const levels: number[] = [];
+  let level = firstLevel;
+
+  // Collect all psychological levels within extended range
+  while (level <= extendedHigh && levels.length < maxLevels * 3) {
+    levels.push(level);
+    level += interval;
+  }
+
+  // Score levels by "roundness" - rounder numbers are more significant
+  const roundnessScore = (n: number): number => {
+    let score = 0;
+    if (n % 50000 === 0) score += 6;
+    else if (n % 25000 === 0) score += 5;
+    else if (n % 10000 === 0) score += 4;
+    else if (n % 5000 === 0) score += 3;
+    else if (n % 1000 === 0) score += 2;
+    else if (n % 500 === 0) score += 1;
+    else if (n % 100 === 0) score += 0.5;
+    else if (n % 50 === 0) score += 0.25;
+    return score;
+  };
+
+  // If we have too many levels, keep only the most significant ones
+  if (levels.length > maxLevels) {
+    // Sort by roundness (descending) and take top maxLevels
+    levels.sort((a, b) => roundnessScore(b) - roundnessScore(a));
+    levels.splice(maxLevels);
+    // Re-sort by price
+    levels.sort((a, b) => a - b);
+  }
+
+  return levels;
+}
+
+/**
+ * Check if a price is a psychological level (round number).
+ * Used in confluence scoring.
+ *
+ * @param price - Price to check
+ * @returns True if the price is a round number
+ */
+export function isPsychologicalLevel(price: number): boolean {
+  // Define thresholds for what counts as "round" based on price magnitude
+  if (price < 10) {
+    return price % 1 === 0; // Whole numbers
+  } else if (price < 100) {
+    return price % 5 === 0; // Multiples of 5
+  } else if (price < 1000) {
+    return price % 25 === 0; // Multiples of 25
+  } else if (price < 10000) {
+    return price % 100 === 0; // Multiples of 100
+  } else if (price < 100000) {
+    return price % 500 === 0; // Multiples of 500
+  } else {
+    return price % 1000 === 0; // Multiples of 1000
+  }
+}

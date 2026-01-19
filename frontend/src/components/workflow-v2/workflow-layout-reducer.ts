@@ -32,6 +32,8 @@ export type PanelVisibility = {
   levelsTable: boolean;
   /** Chart expanded to full width */
   chartExpanded: boolean;
+  /** Psychological (round number) levels */
+  psychologicalLevels: boolean;
 };
 
 export type ChartDisplaySettings = {
@@ -72,6 +74,7 @@ export const initialLayoutState: WorkflowLayoutState = {
     confluenceZones: false,
     levelsTable: false,
     chartExpanded: false,
+    psychologicalLevels: false,
   },
   chart: {
     chartType: "bar",

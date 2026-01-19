@@ -49,27 +49,33 @@ export default function WorkflowV2Page() {
   });
 
   // Sync account settings changes back to persisted state
+  // Note: Use specific values in dependencies to avoid infinite loops
+  const { accountBalance: execBalance, riskPercentage: execRisk } = execution.sizing;
+  const { accountBalance: wfBalance, riskPercentage: wfRisk } = workflow.accountSettings;
+  const { setAccountSettings } = workflow;
+
   useEffect(() => {
-    if (execution.sizing.accountBalance !== workflow.accountSettings.accountBalance ||
-        execution.sizing.riskPercentage !== workflow.accountSettings.riskPercentage) {
-      workflow.setAccountSettings({
-        accountBalance: execution.sizing.accountBalance,
-        riskPercentage: execution.sizing.riskPercentage,
+    if (execBalance !== wfBalance || execRisk !== wfRisk) {
+      setAccountSettings({
+        accountBalance: execBalance,
+        riskPercentage: execRisk,
       });
     }
-  }, [execution.sizing.accountBalance, execution.sizing.riskPercentage, workflow]);
+  }, [execBalance, execRisk, wfBalance, wfRisk, setAccountSettings]);
 
   // Sync sizing overrides (user modifications to entry/stop/targets) back to persisted state
-  useEffect(() => {
-    const overridesChanged =
-      execution.tradeOverrides.entryPrice !== workflow.sizingOverrides.entryPrice ||
-      execution.tradeOverrides.stopLoss !== workflow.sizingOverrides.stopLoss ||
-      JSON.stringify(execution.tradeOverrides.targets) !== JSON.stringify(workflow.sizingOverrides.targets);
+  // Note: Use specific values in dependencies to avoid infinite loops
+  const { entryPrice: execEntry, stopLoss: execStop, targets: execTargets } = execution.tradeOverrides;
+  const { entryPrice: wfEntry, stopLoss: wfStop, targets: wfTargets } = workflow.sizingOverrides;
+  const { setSizingOverrides } = workflow;
+  const execTargetsJson = JSON.stringify(execTargets);
+  const wfTargetsJson = JSON.stringify(wfTargets);
 
-    if (overridesChanged) {
-      workflow.setSizingOverrides(execution.tradeOverrides);
+  useEffect(() => {
+    if (execEntry !== wfEntry || execStop !== wfStop || execTargetsJson !== wfTargetsJson) {
+      setSizingOverrides(execution.tradeOverrides);
     }
-  }, [execution.tradeOverrides, workflow]);
+  }, [execEntry, execStop, execTargetsJson, wfEntry, wfStop, wfTargetsJson, setSizingOverrides, execution.tradeOverrides]);
 
   // Handle execution complete - store journal entry ID
   const handleExecuteComplete = useCallback(() => {

@@ -21,7 +21,7 @@ import {
   PROJECTION_RATIOS,
   FIB_COLORS,
 } from "@/lib/chart-constants";
-import { detectPivotPoints } from "@/lib/market-utils";
+import { detectPivotPoints, calculatePsychologicalLevels } from "@/lib/market-utils";
 import { useBackendPivots, type UseBackendPivotsConfig } from "./use-backend-pivots";
 import type { FibonacciLevel, PivotPointData } from "@/lib/api";
 
@@ -287,6 +287,20 @@ export function usePivotAnalysis(
           color: FIB_COLORS.projection,
           title: `Proj ${(ratio * 100).toFixed(2)}%`,
           lineStyle: LineStyle.Dashed,
+        });
+      });
+    }
+
+    // Psychological levels (round numbers)
+    if (fibVisibility.psychological && low > 0 && high > low) {
+      const psychLevels = calculatePsychologicalLevels(low, high, 8);
+      psychLevels.forEach((price) => {
+        lines.push({
+          price,
+          color: FIB_COLORS.psychological,
+          title: `Ψ ${price.toLocaleString()}`,
+          lineStyle: LineStyle.Dotted,
+          lineWidth: 1,
         });
       });
     }

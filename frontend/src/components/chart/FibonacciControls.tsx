@@ -59,6 +59,15 @@ export function FibonacciControls({
       >
         Projection
       </Button>
+      <Button
+        variant={visibility.psychological ? "default" : "outline"}
+        size="sm"
+        onClick={() => onToggle("psychological")}
+        className={visibility.psychological ? "bg-slate-600 hover:bg-slate-700" : ""}
+        title="Round number psychological levels"
+      >
+        Ψ Levels
+      </Button>
     </div>
   );
 }

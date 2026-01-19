@@ -201,10 +201,13 @@ export default function ChartPage() {
   // Toggle handlers
   const toggleFibType = (type: keyof FibonacciVisibility) => {
     setFibVisibility((prev) => ({ ...prev, [type]: !prev[type] }));
-    setFibConfigs((prev) => ({
-      ...prev,
-      [type]: { ...prev[type], enabled: !prev[type].enabled },
-    }));
+    // Only update fibConfigs for types that have configs (not psychological)
+    if (type !== "psychological") {
+      setFibConfigs((prev) => ({
+        ...prev,
+        [type]: { ...prev[type], enabled: !prev[type].enabled },
+      }));
+    }
   };
 
   const toggleAllFib = () => {
@@ -215,6 +218,7 @@ export default function ChartPage() {
       extension: newValue,
       expansion: newValue,
       projection: newValue,
+      psychological: newValue,
     });
     setFibConfigs((prev) => ({
       retracement: { ...prev.retracement, enabled: newValue },
