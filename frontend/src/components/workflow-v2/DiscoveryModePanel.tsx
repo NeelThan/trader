@@ -4,11 +4,14 @@
  * DiscoveryModePanel - Unified discovery with single-symbol and multi-symbol modes
  *
  * Provides a toggle between:
- * - Single Symbol: Shows opportunities for the currently selected symbol (DiscoveryPanel)
- * - Scan All: Scans multiple symbols from watchlist (OpportunitiesPanel)
+ * - Single Symbol: Shows opportunities for the currently selected symbol
+ * - Scan All: Scans multiple symbols from watchlist
+ *
+ * Both modes now use the backend API for consistent opportunity detection.
+ * Per ADR-20260101, frontend is a dumb client - all calculations done by backend.
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Scan, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DiscoveryPanel } from "./DiscoveryPanel";
@@ -17,14 +20,21 @@ import { useOpportunities } from "@/hooks/use-opportunities";
 import type { TradeOpportunity as DiscoveryOpportunity } from "@/hooks/use-trade-discovery";
 import type { TradeOpportunity as ScannerOpportunity } from "@/types/workflow-v2";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
+import { TIMEFRAME_PAIR_PRESETS } from "@/lib/chart-constants";
 
 // Watchlist symbols to scan
 const WATCHLIST_SYMBOLS: MarketSymbol[] = ["DJI", "SPX", "NDX", "BTCUSD", "EURUSD", "GOLD"];
 
+// Default timeframe pairs for scanning
+const DEFAULT_TIMEFRAME_PAIRS = TIMEFRAME_PAIR_PRESETS.slice(0, 4).map(p => ({
+  higher: p.higherTF,
+  lower: p.lowerTF,
+}));
+
 type DiscoveryMode = "single" | "scan";
 
 type DiscoveryModePanelProps = {
-  // Single-symbol mode props (from DiscoveryPanel)
+  // Legacy single-symbol mode props (from DiscoveryPanel) - kept for backwards compat
   opportunities: DiscoveryOpportunity[];
   isLoading: boolean;
   hasError?: boolean;
@@ -97,8 +107,8 @@ function convertScannerToDiscovery(
 }
 
 export function DiscoveryModePanel({
-  opportunities,
-  isLoading,
+  opportunities: _legacyOpportunities, // Kept for backwards compat, but we now use backend
+  isLoading: _legacyIsLoading,
   hasError,
   errors,
   onRefresh,
@@ -108,11 +118,26 @@ export function DiscoveryModePanel({
 }: DiscoveryModePanelProps) {
   const [mode, setMode] = useState<DiscoveryMode>("single");
 
+  // Single-symbol scanner (uses backend API for consistent opportunity detection)
+  const singleScanner = useOpportunities({
+    symbols: [symbol],
+    timeframePairs: DEFAULT_TIMEFRAME_PAIRS,
+    enabled: mode === "single",
+  });
+
   // Multi-symbol scanner
-  const scanner = useOpportunities({
+  const multiScanner = useOpportunities({
     symbols: WATCHLIST_SYMBOLS,
+    timeframePairs: DEFAULT_TIMEFRAME_PAIRS,
     enabled: mode === "scan",
   });
+
+  // Convert backend opportunities to DiscoveryOpportunity format for single mode
+  const singleOpportunities = useMemo(() => {
+    return singleScanner.opportunities.map((opp) =>
+      convertScannerToDiscovery(opp, opp.symbol as MarketSymbol)
+    );
+  }, [singleScanner.opportunities]);
 
   // Handle selecting an opportunity from the scanner
   const handleScannerSelect = (scannerOpp: ScannerOpportunity) => {
@@ -155,22 +180,22 @@ export function DiscoveryModePanel({
       {/* Panel Content */}
       {mode === "single" ? (
         <DiscoveryPanel
-          opportunities={opportunities}
-          isLoading={isLoading}
-          hasError={hasError}
+          opportunities={singleOpportunities}
+          isLoading={singleScanner.isLoading}
+          hasError={hasError || !!singleScanner.error}
           errors={errors}
-          onRefresh={onRefresh}
+          onRefresh={singleScanner.refresh}
           onSelectOpportunity={onSelectOpportunity}
           symbol={symbol}
         />
       ) : (
         <OpportunitiesPanel
-          opportunities={scanner.opportunities}
-          symbolsScanned={scanner.symbolsScanned}
-          scanTimeMs={scanner.scanTimeMs}
-          isLoading={scanner.isLoading}
-          error={scanner.error}
-          onRefresh={scanner.refresh}
+          opportunities={multiScanner.opportunities}
+          symbolsScanned={multiScanner.symbolsScanned}
+          scanTimeMs={multiScanner.scanTimeMs}
+          isLoading={multiScanner.isLoading}
+          error={multiScanner.error}
+          onRefresh={multiScanner.refresh}
           onSelectOpportunity={handleScannerSelect}
         />
       )}

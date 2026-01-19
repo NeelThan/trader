@@ -50,7 +50,7 @@ function generateFallbackOpportunities(
 
   const opportunities: TradeOpportunity[] = [];
   const categories: TradeCategory[] = ["with_trend", "counter_trend", "reversal_attempt"];
-  const phases: TrendPhase[] = ["trending", "correction", "consolidation", "breakout"];
+  const phases: TrendPhase[] = ["impulse", "correction", "continuation", "exhaustion"];
 
   // Generate 1-2 opportunities per symbol for the first timeframe pair
   symbols.forEach((symbol, idx) => {
