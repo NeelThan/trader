@@ -60,7 +60,7 @@ import {
 } from "./workflow-layout-reducer";
 
 const SYMBOLS: MarketSymbol[] = ["DJI", "SPX", "NDX", "BTCUSD", "EURUSD", "GOLD"];
-const TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
+const TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"];
 const DEFAULT_CHART_COLORS = { up: "#22c55e", down: "#ef4444" } as const;
 
 type WorkflowV2LayoutProps = {
@@ -311,7 +311,7 @@ export function WorkflowV2Layout({
 
   // Get swing markers (HH/HL/LH/LL)
   const minBarsForSwing = swingSettings.settings.lookback * 2 + 1;
-  const { result: swingResult, isLoading: isLoadingSwings } = useSwingMarkers({
+  const { result: swingResult, isLoading: isLoadingSwings, isBackendUnavailable: isSwingBackendUnavailable } = useSwingMarkers({
     data: marketData,
     lookback: swingSettings.settings.lookback,
     enabled: showSwingMarkers && swingSettings.enabled && marketData.length >= minBarsForSwing,
@@ -432,6 +432,7 @@ export function WorkflowV2Layout({
 
   // Convert levels to price lines (simplified labels for less clutter)
   // Returns empty when showFibLines is false (hides lines but keeps zones)
+  // Labels are positioned on left side by timeframe (higher TF = more left)
   const strategyPriceLines = useMemo<PriceLine[]>(() => {
     if (!showFibLines) return [];
     return visibleLevels.map((level) => ({
@@ -439,9 +440,13 @@ export function WorkflowV2Layout({
       color: level.direction === "long" ? DIRECTION_COLORS.long : DIRECTION_COLORS.short,
       lineWidth: level.heat > 50 ? 2 : 1,
       lineStyle: level.strategy === "RETRACEMENT" ? 2 : 1,
-      axisLabelVisible: showFibLabels,
-      // Shorter label: just ratio. Full details shown in tooltip on hover
+      // Hide axis labels - we show markers on the left side instead
+      axisLabelVisible: false,
+      // Include all info for hover tooltip
       title: showFibLabels ? level.label : "",
+      timeframe: level.timeframe,
+      strategy: level.strategy,
+      direction: level.direction,
     }));
   }, [visibleLevels, showFibLabels, showFibLines]);
 
@@ -635,7 +640,7 @@ export function WorkflowV2Layout({
               isCached={isCached}
               onRefresh={refreshNow}
               isRateLimited={isRateLimited}
-              isBackendUnavailable={isBackendUnavailable}
+              isBackendUnavailable={isBackendUnavailable || isSwingBackendUnavailable}
               onSaveAsSimulated={handleSaveAsSimulated}
               hasSimulatedData={hasSimulatedData}
               simulatedDataTimestamp={simulatedDataTimestamp}
@@ -1112,6 +1117,7 @@ export function WorkflowV2Layout({
                     downColor={chartColors.down}
                     onCrosshairMove={handleCrosshairMove}
                     fillContainer
+                    showLeftSideLabels={showFibLabels}
                   />
                   {/* Level tooltip - shows when crosshair is near a Fib level */}
                   {showFibLevels && (
