@@ -13,7 +13,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { Timeframe } from "@/lib/chart-constants";
 
 // All available timeframes
-const ALL_TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
+const ALL_TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"];
 
 /**
  * Settings for swing detection on a single timeframe

@@ -21,6 +21,8 @@ export const PIVOT_TTL: Record<Timeframe, number> = {
   "4H": 15 * 60 * 1000, // 15 min
   "1H": 5 * 60 * 1000, // 5 min
   "15m": 60 * 1000, // 1 min
+  "5m": 45 * 1000, // 45 sec
+  "3m": 30 * 1000, // 30 sec
   "1m": 30 * 1000, // 30 sec
 };
 

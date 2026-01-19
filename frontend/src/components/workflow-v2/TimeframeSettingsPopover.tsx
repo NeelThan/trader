@@ -93,6 +93,14 @@ const SMART_DEFAULTS: Record<Timeframe, {
     strategies: ["RETRACEMENT", "EXTENSION", "PROJECTION", "EXPANSION"],
     ratios: {}, // All ratios enabled
   },
+  "5m": {
+    strategies: ["RETRACEMENT", "EXTENSION", "PROJECTION", "EXPANSION"],
+    ratios: {}, // All ratios enabled
+  },
+  "3m": {
+    strategies: ["RETRACEMENT", "EXTENSION", "PROJECTION", "EXPANSION"],
+    ratios: {}, // All ratios enabled
+  },
   "1m": {
     strategies: ["RETRACEMENT", "EXTENSION", "PROJECTION", "EXPANSION"],
     ratios: {}, // All ratios enabled

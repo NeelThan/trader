@@ -33,7 +33,7 @@ type TimeframeScanResult = {
   error: string | null;
 };
 
-const SCAN_TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
+const SCAN_TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"];
 
 const RETRACEMENT_LEVELS = [
   { ratio: 0.382, label: "38.2%" },

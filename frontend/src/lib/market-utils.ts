@@ -100,6 +100,8 @@ export function generateMarketData(
 
   const volatilityMap: Record<Timeframe, number> = {
     "1m": 10,
+    "3m": 15,
+    "5m": 20,
     "15m": 25,
     "1H": 50,
     "4H": 100,
@@ -111,6 +113,8 @@ export function generateMarketData(
 
   const intervalMap: Record<Timeframe, number> = {
     "1m": 60 * 1000,
+    "3m": 3 * 60 * 1000,
+    "5m": 5 * 60 * 1000,
     "15m": 15 * 60 * 1000,
     "1H": 60 * 60 * 1000,
     "4H": 4 * 60 * 60 * 1000,

@@ -403,6 +403,8 @@ export function useWorkflowV2Levels({
       "4H": [],
       "1H": [],
       "15m": [],
+      "5m": [],
+      "3m": [],
       "1m": [],
     };
 

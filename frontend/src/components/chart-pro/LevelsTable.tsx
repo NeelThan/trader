@@ -62,7 +62,9 @@ const TIMEFRAME_ORDER: Record<Timeframe, number> = {
   "4H": 3,
   "1H": 4,
   "15m": 5,
-  "1m": 6,
+  "5m": 6,
+  "3m": 7,
+  "1m": 8,
 };
 
 // Heat score explanation for tooltip

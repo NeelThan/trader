@@ -358,7 +358,7 @@ export const ALL_STRATEGIES: StrategySource[] = [
 /**
  * All available timeframes
  */
-export const ALL_TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
+export const ALL_TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"];
 
 /**
  * Default enabled timeframes for multi-TF analysis
@@ -375,6 +375,8 @@ export const TIMEFRAME_COLORS: Record<Timeframe, string> = {
   "4H": "#22c55e", // green
   "1H": "#3b82f6", // blue
   "15m": "#8b5cf6", // violet
+  "5m": "#06b6d4", // cyan
+  "3m": "#14b8a6", // teal
   "1m": "#ec4899", // pink
 };
 

@@ -50,6 +50,8 @@ const SYMBOL_MAP: Record<string, string> = {
 // Map our timeframes to Yahoo Finance intervals
 const INTERVAL_MAP: Record<string, string> = {
   "1m": "1m",
+  "3m": "1m", // Yahoo doesn't have 3m, use 1m
+  "5m": "5m",
   "15m": "15m",
   "1H": "1h",
   "4H": "1h", // Yahoo doesn't have 4h, we'll need to aggregate
@@ -63,6 +65,10 @@ function getTimeframeSpan(timeframe: string): number {
   switch (timeframe) {
     case "1m":
       return 7 * 24 * 60 * 60 * 1000; // 7 days (Yahoo limits 1m data)
+    case "3m":
+      return 7 * 24 * 60 * 60 * 1000; // 7 days (uses 1m data)
+    case "5m":
+      return 60 * 24 * 60 * 60 * 1000; // 60 days
     case "15m":
       return 21 * 24 * 60 * 60 * 1000; // 3 weeks
     case "1H":

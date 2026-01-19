@@ -277,7 +277,7 @@ describe("useSignalAggregation", () => {
 
     it("should sort by timeframe (higher TF first)", () => {
       const signals = createMockSignals();
-      const tfOrder = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
+      const tfOrder = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"];
       const sorted = [...signals].sort(
         (a, b) => tfOrder.indexOf(a.timeframe) - tfOrder.indexOf(b.timeframe)
       );

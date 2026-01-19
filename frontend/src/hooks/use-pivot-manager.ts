@@ -207,7 +207,7 @@ async function detectPivotsFromData(
   }
 }
 
-const ALL_TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "1m"];
+const ALL_TIMEFRAMES: Timeframe[] = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"];
 
 const EMPTY_PIVOTS: Record<Timeframe, ManagedPivot[]> = {
   "1M": [],
@@ -216,6 +216,8 @@ const EMPTY_PIVOTS: Record<Timeframe, ManagedPivot[]> = {
   "4H": [],
   "1H": [],
   "15m": [],
+  "5m": [],
+  "3m": [],
   "1m": [],
 };
 

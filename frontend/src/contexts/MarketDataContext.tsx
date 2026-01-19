@@ -195,6 +195,36 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
 
           if (!response.ok || !result.success) {
             const errorMessage = result.error || "Failed to fetch market data";
+            const isBackendUnavailableError =
+              response.status === 503 ||
+              errorMessage.includes("Backend unavailable") ||
+              errorMessage.includes("Could not connect");
+
+            // If backend is unavailable, generate fallback data
+            if (isBackendUnavailableError) {
+              console.warn("Backend unavailable (proxy error), using simulated data as fallback");
+              store.isBackendUnavailable = true;
+
+              // Generate fallback simulated data
+              const fallbackData = generateMarketData(
+                symbol,
+                timeframe,
+                TIMEFRAME_CONFIG[timeframe].periods
+              );
+
+              const entry: CacheEntry = {
+                data: fallbackData,
+                lastUpdated: new Date(),
+                marketStatus: null,
+                provider: "fallback",
+                isCached: false,
+                error: null, // Clear error since we have fallback data
+              };
+
+              store.cache.set(key, entry);
+              emitChange();
+              return entry;
+            }
 
             // Return error entry but keep old data if available
             const entry: CacheEntry = {

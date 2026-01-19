@@ -22,6 +22,8 @@ describe("useWorkflowV2Levels", () => {
     "4H": false,
     "1H": false,
     "15m": false,
+    "5m": false,
+    "3m": false,
     "1m": false,
   };
 
@@ -113,6 +115,8 @@ describe("useWorkflowV2Levels", () => {
         "4H": false,
         "1H": false,
         "15m": false,
+        "5m": false,
+        "3m": false,
         "1m": false,
       };
 
