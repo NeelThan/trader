@@ -10,6 +10,9 @@ docs/
 ├── frontend/       # Frontend-specific technical docs
 ├── adr/            # Architecture Decision Records
 └── references/     # Domain knowledge and specifications
+
+pinescript/         # TradingView Pine Script indicators (separate folder)
+└── indicators/     # Custom indicators matching backend algorithms
 ```
 
 ## Quick Links
@@ -20,6 +23,7 @@ docs/
 |-----------|-------------|------|
 | Backend | Python/FastAPI modules and API | [docs/backend/](backend/README.md) |
 | Frontend | Next.js components and architecture | [docs/frontend/](frontend/README.md) |
+| PineScript | TradingView indicators for charting | [pinescript/](../pinescript/README.md) |
 
 ### Architecture Decisions
 

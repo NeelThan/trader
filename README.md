@@ -48,26 +48,69 @@ Detect classic harmonic patterns using XABCD points:
 
 ## API Endpoints
 
+The backend provides 45+ REST endpoints organized by domain:
+
+### Core Analysis
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/health` | Health check |
 | POST | `/analyze` | **Unified analysis** - market data, pivots, Fibonacci, signals |
-| POST | `/fibonacci/retracement` | Calculate retracement levels |
-| POST | `/fibonacci/extension` | Calculate extension levels |
-| POST | `/fibonacci/projection` | Calculate projection levels |
-| POST | `/fibonacci/expansion` | Calculate expansion levels |
-| POST | `/signal/detect` | Detect signal at Fibonacci level |
-| POST | `/harmonic/validate` | Validate harmonic pattern from XABCD points |
-| POST | `/harmonic/reversal-zone` | Calculate potential D point for pattern |
-| POST | `/pivot/detect` | Detect swing highs and lows from OHLC data |
-| POST | `/position/size` | Calculate position size from risk parameters |
-| POST | `/position/risk-reward` | Calculate risk/reward ratio |
-| GET | `/market-data` | Fetch OHLC data with caching and fallback |
-| GET | `/market-data/providers` | Get status of market data providers |
-| POST | `/journal/entry` | Record a completed trade |
-| GET | `/journal/entries` | List journal entries (optional symbol filter) |
-| GET | `/journal/analytics` | Get aggregated trade analytics |
-| DELETE | `/journal/entry/{id}` | Delete a journal entry |
+
+### Fibonacci Calculations
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/fibonacci/retracement` | Calculate retracement levels (38.2%, 50%, 61.8%, 78.6%) |
+| POST | `/fibonacci/extension` | Calculate extension levels (127.2%, 161.8%, 261.8%) |
+| POST | `/fibonacci/projection` | Calculate 3-point ABC projection levels |
+| POST | `/fibonacci/expansion` | Calculate expansion levels from pivot |
+
+### Signal & Pattern Detection
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/signal/detect` | Detect Type 1/2 signals at Fibonacci level |
+| POST | `/harmonic/validate` | Validate XABCD harmonic pattern |
+| POST | `/harmonic/reversal-zone` | Calculate D point for pattern completion |
+| POST | `/pivot/detect` | Detect swing highs/lows with lookback |
+| POST | `/pivot/swings` | Classify swings (HH/HL/LH/LL) |
+
+### Technical Indicators
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/indicators/macd` | Calculate MACD (configurable periods) |
+| POST | `/indicators/rsi` | Calculate RSI (default period 14) |
+
+### Trading Workflow
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/workflow/assess` | Assess trend from swing patterns |
+| GET | `/workflow/align` | Check multi-timeframe alignment |
+| GET | `/workflow/levels` | Identify Fibonacci levels with confluence |
+| GET | `/workflow/confirm` | Confirm with RSI/MACD indicators |
+| GET | `/workflow/categorize` | Categorize trade (with_trend/counter/reversal) |
+| GET | `/workflow/opportunities` | Scan symbols for trade opportunities |
+
+### Position Sizing
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/position/size` | Calculate position size from risk |
+| POST | `/position/risk-reward` | Calculate R:R ratio with targets |
+
+### Market Data
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/market-data` | Fetch OHLC with caching and fallback |
+| GET | `/market-data/providers` | Get provider status and rate limits |
+
+### Trade Journal
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/journal/entry` | Create journal entry |
+| GET | `/journal/entry/{id}` | Get single entry |
+| GET | `/journal/entries` | List entries (optional symbol filter) |
+| PUT | `/journal/entry/{id}` | Update entry |
+| DELETE | `/journal/entry/{id}` | Delete entry |
+| GET | `/journal/analytics` | Get aggregated analytics |
+| DELETE | `/journal/entries` | Clear all entries |
 
 ## Project Structure
 
@@ -80,11 +123,13 @@ trader/
 │   ├── src/app/            # App router pages and API routes
 │   ├── src/components/     # React components (trading, ui)
 │   └── src/hooks/          # Custom React hooks
-└── docs/                   # All documentation
-    ├── backend/            # Backend technical docs
-    ├── frontend/           # Frontend technical docs
-    ├── adr/                # Architecture Decision Records
-    └── references/         # Strategy specifications
+├── pinescript/             # TradingView Pine Script indicators
+│   └── indicators/         # Custom indicators matching backend
+├── docs/                   # All documentation
+│   ├── backend/            # Backend technical docs
+│   ├── frontend/           # Frontend technical docs
+│   ├── adr/                # Architecture Decision Records
+│   └── references/         # Strategy specifications
 ```
 
 ## Quick Start
@@ -186,6 +231,7 @@ All documentation is centralized in the `docs/` folder:
 | [docs/frontend/](docs/frontend/README.md) | Frontend technical documentation |
 | [docs/adr/](docs/adr/README.md) | Architecture Decision Records |
 | [docs/references/](docs/references/) | Strategy knowledge and specifications |
+| [pinescript/](pinescript/README.md) | TradingView Pine Script indicators |
 
 **API Docs**: Run server and visit `/docs` for interactive OpenAPI documentation.
 

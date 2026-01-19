@@ -53,9 +53,59 @@ Technical documentation for the Next.js/TypeScript frontend.
 - Fibonacci visibility toggles
 - Workflow auto-validation toggle
 
-### Trading Workflow (8-Step Process)
+### Trading Workflow V2 (Chart-Centric)
 
-The workflow guides traders through a complete trade setup:
+The new 5-phase workflow is chart-centric, focusing on discovering and executing trades:
+
+```mermaid
+flowchart LR
+    D[1. DISCOVER] --> V[2. VALIDATE]
+    V --> S[3. SIZE]
+    S --> E[4. EXECUTE]
+    E --> M[5. MANAGE]
+
+    D -.- d1[Scan all symbols]
+    D -.- d2[Find opportunities]
+
+    V -.- v1[Trend alignment]
+    V -.- v2[Entry/Target zones]
+    V -.- v3[RSI/MACD confirm]
+
+    S -.- s1[Risk calculation]
+    S -.- s2[Position size]
+
+    E -.- e1[Submit trade]
+    E -.- e2[Journal entry]
+
+    M -.- m1[Track P&L]
+    M -.- m2[Close position]
+```
+
+| Phase | Name | Description |
+|-------|------|-------------|
+| 1 | **DISCOVER** | Find opportunities across all symbols and timeframes |
+| 2 | **VALIDATE** | Check trade criteria (trend alignment, zones, indicators) |
+| 3 | **SIZE** | Calculate position size with risk management |
+| 4 | **EXECUTE** | Submit trade with journal entry |
+| 5 | **MANAGE** | Monitor active trade and P&L |
+
+**Validation Checks:**
+- Trend alignment (required/warning/ignored modes)
+- Entry zone exists
+- Target zone exists
+- RSI confirmation
+- MACD confirmation
+
+**Features:**
+- Signal suggestions based on Fibonacci proximity
+- Trade discovery scanning all symbols
+- Confidence scoring (0-100)
+- Fallback data when backend unavailable
+- State persistence to localStorage
+
+### Legacy Workflow (8-Step)
+
+The original 8-step workflow remains available at `/workflow`:
 
 | Step | Name | Description |
 |------|------|-------------|
@@ -68,23 +118,22 @@ The workflow guides traders through a complete trade setup:
 | 7 | Pre-Trade Checklist | Final GO/NO-GO validation |
 | 8 | Trade Management | Active trade monitoring and management |
 
-Features:
-- Multi-workflow management (create, resume, complete workflows)
-- Persistent state across sessions
-- Real-time market data integration
-- Auto-validation with manual override option
-
 ## Pages
 
 | Page | URL | Description |
 |------|-----|-------------|
 | Dashboard | `/dashboard` | Overview with symbol cards, market status |
 | Chart | `/chart` | Main charting with Fibonacci and pivot detection |
-| Workflow | `/workflow` | 8-step trading workflow with guided process |
+| Chart Pro | `/chart-pro` | Advanced analysis with levels table and strategy panel |
+| Workflow V2 | `/workflow-v2` | New 5-phase chart-centric trading workflow |
+| Workflow | `/workflow` | Legacy 8-step trading workflow |
 | Timeframes | `/timeframes` | Multi-timeframe viewer with trends and OHLC |
 | Trend Analysis | `/trend-analysis` | Multi-timeframe trend alignment analysis |
 | Position Sizing | `/position-sizing` | Position size and risk calculator |
+| Journal | `/journal` | Trade journal with P&L tracking |
+| TradingView | `/tradingview` | TradingView integration and PineScript info |
 | Settings | `/settings` | User preferences and configuration |
+| Dev | `/dev` | Development utilities and debugging tools |
 
 ## Architecture
 
@@ -94,26 +143,43 @@ frontend/
 │   ├── app/                    # Next.js app router
 │   │   ├── api/                # API routes (market-data, trader proxy)
 │   │   ├── chart/              # Main chart page
+│   │   ├── chart-pro/          # Advanced chart with levels table
 │   │   ├── dashboard/          # Dashboard overview
-│   │   ├── workflow/           # Trading workflow page
+│   │   ├── workflow-v2/        # New 5-phase workflow
+│   │   ├── workflow/           # Legacy 8-step workflow
 │   │   ├── timeframes/         # Multi-timeframe viewer
 │   │   ├── trend-analysis/     # Trend analysis page
 │   │   ├── position-sizing/    # Position sizing calculator
-│   │   └── settings/           # Settings page
+│   │   ├── journal/            # Trade journal
+│   │   ├── tradingview/        # TradingView integration
+│   │   ├── settings/           # Settings page
+│   │   └── dev/                # Development utilities
 │   ├── components/
 │   │   ├── trading/            # Trading components
 │   │   │   ├── tools/          # Workflow step tools
 │   │   │   └── scanners/       # Pattern scanners
-│   │   ├── workflow/           # Workflow components
+│   │   ├── workflow/           # Legacy workflow components
+│   │   ├── workflow-v2/        # New workflow components
+│   │   │   ├── DiscoveryModePanel.tsx
+│   │   │   ├── ValidationPanel.tsx
+│   │   │   ├── SizingPanel.tsx
+│   │   │   ├── ExecutionPanel.tsx
+│   │   │   └── ManagePanel.tsx
 │   │   └── ui/                 # shadcn/ui components
 │   ├── contexts/               # React contexts
-│   │   └── MarketDataContext   # Centralized market data provider
-│   ├── hooks/                  # Custom React hooks
+│   │   ├── MarketDataContext   # Centralized market data with deduplication
+│   │   └── RefreshContext      # Auto-refresh coordination
+│   ├── hooks/                  # Custom React hooks (45+)
 │   │   ├── use-settings.ts     # Settings with localStorage
-│   │   ├── use-workflow-state.ts    # Workflow state management
-│   │   ├── use-workflow-manager.ts  # Multi-workflow management
-│   │   ├── use-market-data-subscription.ts # Market data hook
-│   │   └── use-trend-analysis.ts    # Trend analysis hook
+│   │   ├── use-market-data.ts  # Market data fetching
+│   │   ├── use-pivot-analysis.ts    # Pivot detection
+│   │   ├── use-fibonacci-api.ts     # Fibonacci API integration
+│   │   ├── use-trend-analysis.ts    # Trend analysis
+│   │   ├── use-signal-suggestions.ts # Signal recommendations
+│   │   ├── use-workflow-v2-state.ts  # Workflow V2 state
+│   │   ├── use-trade-discovery.ts    # Trade opportunity scanning
+│   │   ├── use-trade-validation.ts   # Validation checks
+│   │   └── use-trade-execution.ts    # Trade execution
 │   └── lib/
 │       ├── utils.ts            # Utility functions
 │       └── chart-constants.ts  # Trading constants
@@ -121,6 +187,67 @@ frontend/
 ├── package.json
 └── next.config.ts
 ```
+
+## Key Hooks
+
+| Hook | Description |
+|------|-------------|
+| `use-market-data` | Fetch OHLC with caching and deduplication |
+| `use-pivot-analysis` | Detect and classify swing points |
+| `use-fibonacci-api` | Calculate Fibonacci levels via backend |
+| `use-trend-analysis` | Analyze trend direction with RSI/MACD |
+| `use-signal-suggestions` | Generate trade signals at Fibonacci levels |
+| `use-workflow-v2-state` | Manage 5-phase workflow state |
+| `use-trade-discovery` | Scan for trade opportunities |
+| `use-trade-validation` | Validate trade setup criteria |
+| `use-opportunities` | Aggregate opportunities across symbols |
+| `use-watchlist` | Manage watched symbols |
+
+## Data Flow
+
+```mermaid
+flowchart TB
+    subgraph Frontend
+        UI[React Components]
+        CTX[MarketDataContext]
+        HOOKS[Custom Hooks]
+        LS[(localStorage)]
+    end
+
+    subgraph "Next.js API"
+        PROXY[/api/trader proxy/]
+        MKTAPI[/api/market-data/]
+    end
+
+    subgraph Backend
+        FAST[FastAPI]
+        YAHOO[Yahoo Finance]
+        SIM[Simulated Data]
+        CACHE[(Cache)]
+    end
+
+    UI --> HOOKS
+    HOOKS --> CTX
+    CTX --> PROXY
+    CTX --> MKTAPI
+    HOOKS --> LS
+
+    PROXY --> FAST
+    MKTAPI --> YAHOO
+    MKTAPI --> SIM
+
+    FAST --> CACHE
+    YAHOO --> CACHE
+
+    style CTX fill:#e1f5fe
+    style CACHE fill:#fff3e0
+    style LS fill:#fff3e0
+```
+
+**Data Flow Patterns:**
+- **Market Data**: Component → Hook → Context → API → Yahoo/Backend → Cache → Response
+- **Settings**: Component → Hook → localStorage → Sync across tabs
+- **Workflow State**: Component → Hook → localStorage → Persist across sessions
 
 ## API Routes
 
