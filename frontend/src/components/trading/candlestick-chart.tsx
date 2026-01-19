@@ -846,15 +846,50 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
               const { line } = marker;
               const isLong = line.direction === "long";
 
+              // Tooltip positioning with boundary detection
+              const TOOLTIP_WIDTH = 200; // Tooltip width (includes padding)
+              const TOOLTIP_HEIGHT = 80; // Estimated tooltip height
+              const TOOLTIP_PADDING = 8; // Padding from edges
+
+              // Get container dimensions
+              const containerWidth = containerRef.current?.clientWidth || 800;
+              const containerHeight = containerRef.current?.clientHeight || 600;
+
+              // Horizontal boundary detection - clamp to keep tooltip visible
+              const tooltipHalfWidth = TOOLTIP_WIDTH / 2;
+              const minLeft = tooltipHalfWidth + TOOLTIP_PADDING;
+              const maxLeft = containerWidth - tooltipHalfWidth - TOOLTIP_PADDING;
+              const clampedX = Math.max(minLeft, Math.min(maxLeft, hoveredMarker.x));
+
+              // Calculate arrow horizontal offset
+              const arrowOffsetX = hoveredMarker.x - clampedX;
+
+              // Vertical boundary detection - show below marker if too close to top
+              const showBelow = hoveredMarker.y < TOOLTIP_HEIGHT + TOOLTIP_PADDING;
+
               return (
                 <div
                   className="absolute z-20 pointer-events-none"
                   style={{
-                    left: hoveredMarker.x,
-                    top: hoveredMarker.y - 8,
-                    transform: "translate(-50%, -100%)",
+                    left: clampedX,
+                    top: showBelow ? hoveredMarker.y + 16 : hoveredMarker.y - 8,
+                    transform: showBelow ? "translate(-50%, 0)" : "translate(-50%, -100%)",
                   }}
                 >
+                  {/* Arrow on top when tooltip is below marker */}
+                  {showBelow && (
+                    <div
+                      className="absolute w-0 h-0"
+                      style={{
+                        top: 0,
+                        left: `calc(50% + ${arrowOffsetX}px)`,
+                        transform: "translate(-50%, -100%)",
+                        borderLeft: "6px solid transparent",
+                        borderRight: "6px solid transparent",
+                        borderBottom: "6px solid hsl(var(--border))",
+                      }}
+                    />
+                  )}
                   <div className="bg-popover border border-border rounded-md shadow-lg px-3 py-2 text-xs whitespace-nowrap">
                     {/* Header with timeframe and direction */}
                     <div className="flex items-center gap-2 mb-1">
@@ -879,15 +914,19 @@ export const CandlestickChart = forwardRef<CandlestickChartHandle, CandlestickCh
                       {formatLevelPrice(line.price)}
                     </div>
                   </div>
-                  {/* Tooltip arrow */}
-                  <div
-                    className="absolute left-1/2 -translate-x-1/2 w-0 h-0"
-                    style={{
-                      borderLeft: "6px solid transparent",
-                      borderRight: "6px solid transparent",
-                      borderTop: "6px solid hsl(var(--border))",
-                    }}
-                  />
+                  {/* Arrow on bottom when tooltip is above marker */}
+                  {!showBelow && (
+                    <div
+                      className="absolute w-0 h-0"
+                      style={{
+                        left: `calc(50% + ${arrowOffsetX}px)`,
+                        transform: "translateX(-50%)",
+                        borderLeft: "6px solid transparent",
+                        borderRight: "6px solid transparent",
+                        borderTop: "6px solid hsl(var(--border))",
+                      }}
+                    />
+                  )}
                 </div>
               );
             })()}
