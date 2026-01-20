@@ -89,6 +89,37 @@ function formatRecommendation(
   return recommendation.charAt(0).toUpperCase() + recommendation.slice(1);
 }
 
+/**
+ * Calculate point distance between two prices
+ * Returns distance value and whether it's in the profit direction
+ */
+function calculatePointDistance(
+  entry: number,
+  price: number,
+  isLong: boolean
+): { points: number; isProfit: boolean; isAboveEntry: boolean } {
+  const diff = price - entry;
+  const isAboveEntry = diff > 0;
+  // For longs: above entry = profit, below = loss
+  // For shorts: below entry = profit, above = loss
+  const isProfit = isLong ? isAboveEntry : !isAboveEntry;
+  return { points: Math.abs(diff), isProfit, isAboveEntry };
+}
+
+/**
+ * Format point distance with appropriate decimal places
+ * Uses fewer decimals for larger values (e.g., DJI at 40000 vs EURUSD at 1.08)
+ */
+function formatPoints(points: number): string {
+  if (points >= 100) {
+    return points.toFixed(1);
+  } else if (points >= 1) {
+    return points.toFixed(2);
+  } else {
+    return points.toFixed(4);
+  }
+}
+
 export function SizingPanel({
   opportunity,
   sizing,
@@ -391,6 +422,57 @@ export function SizingPanel({
         </CardContent>
       </Card>
 
+      {/* Distance Analysis */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Distance Analysis</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {sizing.entryPrice > 0 ? (
+            <>
+              {/* Entry → Stop Loss */}
+              {sizing.stopLoss > 0 && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Entry → Stop Loss</span>
+                  <span className="flex items-center gap-1 font-medium text-red-400">
+                    -{formatPoints(calculatePointDistance(sizing.entryPrice, sizing.stopLoss, isLong).points)} pts
+                    <span className="text-xs">
+                      {sizing.stopLoss < sizing.entryPrice ? "↓" : "↑"}
+                    </span>
+                  </span>
+                </div>
+              )}
+
+              {/* Entry → Targets */}
+              {sizing.targets.length > 0 ? (
+                sizing.targets.map((target, index) => {
+                  const distance = calculatePointDistance(sizing.entryPrice, target, isLong);
+                  return (
+                    <div key={index} className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">Entry → Target {index + 1}</span>
+                      <span className="flex items-center gap-1 font-medium text-green-400">
+                        +{formatPoints(distance.points)} pts
+                        <span className="text-xs">
+                          {distance.isAboveEntry ? "↑" : "↓"}
+                        </span>
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-sm text-muted-foreground italic">
+                  No targets set
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-sm text-muted-foreground italic">
+              Set entry price to see distances
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Calculated Values */}
       <Card>
         <CardHeader className="pb-2">
@@ -426,6 +508,14 @@ export function SizingPanel({
         {isStopOnWrongSide && (
           <div className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded border border-red-400/30">
             Stop loss must be {isLong ? "below" : "above"} entry for {isLong ? "long" : "short"} trades.
+          </div>
+        )}
+        {/* Target direction warning */}
+        {sizing.entryPrice > 0 && sizing.targets.some(target =>
+          isLong ? target <= sizing.entryPrice : target >= sizing.entryPrice
+        ) && (
+          <div className="text-sm text-amber-400 bg-amber-400/10 px-3 py-2 rounded border border-amber-400/30">
+            One or more targets are on the wrong side of entry.
           </div>
         )}
         {sizing.guardrailWarnings.map((warning, index) => (

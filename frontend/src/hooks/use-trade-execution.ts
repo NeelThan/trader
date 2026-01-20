@@ -188,10 +188,12 @@ function calculateRiskReward(
   if (stopDistance === 0) return 0;
 
   // Use first target for R:R calculation
-  const targetDistance =
+  // Use Math.abs to handle edge cases where target might be on wrong side
+  const targetDistance = Math.abs(
     direction === "long"
       ? targets[0] - entryPrice
-      : entryPrice - targets[0];
+      : entryPrice - targets[0]
+  );
 
   return targetDistance / stopDistance;
 }
