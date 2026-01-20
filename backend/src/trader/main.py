@@ -1306,6 +1306,7 @@ def workflow_categorize(
 async def workflow_opportunities(
     symbols: str = "DJI,SPX,NDX",
     timeframe_pairs: str = "1D:4H",
+    include_potential: bool = False,
 ) -> OpportunityScanResult:
     """Scan multiple symbols for trade opportunities.
 
@@ -1316,6 +1317,8 @@ async def workflow_opportunities(
         symbols: Comma-separated list of symbols (e.g., "DJI,SPX,NDX").
         timeframe_pairs: Colon-separated higher:lower pairs, comma-separated
                         for multiple pairs (e.g., "1D:4H" or "1D:4H,1W:1D").
+        include_potential: If True, include unconfirmed with-trend opportunities
+                          that are awaiting signal bar confirmation.
 
     Returns:
         OpportunityScanResult with identified opportunities and scan metadata.
@@ -1336,6 +1339,7 @@ async def workflow_opportunities(
         symbols=symbol_list,
         timeframe_pairs=pairs,
         market_service=_market_data_service,
+        include_potential=include_potential,
     )
 
 
@@ -1346,6 +1350,7 @@ class ValidateTradeRequest(BaseModel):
     higher_timeframe: str
     lower_timeframe: str
     direction: Literal["long", "short"]
+    atr_period: int = 14  # Default to 14, can be adjusted by user
 
 
 class ValidationCheckData(BaseModel):
@@ -1357,6 +1362,19 @@ class ValidationCheckData(BaseModel):
     details: str | None = None
 
 
+class ATRInfoResponseData(BaseModel):
+    """ATR analysis data in validation response."""
+
+    atr: float
+    atr_percent: float
+    volatility_level: str
+    current_price: float
+    suggested_stop_1x: float
+    suggested_stop_1_5x: float
+    suggested_stop_2x: float
+    interpretation: str
+
+
 class ValidationResultData(BaseModel):
     """Validation result data in response."""
 
@@ -1365,11 +1383,12 @@ class ValidationResultData(BaseModel):
     total_count: int
     is_valid: bool
     pass_percentage: float
+    atr_info: ATRInfoResponseData | None = None
 
 
 @app.post("/workflow/validate", response_model=ValidationResultData)
 async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultData:
-    """Validate a trade opportunity with 5 checks.
+    """Validate a trade opportunity with 6 checks.
 
     Performs the following validation checks:
     1. Trend Alignment - Higher/lower TF alignment per spec rules
@@ -1377,11 +1396,14 @@ async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultDa
     3. Target Zones - Extension targets found
     4. RSI Confirmation - Momentum confirmation
     5. MACD Confirmation - Trend momentum intact
+    6. Volume Confirmation - RVOL >= 1.0 (above average volume)
 
-    Trade is valid when pass_percentage >= 60% (3+ checks pass).
+    Also returns ATR analysis for volatility info and stop loss suggestions.
+
+    Trade is valid when pass_percentage >= 60% (4+ checks pass).
 
     Returns:
-        ValidationResultData with all 5 checks and summary statistics.
+        ValidationResultData with all 6 checks, summary statistics, and ATR info.
     """
     result = await validate_trade(
         symbol=request.symbol,
@@ -1389,7 +1411,21 @@ async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultDa
         lower_timeframe=request.lower_timeframe,
         direction=request.direction,
         market_service=_market_data_service,
+        atr_period=request.atr_period,
     )
+
+    atr_info_response: ATRInfoResponseData | None = None
+    if result.atr_info:
+        atr_info_response = ATRInfoResponseData(
+            atr=result.atr_info.atr,
+            atr_percent=result.atr_info.atr_percent,
+            volatility_level=result.atr_info.volatility_level,
+            current_price=result.atr_info.current_price,
+            suggested_stop_1x=result.atr_info.suggested_stop_1x,
+            suggested_stop_1_5x=result.atr_info.suggested_stop_1_5x,
+            suggested_stop_2x=result.atr_info.suggested_stop_2x,
+            interpretation=result.atr_info.interpretation,
+        )
 
     return ValidationResultData(
         checks=[
@@ -1405,4 +1441,5 @@ async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultDa
         total_count=result.total_count,
         is_valid=result.is_valid,
         pass_percentage=result.pass_percentage,
+        atr_info=atr_info_response,
     )

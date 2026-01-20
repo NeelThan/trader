@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Shield,
   ShieldAlert,
+  Timer,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +75,11 @@ type OpportunityCardProps = {
 function OpportunityCard({ opportunity, onSelect }: OpportunityCardProps) {
   const isLong = opportunity.direction === "long";
   const Icon = isLong ? TrendingUp : TrendingDown;
+  const isConfirmed = opportunity.is_confirmed !== false; // Default to confirmed if not set
+
+  // Use dashed border for potential (unconfirmed) opportunities
+  const borderStyle = isConfirmed ? "border-solid" : "border-dashed";
+  const opacityClass = isConfirmed ? "" : "opacity-75";
   const bgClass = isLong
     ? "bg-green-500/10 border-green-500/30"
     : "bg-red-500/10 border-red-500/30";
@@ -83,7 +89,7 @@ function OpportunityCard({ opportunity, onSelect }: OpportunityCardProps) {
 
   return (
     <div
-      className={`cursor-pointer rounded-lg border p-4 transition-all hover:scale-[1.02] ${bgClass}`}
+      className={`cursor-pointer rounded-lg border p-4 transition-all hover:scale-[1.02] ${borderStyle} ${opacityClass} ${bgClass}`}
       onClick={onSelect}
     >
       {/* Header with symbol and direction */}
@@ -112,7 +118,7 @@ function OpportunityCard({ opportunity, onSelect }: OpportunityCardProps) {
       </div>
 
       {/* Category and Phase badges */}
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 flex-wrap mb-2">
         <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${categoryProps.className}`}>
           <CategoryIcon className="w-3 h-3 mr-0.5" />
           {categoryProps.label}
@@ -120,12 +126,24 @@ function OpportunityCard({ opportunity, onSelect }: OpportunityCardProps) {
         <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-muted-foreground">
           {opportunity.phase}
         </Badge>
+        {!isConfirmed && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/50 text-amber-400">
+            <Timer className="w-3 h-3 mr-0.5" />
+            Pending
+          </Badge>
+        )}
       </div>
 
-      {/* Description */}
-      <p className="text-xs text-muted-foreground line-clamp-2">
-        {opportunity.description}
-      </p>
+      {/* Description or Awaiting Confirmation message */}
+      {!isConfirmed && opportunity.awaiting_confirmation ? (
+        <p className="text-xs text-amber-400/80 italic">
+          {opportunity.awaiting_confirmation}
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground line-clamp-2">
+          {opportunity.description}
+        </p>
+      )}
     </div>
   );
 }

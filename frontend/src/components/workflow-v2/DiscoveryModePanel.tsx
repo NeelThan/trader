@@ -9,11 +9,15 @@
  *
  * Both modes now use the backend API for consistent opportunity detection.
  * Per ADR-20260101, frontend is a dumb client - all calculations done by backend.
+ *
+ * Supports showing potential (unconfirmed with-trend) opportunities via toggle.
  */
 
 import { useState, useMemo } from "react";
-import { Scan, Target } from "lucide-react";
+import { Scan, Target, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { DiscoveryPanel } from "./DiscoveryPanel";
 import { OpportunitiesPanel } from "./OpportunitiesPanel";
 import { useOpportunities } from "@/hooks/use-opportunities";
@@ -117,12 +121,14 @@ export function DiscoveryModePanel({
   onSymbolChange,
 }: DiscoveryModePanelProps) {
   const [mode, setMode] = useState<DiscoveryMode>("single");
+  const [includePotential, setIncludePotential] = useState(false);
 
   // Single-symbol scanner (uses backend API for consistent opportunity detection)
   const singleScanner = useOpportunities({
     symbols: [symbol],
     timeframePairs: DEFAULT_TIMEFRAME_PAIRS,
     enabled: mode === "single",
+    includePotential,
   });
 
   // Multi-symbol scanner
@@ -130,6 +136,7 @@ export function DiscoveryModePanel({
     symbols: WATCHLIST_SYMBOLS,
     timeframePairs: DEFAULT_TIMEFRAME_PAIRS,
     enabled: mode === "scan",
+    includePotential,
   });
 
   // Convert backend opportunities to DiscoveryOpportunity format for single mode
@@ -175,6 +182,26 @@ export function DiscoveryModePanel({
           <span className="hidden sm:inline">Scan Watchlist</span>
           <span className="sm:hidden">Scan</span>
         </Button>
+      </div>
+
+      {/* Show Potential Toggle */}
+      <div className="flex items-center justify-between px-2 py-1 bg-muted/30 rounded-md">
+        <div className="flex items-center gap-2">
+          {includePotential ? (
+            <Eye className="w-4 h-4 text-muted-foreground" />
+          ) : (
+            <EyeOff className="w-4 h-4 text-muted-foreground" />
+          )}
+          <Label htmlFor="show-potential" className="text-sm text-muted-foreground cursor-pointer">
+            Show potential setups
+          </Label>
+        </div>
+        <Switch
+          id="show-potential"
+          checked={includePotential}
+          onCheckedChange={setIncludePotential}
+          aria-label="Show potential opportunities awaiting confirmation"
+        />
       </div>
 
       {/* Panel Content */}

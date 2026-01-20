@@ -31,12 +31,24 @@ interface BackendValidationCheck {
   details?: string | null;
 }
 
+interface BackendATRInfo {
+  atr: number;
+  atr_percent: number;
+  volatility_level: "low" | "normal" | "high" | "extreme";
+  current_price: number;
+  suggested_stop_1x: number;
+  suggested_stop_1_5x: number;
+  suggested_stop_2x: number;
+  interpretation: string;
+}
+
 interface BackendValidationResult {
   checks: BackendValidationCheck[];
   passed_count: number;
   total_count: number;
   is_valid: boolean;
   pass_percentage: number;
+  atr_info?: BackendATRInfo | null;
 }
 
 /**
@@ -53,6 +65,28 @@ export type ValidationCheck = {
   explanation: string;
   /** Additional details */
   details?: string;
+};
+
+/**
+ * ATR analysis for volatility and stop loss info
+ */
+export type ATRInfo = {
+  /** Current ATR value in price units */
+  atr: number;
+  /** ATR as percentage of current price */
+  atrPercent: number;
+  /** Volatility classification */
+  volatilityLevel: "low" | "normal" | "high" | "extreme";
+  /** Current price used in calculations */
+  currentPrice: number;
+  /** Stop distance at 1x ATR */
+  suggestedStop1x: number;
+  /** Stop distance at 1.5x ATR */
+  suggestedStop1_5x: number;
+  /** Stop distance at 2x ATR */
+  suggestedStop2x: number;
+  /** Human-readable interpretation */
+  interpretation: string;
 };
 
 /**
@@ -85,11 +119,14 @@ export type ValidationResult = {
   isRanging: boolean;
   /** Ranging market warning message */
   rangingWarning: string | null;
+  /** ATR analysis for volatility and stop loss info */
+  atrInfo: ATRInfo | null;
 };
 
 export type UseTradeValidationOptions = {
   opportunity: TradeOpportunity | null;
   enabled: boolean;
+  atrPeriod?: number;
 };
 
 export type UseTradeValidationResult = {
@@ -313,7 +350,8 @@ function calculateConfluenceScore(
  * Fetch validation from backend API
  */
 async function fetchBackendValidation(
-  opportunity: TradeOpportunity
+  opportunity: TradeOpportunity,
+  atrPeriod: number = 14
 ): Promise<BackendValidationResult | null> {
   try {
     const response = await fetch("/api/trader/workflow/validate", {
@@ -324,6 +362,7 @@ async function fetchBackendValidation(
         higher_timeframe: opportunity.higherTimeframe,
         lower_timeframe: opportunity.lowerTimeframe,
         direction: opportunity.direction,
+        atr_period: atrPeriod,
       }),
     });
 
@@ -344,7 +383,18 @@ async function fetchBackendValidation(
  */
 function convertBackendToFrontend(
   backend: BackendValidationResult
-): Pick<ValidationResult, "checks" | "passedCount" | "totalCount" | "isValid" | "passPercentage"> {
+): Pick<ValidationResult, "checks" | "passedCount" | "totalCount" | "isValid" | "passPercentage" | "atrInfo"> {
+  const atrInfo: ATRInfo | null = backend.atr_info ? {
+    atr: backend.atr_info.atr,
+    atrPercent: backend.atr_info.atr_percent,
+    volatilityLevel: backend.atr_info.volatility_level,
+    currentPrice: backend.atr_info.current_price,
+    suggestedStop1x: backend.atr_info.suggested_stop_1x,
+    suggestedStop1_5x: backend.atr_info.suggested_stop_1_5x,
+    suggestedStop2x: backend.atr_info.suggested_stop_2x,
+    interpretation: backend.atr_info.interpretation,
+  } : null;
+
   return {
     checks: backend.checks.map((c) => ({
       name: c.name,
@@ -357,6 +407,7 @@ function convertBackendToFrontend(
     totalCount: backend.total_count,
     isValid: backend.is_valid,
     passPercentage: backend.pass_percentage,
+    atrInfo,
   };
 }
 
@@ -369,13 +420,14 @@ function convertBackendToFrontend(
 export function useTradeValidation({
   opportunity,
   enabled,
+  atrPeriod = 14,
 }: UseTradeValidationOptions): UseTradeValidationResult {
   // State for backend validation result
   const [backendResult, setBackendResult] = useState<BackendValidationResult | null>(null);
   const [isLoadingBackend, setIsLoadingBackend] = useState(false);
   const [backendError, setBackendError] = useState(false);
 
-  // Fetch backend validation when opportunity changes
+  // Fetch backend validation when opportunity or ATR period changes
   useEffect(() => {
     if (!enabled || !opportunity) {
       setBackendResult(null);
@@ -386,7 +438,7 @@ export function useTradeValidation({
     let cancelled = false;
     setIsLoadingBackend(true);
 
-    fetchBackendValidation(opportunity).then((result) => {
+    fetchBackendValidation(opportunity, atrPeriod).then((result) => {
       if (!cancelled) {
         setBackendResult(result);
         setBackendError(result === null);
@@ -397,7 +449,7 @@ export function useTradeValidation({
     return () => {
       cancelled = true;
     };
-  }, [opportunity, enabled]);
+  }, [opportunity, enabled, atrPeriod]);
 
   // Create visibility config for this specific opportunity
   const visibilityConfig = useMemo((): VisibilityConfig => {
@@ -432,6 +484,7 @@ export function useTradeValidation({
         confluenceScore: null,
         isRanging: false,
         rangingWarning: null,
+        atrInfo: null,
       };
     }
 
@@ -618,7 +671,7 @@ export function useTradeValidation({
     const passedCount = checks.filter((c) => c.passed).length;
     const totalCount = checks.length;
     const passPercentage = Math.round((passedCount / totalCount) * 100);
-    const isValid = passPercentage >= 60; // At least 3 of 5 checks
+    const isValid = passPercentage >= 60; // At least 4 of 6 checks
 
     return {
       checks,
@@ -634,6 +687,7 @@ export function useTradeValidation({
       confluenceScore,
       isRanging,
       rangingWarning,
+      atrInfo: null, // Local fallback doesn't calculate ATR
     };
   }, [opportunity, allLevels, backendResult, backendError]);
 

@@ -98,6 +98,8 @@ export type UseOpportunitiesOptions = {
   timeframePairs?: TimeframePair[];
   /** Whether to enable scanning */
   enabled?: boolean;
+  /** Include potential (unconfirmed with-trend) opportunities */
+  includePotential?: boolean;
 };
 
 /**
@@ -136,6 +138,7 @@ export function useOpportunities({
   symbols,
   timeframePairs = DEFAULT_TIMEFRAME_PAIRS,
   enabled = true,
+  includePotential = false,
 }: UseOpportunitiesOptions): UseOpportunitiesReturn {
   const [opportunities, setOpportunities] = useState<TradeOpportunity[]>([]);
   const [symbolsScanned, setSymbolsScanned] = useState<string[]>([]);
@@ -177,6 +180,7 @@ export function useOpportunities({
         const params = new URLSearchParams({
           symbols: symbolsKey,
           timeframe_pairs: pairsKey,
+          include_potential: includePotential.toString(),
         });
 
         const response = await fetch(
@@ -223,7 +227,7 @@ export function useOpportunities({
     return () => {
       controller.abort();
     };
-  }, [symbolsKey, pairsKey, enabled, refreshKey, symbols.length]);
+  }, [symbolsKey, pairsKey, enabled, refreshKey, symbols.length, includePotential]);
 
   return {
     opportunities,

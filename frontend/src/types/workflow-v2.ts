@@ -167,6 +167,12 @@ export type TradeOpportunity = {
   phase: TrendPhase;
   /** Human-readable description */
   description: string;
+  /** True when signal bar exists at Fib level (pullback or confirmed with-trend) */
+  is_confirmed?: boolean;
+  /** Description of what confirmation is needed (null if confirmed) */
+  awaiting_confirmation?: string | null;
+  /** True for pullback setups, False for with-trend setups */
+  is_pullback?: boolean;
 };
 
 /**

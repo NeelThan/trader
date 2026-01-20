@@ -46,6 +46,7 @@ import {
 import { cn } from "@/lib/utils";
 import { TimeframeSettingsPopover } from "./TimeframeSettingsPopover";
 import { SwingSettingsPopover } from "./SwingSettingsPopover";
+import { ATRSettingsPopover } from "./ATRSettingsPopover";
 import { DataSourceControl, type DataMode } from "./DataSourceControl";
 import { TrendAlignmentPanel, TrendIndicatorButton } from "./TrendAlignmentPanel";
 import { LevelTooltip, ConfluenceZoneIndicator, calculateConfluenceZones } from "./LevelTooltip";
@@ -115,6 +116,7 @@ export function WorkflowV2Layout({
   const showPsychologicalLevels = panels.psychologicalLevels;
   const showVolume = panels.volumePane;
   const showAtr = panels.atrPane;
+  const atrPeriod = chart.atrPeriod;
   const showFibLabels = chart.fibLabels;
   const showFibLines = chart.fibLines;
   const showLevelsTable = panels.levelsTable;
@@ -578,7 +580,8 @@ export function WorkflowV2Layout({
   // ATR indicator
   const { atrData, isLoading: isLoadingATR } = useATR({
     data: marketData,
-    enabled: showAtr && marketData.length >= 14,
+    period: atrPeriod,
+    enabled: showAtr && marketData.length >= atrPeriod,
   });
 
   // Trend alignment
@@ -1018,18 +1021,24 @@ export function WorkflowV2Layout({
                     >
                       Vol
                     </button>
-                    <button
-                      onClick={() => dispatch(layoutActions.togglePanel("atrPane"))}
-                      className={cn(
-                        "px-2 py-1 text-xs rounded transition-colors",
-                        showAtr
-                          ? "bg-primary/20 text-primary"
-                          : "text-muted-foreground hover:bg-muted"
-                      )}
-                      title="Toggle ATR indicator"
+                    <ATRSettingsPopover
+                      period={atrPeriod}
+                      isEnabled={showAtr}
+                      onPeriodChange={(p) => dispatch(layoutActions.setAtrPeriod(p))}
+                      onToggleEnabled={() => dispatch(layoutActions.togglePanel("atrPane"))}
                     >
-                      ATR
-                    </button>
+                      <button
+                        className={cn(
+                          "px-2 py-1 text-xs rounded transition-colors",
+                          showAtr
+                            ? "bg-primary/20 text-primary"
+                            : "text-muted-foreground hover:bg-muted"
+                        )}
+                        title={`ATR(${atrPeriod}) - Click for settings`}
+                      >
+                        ATR{showAtr && <span className="text-[10px] ml-0.5 opacity-70">({atrPeriod})</span>}
+                      </button>
+                    </ATRSettingsPopover>
                     <button
                       onClick={() => dispatch(layoutActions.togglePanel("indicators"))}
                       className={cn(

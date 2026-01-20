@@ -1261,8 +1261,8 @@ class TestMultiTimeframeAlignmentLogic:
         assert result.direction == "short"
         assert "rally" in result.reason.lower()
 
-    def test_up_up_returns_stand_aside(self) -> None:
-        """Higher TF UP + Lower TF UP = STAND ASIDE."""
+    def test_up_up_returns_long_with_trend(self) -> None:
+        """Higher TF UP + Lower TF UP = GO LONG (with-trend)."""
         from trader.workflow import determine_trade_action
 
         result = determine_trade_action(
@@ -1270,12 +1270,13 @@ class TestMultiTimeframeAlignmentLogic:
             lower_tf_trend="bullish",
         )
 
-        assert result.should_trade is False
-        assert result.direction is None
-        assert "aside" in result.reason.lower() or "wait" in result.reason.lower()
+        assert result.should_trade is True
+        assert result.direction == "long"
+        assert result.is_pullback is False
+        assert "with-trend" in result.reason.lower()
 
-    def test_down_down_returns_stand_aside(self) -> None:
-        """Higher TF DOWN + Lower TF DOWN = STAND ASIDE."""
+    def test_down_down_returns_short_with_trend(self) -> None:
+        """Higher TF DOWN + Lower TF DOWN = GO SHORT (with-trend)."""
         from trader.workflow import determine_trade_action
 
         result = determine_trade_action(
@@ -1283,9 +1284,10 @@ class TestMultiTimeframeAlignmentLogic:
             lower_tf_trend="bearish",
         )
 
-        assert result.should_trade is False
-        assert result.direction is None
-        assert "aside" in result.reason.lower() or "wait" in result.reason.lower()
+        assert result.should_trade is True
+        assert result.direction == "short"
+        assert result.is_pullback is False
+        assert "with-trend" in result.reason.lower()
 
     def test_neutral_higher_tf_returns_stand_aside(self) -> None:
         """Neutral higher TF = STAND ASIDE (no clear trend)."""
@@ -1395,8 +1397,8 @@ class TestAnalyzeSymbolPairMultiTFLogic:
         assert result.opportunities[0].direction == "short"
         assert result.opportunities[0].symbol == "TEST"
 
-    async def test_both_bullish_returns_no_opportunity(self) -> None:
-        """Should return no opportunity when both TFs are bullish (stand aside)."""
+    async def test_both_bullish_returns_no_opportunity_by_default(self) -> None:
+        """Should return no opportunity when both TFs bullish without include_potential."""
         from unittest.mock import patch
 
         from trader.workflow import TrendAssessment, scan_opportunities
@@ -1419,13 +1421,48 @@ class TestAnalyzeSymbolPairMultiTFLogic:
                 symbols=["TEST"],
                 timeframe_pairs=[("1D", "4H")],
                 market_service=mock_service,
+                include_potential=False,  # Default behavior
             )
 
-        # Should NOT find any opportunity (stand aside)
+        # Should NOT find any opportunity (with-trend needs signal bar confirmation)
         assert len(result.opportunities) == 0
 
-    async def test_both_bearish_returns_no_opportunity(self) -> None:
-        """Should return no opportunity when both TFs are bearish (stand aside)."""
+    async def test_both_bullish_returns_potential_with_flag(self) -> None:
+        """Should return potential opportunity when include_potential=True."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, scan_opportunities
+
+        bullish_assessment = TrendAssessment(
+            trend="bullish",
+            phase="impulse",
+            swing_type="HH",
+            explanation="Higher High pattern",
+            confidence=75,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            # Both TFs return bullish
+            mock_assess.return_value = bullish_assessment
+
+            result = await scan_opportunities(
+                symbols=["TEST"],
+                timeframe_pairs=[("1D", "4H")],
+                market_service=mock_service,
+                include_potential=True,  # Include unconfirmed
+            )
+
+        # Should find a potential opportunity (with-trend LONG)
+        assert len(result.opportunities) == 1
+        assert result.opportunities[0].direction == "long"
+        assert result.opportunities[0].is_confirmed is False
+        assert result.opportunities[0].is_pullback is False
+        assert result.opportunities[0].awaiting_confirmation is not None
+
+    async def test_both_bearish_returns_no_opportunity_by_default(self) -> None:
+        """Should return no opportunity when both TFs bearish without include_potential."""
         from unittest.mock import patch
 
         from trader.workflow import TrendAssessment, scan_opportunities
@@ -1448,10 +1485,45 @@ class TestAnalyzeSymbolPairMultiTFLogic:
                 symbols=["TEST"],
                 timeframe_pairs=[("1D", "4H")],
                 market_service=mock_service,
+                include_potential=False,  # Default behavior
             )
 
-        # Should NOT find any opportunity (stand aside)
+        # Should NOT find any opportunity (with-trend needs signal bar confirmation)
         assert len(result.opportunities) == 0
+
+    async def test_both_bearish_returns_potential_with_flag(self) -> None:
+        """Should return potential opportunity when include_potential=True."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, scan_opportunities
+
+        bearish_assessment = TrendAssessment(
+            trend="bearish",
+            phase="impulse",
+            swing_type="LL",
+            explanation="Lower Low pattern",
+            confidence=75,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            # Both TFs return bearish
+            mock_assess.return_value = bearish_assessment
+
+            result = await scan_opportunities(
+                symbols=["TEST"],
+                timeframe_pairs=[("1D", "4H")],
+                market_service=mock_service,
+                include_potential=True,  # Include unconfirmed
+            )
+
+        # Should find a potential opportunity (with-trend SHORT)
+        assert len(result.opportunities) == 1
+        assert result.opportunities[0].direction == "short"
+        assert result.opportunities[0].is_confirmed is False
+        assert result.opportunities[0].is_pullback is False
+        assert result.opportunities[0].awaiting_confirmation is not None
 
 
 class TestValidationModels:
@@ -1842,3 +1914,146 @@ class TestConfluenceScoreSpecCompliance:
         assert score.breakdown.psychological_level == 1
         assert score.total == 12
         assert score.interpretation == "major"
+
+
+class TestTradeOpportunityConfirmation:
+    """Tests for TradeOpportunity confirmation fields."""
+
+    def test_trade_opportunity_has_confirmation_fields(self) -> None:
+        """TradeOpportunity should have is_confirmed and awaiting_confirmation fields."""
+        from trader.workflow import TradeOpportunity
+
+        opp = TradeOpportunity(
+            symbol="DJI",
+            higher_timeframe="1D",
+            lower_timeframe="4H",
+            direction="long",
+            confidence=75,
+            category="with_trend",
+            phase="correction",
+            description="Test opportunity",
+            is_confirmed=True,
+            awaiting_confirmation=None,
+            is_pullback=True,
+        )
+
+        assert opp.is_confirmed is True
+        assert opp.awaiting_confirmation is None
+        assert opp.is_pullback is True
+
+    def test_trade_opportunity_potential_has_awaiting_message(self) -> None:
+        """Potential opportunity should have awaiting_confirmation message."""
+        from trader.workflow import TradeOpportunity
+
+        opp = TradeOpportunity(
+            symbol="DJI",
+            higher_timeframe="1D",
+            lower_timeframe="4H",
+            direction="long",
+            confidence=65,
+            category="with_trend",
+            phase="impulse",
+            description="Test with-trend opportunity",
+            is_confirmed=False,
+            awaiting_confirmation="Awaiting signal bar at Fib support",
+            is_pullback=False,
+        )
+
+        assert opp.is_confirmed is False
+        assert opp.awaiting_confirmation is not None
+        assert "signal bar" in opp.awaiting_confirmation.lower()
+        assert opp.is_pullback is False
+
+    async def test_pullback_opportunity_is_confirmed(self) -> None:
+        """Pullback opportunity (opposite TF alignment) should be confirmed."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, scan_opportunities
+
+        bullish_assessment = TrendAssessment(
+            trend="bullish",
+            phase="impulse",
+            swing_type="HH",
+            explanation="Higher High pattern",
+            confidence=75,
+        )
+        bearish_assessment = TrendAssessment(
+            trend="bearish",
+            phase="correction",
+            swing_type="LH",
+            explanation="Lower High pattern",
+            confidence=70,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            # Higher TF bullish, lower TF bearish = pullback
+            mock_assess.side_effect = [bullish_assessment, bearish_assessment]
+
+            result = await scan_opportunities(
+                symbols=["TEST"],
+                timeframe_pairs=[("1D", "4H")],
+                market_service=mock_service,
+            )
+
+        # Pullback opportunity should be confirmed
+        assert len(result.opportunities) == 1
+        assert result.opportunities[0].is_confirmed is True
+        assert result.opportunities[0].awaiting_confirmation is None
+        assert result.opportunities[0].is_pullback is True
+        assert result.opportunities[0].direction == "long"
+
+
+class TestWithTrendOpportunityLogic:
+    """Tests for with-trend opportunity detection logic."""
+
+    def test_pullback_setup_has_is_pullback_true(self) -> None:
+        """Pullback setup (opposite TF alignment) should have is_pullback=True."""
+        from trader.workflow import determine_trade_action
+
+        # UP + DOWN = pullback
+        result = determine_trade_action(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bearish",
+        )
+
+        assert result.should_trade is True
+        assert result.is_pullback is True
+
+    def test_with_trend_setup_has_is_pullback_false(self) -> None:
+        """With-trend setup (same TF alignment) should have is_pullback=False."""
+        from trader.workflow import determine_trade_action
+
+        # UP + UP = with-trend
+        result = determine_trade_action(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bullish",
+        )
+
+        assert result.should_trade is True
+        assert result.is_pullback is False
+
+    def test_with_trend_long_description(self) -> None:
+        """With-trend long should have appropriate description."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bullish",
+        )
+
+        assert "long" in result.reason.lower()
+        assert "support" in result.reason.lower()
+
+    def test_with_trend_short_description(self) -> None:
+        """With-trend short should have appropriate description."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bearish",
+            lower_tf_trend="bearish",
+        )
+
+        assert "short" in result.reason.lower()
+        assert "resistance" in result.reason.lower()

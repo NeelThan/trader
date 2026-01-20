@@ -7,14 +7,16 @@
  * Must pass validation to proceed to position sizing.
  */
 
-import { CheckCircle, XCircle, Loader2, ArrowLeft, ArrowRight, AlertTriangle, Flame, Info } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle, XCircle, Loader2, ArrowLeft, ArrowRight, AlertTriangle, Flame, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
-import type { ValidationResult, ValidationCheck } from "@/hooks/use-trade-validation";
+import type { ValidationResult, ValidationCheck, ATRInfo } from "@/hooks/use-trade-validation";
 import type { ConfluenceScore } from "@/types/workflow-v2";
 
 type ValidationPanelProps = {
@@ -23,6 +25,8 @@ type ValidationPanelProps = {
   isLoading: boolean;
   onBack: () => void;
   onProceed: () => void;
+  atrPeriod: number;
+  onAtrPeriodChange: (period: number) => void;
 };
 
 function CheckItem({ check }: { check: ValidationCheck }) {
@@ -123,12 +127,147 @@ function ConfluenceDisplay({ confluenceScore }: { confluenceScore: ConfluenceSco
   );
 }
 
+/** Get color class based on volatility level */
+function getVolatilityColor(level: string): string {
+  switch (level) {
+    case "extreme": return "text-red-400 bg-red-500/20 border-red-500/30";
+    case "high": return "text-amber-400 bg-amber-500/20 border-amber-500/30";
+    case "normal": return "text-blue-400 bg-blue-500/20 border-blue-500/30";
+    case "low": return "text-slate-400 bg-slate-500/20 border-slate-500/30";
+    default: return "text-slate-400 bg-slate-500/20 border-slate-500/30";
+  }
+}
+
+/** Common ATR period options */
+const ATR_PERIOD_OPTIONS = [7, 10, 14, 20, 21];
+
+/** ATR info display component */
+function ATRInfoDisplay({
+  atrInfo,
+  period,
+  onPeriodChange,
+  timeframe,
+}: {
+  atrInfo: ATRInfo;
+  period: number;
+  onPeriodChange: (period: number) => void;
+  timeframe: string;
+}) {
+  const [inputValue, setInputValue] = useState(period.toString());
+  const colorClass = getVolatilityColor(atrInfo.volatilityLevel);
+
+  // Sync input when period changes from quick-select
+  const handleQuickSelect = (p: number) => {
+    onPeriodChange(p);
+    setInputValue(p.toString());
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setInputValue(val);
+
+    const num = parseInt(val, 10);
+    if (!isNaN(num) && num >= 2 && num <= 50) {
+      onPeriodChange(num);
+    }
+  };
+
+  const handleInputBlur = () => {
+    // Reset to current period if invalid
+    const num = parseInt(inputValue, 10);
+    if (isNaN(num) || num < 2 || num > 50) {
+      setInputValue(period.toString());
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="py-3">
+        <CardTitle className="text-sm flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4" />
+            <span>Volatility (ATR)</span>
+            <InfoTooltip
+              content="Average True Range measures volatility. Use for stop loss placement: 1x ATR (tight), 1.5x (standard), 2x (wide)."
+              side="right"
+            />
+          </div>
+          <Badge variant="outline" className={colorClass}>
+            <span className="font-semibold">{atrInfo.atrPercent.toFixed(2)}%</span>
+            <span className="ml-1 text-[10px] uppercase">{atrInfo.volatilityLevel}</span>
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {/* Period selector with quick-select and manual input */}
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Period:</span>
+              <div className="flex gap-1">
+                {ATR_PERIOD_OPTIONS.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => handleQuickSelect(p)}
+                    className={`px-1.5 py-0.5 rounded text-xs transition-colors ${
+                      period === p
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted/50 hover:bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <Input
+                type="number"
+                min={2}
+                max={50}
+                value={inputValue}
+                onChange={handleInputChange}
+                onBlur={handleInputBlur}
+                className="h-5 w-12 text-xs text-center px-1"
+                title="Custom period (2-50)"
+              />
+            </div>
+            <span className="text-muted-foreground text-[10px]">{timeframe}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">ATR({period}) Value</span>
+            <span className="font-mono">{atrInfo.atr.toFixed(2)}</span>
+          </div>
+          <div className="border-t border-border/50 pt-2">
+            <p className="text-xs text-muted-foreground mb-1.5">ATR-Based Stop Distances:</p>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="text-center p-1.5 bg-muted/50 rounded">
+                <p className="text-muted-foreground">1x ATR</p>
+                <p className="font-mono font-medium">{atrInfo.suggestedStop1x.toFixed(2)}</p>
+              </div>
+              <div className="text-center p-1.5 bg-muted/50 rounded border border-blue-500/30">
+                <p className="text-muted-foreground">1.5x ATR</p>
+                <p className="font-mono font-medium text-blue-400">{atrInfo.suggestedStop1_5x.toFixed(2)}</p>
+              </div>
+              <div className="text-center p-1.5 bg-muted/50 rounded">
+                <p className="text-muted-foreground">2x ATR</p>
+                <p className="font-mono font-medium">{atrInfo.suggestedStop2x.toFixed(2)}</p>
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground pt-1">{atrInfo.interpretation}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function ValidationPanel({
   opportunity,
   validation,
   isLoading,
   onBack,
   onProceed,
+  atrPeriod,
+  onAtrPeriodChange,
 }: ValidationPanelProps) {
   const isLong = opportunity.direction === "long";
   const directionColor = isLong ? "text-green-400" : "text-red-400";
@@ -219,6 +358,16 @@ export function ValidationPanel({
       {/* Confluence Score */}
       {validation.confluenceScore && validation.confluenceScore.total > 0 && (
         <ConfluenceDisplay confluenceScore={validation.confluenceScore} />
+      )}
+
+      {/* ATR Volatility Info */}
+      {validation.atrInfo && (
+        <ATRInfoDisplay
+          atrInfo={validation.atrInfo}
+          period={atrPeriod}
+          onPeriodChange={onAtrPeriodChange}
+          timeframe={opportunity.lowerTimeframe}
+        />
       )}
 
       {/* Validation Checks */}

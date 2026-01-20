@@ -11,7 +11,7 @@
  * State is persisted to localStorage so users don't lose progress on refresh.
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { WorkflowV2Layout } from "@/components/workflow-v2/WorkflowV2Layout";
 import { DiscoveryModePanel } from "@/components/workflow-v2/DiscoveryModePanel";
 import { ValidationPanel } from "@/components/workflow-v2/ValidationPanel";
@@ -29,6 +29,9 @@ export default function WorkflowV2Page() {
   // Persisted workflow state
   const workflow = useWorkflowV2State();
 
+  // ATR period state (default 14)
+  const [atrPeriod, setAtrPeriod] = useState(14);
+
   // Trade discovery - finds opportunities across all timeframes
   const discovery = useTradeDiscovery({ symbol: workflow.symbol });
 
@@ -36,6 +39,7 @@ export default function WorkflowV2Page() {
   const validation = useTradeValidation({
     opportunity: workflow.opportunity,
     enabled: workflow.phase === "validate",
+    atrPeriod,
   });
 
   // Trade execution - handles sizing and execution
@@ -115,6 +119,8 @@ export default function WorkflowV2Page() {
             isLoading={validation.isLoading}
             onBack={workflow.backToDiscovery}
             onProceed={workflow.proceedToSize}
+            atrPeriod={atrPeriod}
+            onAtrPeriodChange={setAtrPeriod}
           />
         );
       case "size":

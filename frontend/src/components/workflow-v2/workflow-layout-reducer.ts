@@ -49,6 +49,8 @@ export type ChartDisplaySettings = {
   fibLines: boolean;
   /** Confluence zone tolerance percentage */
   confluenceTolerance: number;
+  /** ATR indicator period */
+  atrPeriod: number;
 };
 
 export type WorkflowLayoutState = {
@@ -87,6 +89,7 @@ export const initialLayoutState: WorkflowLayoutState = {
     fibLabels: true,
     fibLines: true,
     confluenceTolerance: 0.2,
+    atrPeriod: 14,
   },
   crosshairPrice: null,
   hiddenZones: new Set(),
@@ -107,6 +110,7 @@ export type LayoutAction =
   | { type: "TOGGLE_FIB_LABELS" }
   | { type: "TOGGLE_FIB_LINES" }
   | { type: "SET_CONFLUENCE_TOLERANCE"; tolerance: number }
+  | { type: "SET_ATR_PERIOD"; period: number }
   // Crosshair
   | { type: "SET_CROSSHAIR_PRICE"; price: number | null }
   // Hidden zones
@@ -195,6 +199,15 @@ export function layoutReducer(
         },
       };
 
+    case "SET_ATR_PERIOD":
+      return {
+        ...state,
+        chart: {
+          ...state.chart,
+          atrPeriod: action.period,
+        },
+      };
+
     // Crosshair
     case "SET_CROSSHAIR_PRICE":
       return {
@@ -268,6 +281,11 @@ export const layoutActions = {
   setConfluenceTolerance: (tolerance: number): LayoutAction => ({
     type: "SET_CONFLUENCE_TOLERANCE",
     tolerance,
+  }),
+
+  setAtrPeriod: (period: number): LayoutAction => ({
+    type: "SET_ATR_PERIOD",
+    period,
   }),
 
   setCrosshairPrice: (price: number | null): LayoutAction => ({

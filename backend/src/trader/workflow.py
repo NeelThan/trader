@@ -17,6 +17,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from trader.atr_indicators import ATRAnalysis, analyze_atr
 from trader.fibonacci import (
     ExtensionLevel,
     FibonacciLevel,
@@ -55,15 +56,19 @@ class TradeActionResult(BaseModel):
 
     Determines whether to trade and in which direction based on
     the SignalPro spec rules:
-    - Higher TF UP + Lower TF DOWN = GO LONG (buy the dip)
-    - Higher TF DOWN + Lower TF UP = GO SHORT (sell the rally)
-    - Same direction = STAND ASIDE (wait for pullback)
+    - Higher TF UP + Lower TF DOWN = GO LONG (buy the dip) - PULLBACK
+    - Higher TF DOWN + Lower TF UP = GO SHORT (sell the rally) - PULLBACK
+    - Higher TF UP + Lower TF UP = GO LONG (with trend) - WITH_TREND
+    - Higher TF DOWN + Lower TF DOWN = GO SHORT (with trend) - WITH_TREND
     - Neutral in either TF = STAND ASIDE
+
+    With-trend opportunities require signal bar confirmation at Fib level.
     """
 
     should_trade: bool
     direction: Literal["long", "short"] | None
     reason: str
+    is_pullback: bool = True  # True for pullback setups, False for with-trend
 
 
 class ValidationCheck(BaseModel):
@@ -82,10 +87,34 @@ class ValidationCheck(BaseModel):
     details: str | None = None
 
 
+class ATRInfoData(BaseModel):
+    """ATR analysis data for trade panel display.
+
+    Attributes:
+        atr: Current ATR value in price units.
+        atr_percent: ATR as percentage of current price.
+        volatility_level: Classification (low/normal/high/extreme).
+        current_price: Current price used in calculations.
+        suggested_stop_1x: Stop distance at 1x ATR.
+        suggested_stop_1_5x: Stop distance at 1.5x ATR.
+        suggested_stop_2x: Stop distance at 2x ATR.
+        interpretation: Human-readable volatility interpretation.
+    """
+
+    atr: float
+    atr_percent: float
+    volatility_level: str
+    current_price: float
+    suggested_stop_1x: float
+    suggested_stop_1_5x: float
+    suggested_stop_2x: float
+    interpretation: str
+
+
 class ValidationResult(BaseModel):
     """Complete validation result for a trade.
 
-    Contains all 5 validation checks and summary statistics.
+    Contains all 6 validation checks and summary statistics.
     Trade is valid when pass_percentage >= 60%.
     """
 
@@ -94,6 +123,7 @@ class ValidationResult(BaseModel):
     total_count: int
     is_valid: bool
     pass_percentage: float
+    atr_info: ATRInfoData | None = None
 
 
 # --- Response Models ---
@@ -254,6 +284,9 @@ class TradeOpportunity(BaseModel):
         category: Trade category for position sizing.
         phase: Current trend phase.
         description: Human-readable description of the opportunity.
+        is_confirmed: True when signal bar exists at Fib level.
+        awaiting_confirmation: What confirmation is needed (None if confirmed).
+        is_pullback: True for pullback setups, False for with-trend setups.
     """
 
     symbol: str
@@ -264,6 +297,9 @@ class TradeOpportunity(BaseModel):
     category: TradeCategory
     phase: TrendPhase
     description: str
+    is_confirmed: bool = True  # True when setup is confirmed (pullback or signal bar)
+    awaiting_confirmation: str | None = None  # What confirmation is needed
+    is_pullback: bool = True  # True for pullback, False for with-trend
 
 
 class OpportunityScanResult(BaseModel):
@@ -496,20 +532,22 @@ def determine_trade_action(
 ) -> TradeActionResult:
     """Determine trade action based on multi-timeframe alignment.
 
-    SignalPro Spec Rules (lines 78-83):
-    | Higher TF | Lower TF | Action      |
-    |-----------|----------|-------------|
-    | UP        | DOWN     | GO LONG     | (buy the dip)
-    | DOWN      | UP       | GO SHORT    | (sell the rally)
-    | UP        | UP       | STAND ASIDE |
-    | DOWN      | DOWN     | STAND ASIDE |
+    SignalPro Spec Rules (Extended):
+    | Higher TF | Lower TF | Action         | Type        |
+    |-----------|----------|----------------|-------------|
+    | UP        | DOWN     | GO LONG        | Pullback    | (buy the dip)
+    | DOWN      | UP       | GO SHORT       | Pullback    | (sell the rally)
+    | UP        | UP       | GO LONG        | With-Trend  | (needs signal bar)
+    | DOWN      | DOWN     | GO SHORT       | With-Trend  | (needs signal bar)
+    | Neutral   | Any      | STAND ASIDE    | -           |
+    | Any       | Neutral  | STAND ASIDE    | -           |
 
     Args:
         higher_tf_trend: Trend direction of higher timeframe.
         lower_tf_trend: Trend direction of lower timeframe.
 
     Returns:
-        TradeActionResult with should_trade, direction, and reason.
+        TradeActionResult with should_trade, direction, reason, and is_pullback flag.
     """
     # Neutral in either TF = no trade
     if higher_tf_trend == "neutral":
@@ -517,6 +555,7 @@ def determine_trade_action(
             should_trade=False,
             direction=None,
             reason="Stand aside - no clear trend on higher timeframe",
+            is_pullback=True,
         )
 
     if lower_tf_trend == "neutral":
@@ -524,30 +563,42 @@ def determine_trade_action(
             should_trade=False,
             direction=None,
             reason="Stand aside - wait for pullback on lower timeframe",
+            is_pullback=True,
         )
 
-    # Same direction = stand aside (no pullback opportunity)
+    # Same direction = with-trend opportunity (needs signal bar confirmation)
     if higher_tf_trend == lower_tf_trend:
-        return TradeActionResult(
-            should_trade=False,
-            direction=None,
-            reason="Stand aside - both timeframes aligned, wait for pullback",
-        )
+        if higher_tf_trend == "bullish":
+            return TradeActionResult(
+                should_trade=True,
+                direction="long",
+                reason="With-trend LONG: Both TFs bullish, look for entry at support",
+                is_pullback=False,
+            )
+        else:  # bearish
+            return TradeActionResult(
+                should_trade=True,
+                direction="short",
+                reason="With-trend SHORT: Both TFs bearish, look for resistance entry",
+                is_pullback=False,
+            )
 
-    # UP + DOWN = GO LONG (buy the dip)
+    # UP + DOWN = GO LONG (buy the dip) - Pullback setup
     if higher_tf_trend == "bullish" and lower_tf_trend == "bearish":
         return TradeActionResult(
             should_trade=True,
             direction="long",
             reason="Buy the dip - higher TF bullish, lower TF pullback",
+            is_pullback=True,
         )
 
-    # DOWN + UP = GO SHORT (sell the rally)
+    # DOWN + UP = GO SHORT (sell the rally) - Pullback setup
     if higher_tf_trend == "bearish" and lower_tf_trend == "bullish":
         return TradeActionResult(
             should_trade=True,
             direction="short",
             reason="Sell the rally - higher TF bearish, lower TF rally",
+            is_pullback=True,
         )
 
     # Fallback (shouldn't reach here)
@@ -555,6 +606,7 @@ def determine_trade_action(
         should_trade=False,
         direction=None,
         reason="Stand aside - unclear market conditions",
+        is_pullback=True,
     )
 
 
@@ -1008,6 +1060,7 @@ async def scan_opportunities(
     symbols: list[str],
     market_service: MarketDataService,
     timeframe_pairs: list[tuple[str, str]] | None = None,
+    include_potential: bool = False,
 ) -> OpportunityScanResult:
     """Scan multiple symbols for trade opportunities.
 
@@ -1019,6 +1072,8 @@ async def scan_opportunities(
         market_service: Service for fetching market data.
         timeframe_pairs: Optional list of (higher_tf, lower_tf) tuples.
                         Defaults to [("1D", "4H")].
+        include_potential: If True, include unconfirmed with-trend opportunities
+                          that are awaiting signal bar confirmation.
 
     Returns:
         OpportunityScanResult with all identified opportunities.
@@ -1035,7 +1090,7 @@ async def scan_opportunities(
     for symbol in symbols:
         for higher_tf, lower_tf in timeframe_pairs:
             opportunity = await _analyze_symbol_pair(
-                symbol, higher_tf, lower_tf, market_service
+                symbol, higher_tf, lower_tf, market_service, include_potential
             )
             if opportunity:
                 opportunities.append(opportunity)
@@ -1054,13 +1109,25 @@ async def _analyze_symbol_pair(
     higher_tf: str,
     lower_tf: str,
     market_service: MarketDataService,
+    include_potential: bool = False,
 ) -> TradeOpportunity | None:
     """Analyze a symbol for opportunities on a timeframe pair.
 
     Uses multi-timeframe alignment rules per SignalPro spec:
-    - Higher TF UP + Lower TF DOWN = GO LONG (buy the dip)
-    - Higher TF DOWN + Lower TF UP = GO SHORT (sell the rally)
-    - Same direction or neutral = STAND ASIDE
+    - Higher TF UP + Lower TF DOWN = GO LONG (buy the dip) - CONFIRMED
+    - Higher TF DOWN + Lower TF UP = GO SHORT (sell the rally) - CONFIRMED
+    - Higher TF UP + Lower TF UP = GO LONG (with-trend) - POTENTIAL
+    - Higher TF DOWN + Lower TF DOWN = GO SHORT (with-trend) - POTENTIAL
+
+    Args:
+        symbol: Market symbol to analyze.
+        higher_tf: Higher timeframe for trend context.
+        lower_tf: Lower timeframe for entry timing.
+        market_service: Service for fetching market data.
+        include_potential: If True, include unconfirmed with-trend opportunities.
+
+    Returns:
+        TradeOpportunity if found, None otherwise.
     """
     higher_assessment = await assess_trend(symbol, higher_tf, market_service)
     lower_assessment = await assess_trend(symbol, lower_tf, market_service)
@@ -1080,10 +1147,31 @@ async def _analyze_symbol_pair(
         return None
 
     direction = trade_action.direction
+    is_pullback = trade_action.is_pullback
 
     # Calculate combined confidence
     combined = higher_assessment.confidence + lower_assessment.confidence
     confidence = min(100, combined // 2)
+
+    # Determine confirmation status
+    # Pullback setups are confirmed (opposite TF alignment)
+    # With-trend setups need signal bar confirmation (same TF alignment)
+    if is_pullback:
+        is_confirmed = True
+        awaiting_confirmation = None
+    else:
+        # With-trend: would need signal bar at Fib level for full confirmation
+        # For now, mark as potential (awaiting confirmation)
+        is_confirmed = False
+        entry_type = "support" if direction == "long" else "resistance"
+        awaiting_confirmation = f"Awaiting signal bar at Fib {entry_type}"
+
+        # If not including potential opportunities, skip unconfirmed setups
+        if not include_potential:
+            return None
+
+        # Reduce confidence for unconfirmed setups
+        confidence = max(50, confidence - 10)
 
     # Determine trade category
     category = categorize_trade(
@@ -1095,9 +1183,9 @@ async def _analyze_symbol_pair(
 
     # Build description
     direction_text = "Buy" if direction == "long" else "Sell"
-    phase_text = lower_assessment.phase
     trend_text = higher_assessment.trend
-    description = f"{direction_text} {phase_text} in {higher_tf} {trend_text} trend"
+    setup_type = "pullback" if is_pullback else "with-trend"
+    description = f"{direction_text} {setup_type} in {higher_tf} {trend_text} trend"
 
     return TradeOpportunity(
         symbol=symbol,
@@ -1108,6 +1196,9 @@ async def _analyze_symbol_pair(
         category=category,
         phase=lower_assessment.phase,
         description=description,
+        is_confirmed=is_confirmed,
+        awaiting_confirmation=awaiting_confirmation,
+        is_pullback=is_pullback,
     )
 
 
@@ -1117,6 +1208,7 @@ async def validate_trade(
     lower_timeframe: str,
     direction: Literal["long", "short"],
     market_service: MarketDataService,
+    atr_period: int = 14,
 ) -> ValidationResult:
     """Validate a trade opportunity with 6 checks.
 
@@ -1136,9 +1228,10 @@ async def validate_trade(
         lower_timeframe: Lower timeframe for entry timing.
         direction: Trade direction (long/short).
         market_service: Service for fetching market data.
+        atr_period: Period for ATR calculation (default 14).
 
     Returns:
-        ValidationResult with all 5 checks and summary statistics.
+        ValidationResult with all 6 checks and summary statistics.
     """
     checks: list[ValidationCheck] = []
 
@@ -1305,6 +1398,27 @@ async def validate_trade(
         )
     )
 
+    # Calculate ATR for volatility info (use lower timeframe for entry timing)
+    atr_info: ATRInfoData | None = None
+    if lower_data.data:
+        highs = [bar.high for bar in lower_data.data]
+        lows = [bar.low for bar in lower_data.data]
+        closes = [bar.close for bar in lower_data.data]
+        atr_analysis: ATRAnalysis | None = analyze_atr(
+            highs, lows, closes, period=atr_period
+        )
+        if atr_analysis:
+            atr_info = ATRInfoData(
+                atr=atr_analysis.atr,
+                atr_percent=atr_analysis.atr_percent,
+                volatility_level=atr_analysis.volatility_level,
+                current_price=atr_analysis.current_price,
+                suggested_stop_1x=atr_analysis.suggested_stop_1x,
+                suggested_stop_1_5x=atr_analysis.suggested_stop_1_5x,
+                suggested_stop_2x=atr_analysis.suggested_stop_2x,
+                interpretation=atr_analysis.interpretation,
+            )
+
     # Calculate summary
     passed_count = sum(1 for c in checks if c.passed)
     total_count = len(checks)
@@ -1317,6 +1431,7 @@ async def validate_trade(
         total_count=total_count,
         is_valid=is_valid,
         pass_percentage=pass_percentage,
+        atr_info=atr_info,
     )
 
 
