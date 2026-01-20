@@ -193,12 +193,19 @@ class ReversalZoneResponse(BaseModel):
 
 
 class PositionSizeRequest(BaseModel):
-    """Request model for position size calculation."""
+    """Request model for position size calculation.
+
+    When trade_category is provided, risk_capital is adjusted:
+    - with_trend: 100% of risk_capital
+    - counter_trend: 50% of risk_capital
+    - reversal_attempt: 25% of risk_capital
+    """
 
     entry_price: float
     stop_loss: float
     risk_capital: float
     account_balance: float = 0.0
+    trade_category: str | None = None  # with_trend, counter_trend, reversal_attempt
 
 
 class PositionSizeData(BaseModel):
@@ -209,6 +216,11 @@ class PositionSizeData(BaseModel):
     risk_amount: float
     account_risk_percentage: float
     is_valid: bool
+    # Category adjustment fields (populated when trade_category is provided)
+    trade_category: str | None = None
+    risk_multiplier: float = 1.0
+    original_risk_amount: float | None = None
+    category_explanation: str | None = None
 
 
 class PositionSizeResponse(BaseModel):
@@ -676,12 +688,30 @@ async def harmonic_reversal_zone(request: ReversalZoneRequest) -> ReversalZoneRe
 
 @app.post("/position/size", response_model=PositionSizeResponse)
 async def position_size(request: PositionSizeRequest) -> PositionSizeResponse:
-    """Calculate position size based on risk parameters."""
+    """Calculate position size based on risk parameters.
+
+    When trade_category is provided, risk is automatically adjusted:
+    - with_trend: 100% of risk_capital (full position)
+    - counter_trend: 50% of risk_capital (half position)
+    - reversal_attempt: 25% of risk_capital (quarter position)
+    """
+    # Validate and convert trade_category if provided
+    from trader.position_sizing import TradeCategory
+
+    trade_category: TradeCategory | None = None
+    if request.trade_category == "with_trend":
+        trade_category = "with_trend"
+    elif request.trade_category == "counter_trend":
+        trade_category = "counter_trend"
+    elif request.trade_category == "reversal_attempt":
+        trade_category = "reversal_attempt"
+
     result = calculate_position_size(
         entry_price=request.entry_price,
         stop_loss=request.stop_loss,
         risk_capital=request.risk_capital,
         account_balance=request.account_balance,
+        trade_category=trade_category,
     )
     return PositionSizeResponse(
         result=PositionSizeData(
@@ -690,6 +720,10 @@ async def position_size(request: PositionSizeRequest) -> PositionSizeResponse:
             risk_amount=result.risk_amount,
             account_risk_percentage=result.account_risk_percentage,
             is_valid=result.is_valid,
+            trade_category=result.trade_category,
+            risk_multiplier=result.risk_multiplier,
+            original_risk_amount=result.original_risk_amount,
+            category_explanation=result.category_explanation,
         )
     )
 

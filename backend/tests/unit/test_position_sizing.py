@@ -347,3 +347,142 @@ class TestAccountRiskCalculation:
         )
 
         assert result.account_risk_percentage == 0.0
+
+
+class TestCategoryBasedPositionSizing:
+    """Tests for category-based risk adjustment in position sizing.
+
+    Trade categories determine what percentage of base risk to use:
+    - with_trend: 100% of risk (full position)
+    - counter_trend: 50% of risk (half position)
+    - reversal_attempt: 25% of risk (quarter position)
+    """
+
+    def test_with_trend_uses_full_risk(self) -> None:
+        """With-trend trades should use 100% of requested risk."""
+        result = calculate_position_size(
+            entry_price=100.0,
+            stop_loss=95.0,
+            risk_capital=500.0,
+            trade_category="with_trend",
+        )
+
+        # Full risk: $500 / $5 = 100 shares
+        assert result.position_size == pytest.approx(100.0)
+        assert result.risk_amount == pytest.approx(500.0)
+        assert result.risk_multiplier == 1.0
+        assert result.trade_category == "with_trend"
+        assert result.original_risk_amount == 500.0
+
+    def test_counter_trend_uses_half_risk(self) -> None:
+        """Counter-trend trades should use 50% of requested risk."""
+        result = calculate_position_size(
+            entry_price=100.0,
+            stop_loss=95.0,
+            risk_capital=500.0,
+            trade_category="counter_trend",
+        )
+
+        # Half risk: $250 / $5 = 50 shares
+        assert result.position_size == pytest.approx(50.0)
+        assert result.risk_amount == pytest.approx(250.0)
+        assert result.risk_multiplier == 0.5
+        assert result.trade_category == "counter_trend"
+        assert result.original_risk_amount == 500.0
+
+    def test_reversal_attempt_uses_quarter_risk(self) -> None:
+        """Reversal attempt trades should use 25% of requested risk."""
+        result = calculate_position_size(
+            entry_price=100.0,
+            stop_loss=95.0,
+            risk_capital=500.0,
+            trade_category="reversal_attempt",
+        )
+
+        # Quarter risk: $125 / $5 = 25 shares
+        assert result.position_size == pytest.approx(25.0)
+        assert result.risk_amount == pytest.approx(125.0)
+        assert result.risk_multiplier == 0.25
+        assert result.trade_category == "reversal_attempt"
+        assert result.original_risk_amount == 500.0
+
+    def test_no_category_uses_full_risk(self) -> None:
+        """No category specified should use 100% of risk (default behavior)."""
+        result = calculate_position_size(
+            entry_price=100.0,
+            stop_loss=95.0,
+            risk_capital=500.0,
+            trade_category=None,
+        )
+
+        # Full risk: $500 / $5 = 100 shares
+        assert result.position_size == pytest.approx(100.0)
+        assert result.risk_amount == pytest.approx(500.0)
+        assert result.risk_multiplier == 1.0
+        assert result.trade_category is None
+        assert result.original_risk_amount is None
+
+    def test_category_explanation_populated(self) -> None:
+        """Category explanation should be populated when category provided."""
+        result = calculate_position_size(
+            entry_price=100.0,
+            stop_loss=95.0,
+            risk_capital=500.0,
+            trade_category="counter_trend",
+        )
+
+        assert result.category_explanation is not None
+        assert "50%" in result.category_explanation
+
+    def test_account_risk_uses_adjusted_amount(self) -> None:
+        """Account risk percentage should be based on adjusted risk amount."""
+        result = calculate_position_size(
+            entry_price=100.0,
+            stop_loss=95.0,
+            risk_capital=500.0,
+            account_balance=10000.0,
+            trade_category="counter_trend",
+        )
+
+        # Adjusted risk is $250 (50% of $500)
+        # Account risk = $250 / $10000 = 2.5%
+        assert result.account_risk_percentage == pytest.approx(2.5)
+        assert result.is_valid is True  # Under 5% threshold
+
+    def test_high_base_risk_becomes_valid_with_reversal_category(self) -> None:
+        """High base risk that exceeds 5% becomes valid when adjusted."""
+        # 8% base risk would normally be invalid
+        result_no_category = calculate_position_size(
+            entry_price=100.0,
+            stop_loss=95.0,
+            risk_capital=800.0,  # 8% of 10000
+            account_balance=10000.0,
+            trade_category=None,
+        )
+        assert result_no_category.is_valid is False  # 8% > 5%
+
+        # With reversal_attempt (25%), adjusted risk is 2%
+        result_reversal = calculate_position_size(
+            entry_price=100.0,
+            stop_loss=95.0,
+            risk_capital=800.0,  # 8% base, but 2% after adjustment
+            account_balance=10000.0,
+            trade_category="reversal_attempt",
+        )
+        assert result_reversal.risk_amount == pytest.approx(200.0)  # 25% of 800
+        assert result_reversal.account_risk_percentage == pytest.approx(2.0)
+        assert result_reversal.is_valid is True  # 2% < 5%
+
+    def test_category_included_in_invalid_results(self) -> None:
+        """Category info should be included even when result is invalid."""
+        result = calculate_position_size(
+            entry_price=0.0,  # Invalid entry
+            stop_loss=95.0,
+            risk_capital=500.0,
+            trade_category="counter_trend",
+        )
+
+        assert result.is_valid is False
+        assert result.trade_category == "counter_trend"
+        assert result.risk_multiplier == 0.5
+        assert result.original_risk_amount == 500.0
