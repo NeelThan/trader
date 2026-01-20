@@ -42,6 +42,15 @@ interface BackendATRInfo {
   interpretation: string;
 }
 
+interface BackendConfluenceBreakdown {
+  base_fib_level: number;
+  same_tf_confluence: number;
+  higher_tf_confluence: number;
+  cross_tool_confluence: number;
+  previous_pivot: number;
+  psychological_level: number;
+}
+
 interface BackendValidationResult {
   checks: BackendValidationCheck[];
   passed_count: number;
@@ -49,6 +58,9 @@ interface BackendValidationResult {
   is_valid: boolean;
   pass_percentage: number;
   atr_info?: BackendATRInfo | null;
+  confluence_score?: number | null;
+  confluence_breakdown?: BackendConfluenceBreakdown | null;
+  trade_category?: string | null;
 }
 
 /**
@@ -383,7 +395,7 @@ async function fetchBackendValidation(
  */
 function convertBackendToFrontend(
   backend: BackendValidationResult
-): Pick<ValidationResult, "checks" | "passedCount" | "totalCount" | "isValid" | "passPercentage" | "atrInfo"> {
+): Pick<ValidationResult, "checks" | "passedCount" | "totalCount" | "isValid" | "passPercentage" | "atrInfo" | "confluenceScore"> {
   const atrInfo: ATRInfo | null = backend.atr_info ? {
     atr: backend.atr_info.atr,
     atrPercent: backend.atr_info.atr_percent,
@@ -393,6 +405,20 @@ function convertBackendToFrontend(
     suggestedStop1_5x: backend.atr_info.suggested_stop_1_5x,
     suggestedStop2x: backend.atr_info.suggested_stop_2x,
     interpretation: backend.atr_info.interpretation,
+  } : null;
+
+  // Convert backend confluence to frontend format if available
+  const confluenceScore: ConfluenceScore | null = backend.confluence_score != null && backend.confluence_breakdown ? {
+    total: backend.confluence_score,
+    breakdown: {
+      baseFibLevel: backend.confluence_breakdown.base_fib_level,
+      sameTFConfluence: backend.confluence_breakdown.same_tf_confluence,
+      higherTFConfluence: backend.confluence_breakdown.higher_tf_confluence,
+      crossToolConfluence: backend.confluence_breakdown.cross_tool_confluence,
+      previousPivot: backend.confluence_breakdown.previous_pivot,
+      psychologicalLevel: backend.confluence_breakdown.psychological_level,
+    },
+    interpretation: getConfluenceInterpretation(backend.confluence_score),
   } : null;
 
   return {
@@ -408,6 +434,7 @@ function convertBackendToFrontend(
     isValid: backend.is_valid,
     passPercentage: backend.pass_percentage,
     atrInfo,
+    confluenceScore,
   };
 }
 
@@ -522,7 +549,8 @@ export function useTradeValidation({
         suggestedEntry,
         suggestedStop,
         suggestedTargets,
-        confluenceScore,
+        // Prefer backend confluence score, fall back to local calculation
+        confluenceScore: backendValidation.confluenceScore ?? confluenceScore,
         isRanging,
         rangingWarning,
       };

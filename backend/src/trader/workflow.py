@@ -111,24 +111,6 @@ class ATRInfoData(BaseModel):
     interpretation: str
 
 
-class ValidationResult(BaseModel):
-    """Complete validation result for a trade.
-
-    Contains all 6 validation checks and summary statistics.
-    Trade is valid when pass_percentage >= 60%.
-    """
-
-    checks: list[ValidationCheck]
-    passed_count: int
-    total_count: int
-    is_valid: bool
-    pass_percentage: float
-    atr_info: ATRInfoData | None = None
-
-
-# --- Response Models ---
-
-
 class ConfluenceBreakdown(BaseModel):
     """Breakdown of confluence score components.
 
@@ -162,6 +144,27 @@ class ConfluenceScore(BaseModel):
     total: int = Field(ge=0)
     breakdown: ConfluenceBreakdown
     interpretation: ConfluenceInterpretation
+
+
+class ValidationResult(BaseModel):
+    """Complete validation result for a trade.
+
+    Contains all 7 validation checks and summary statistics.
+    Trade is valid when pass_percentage >= 60%.
+    """
+
+    checks: list[ValidationCheck]
+    passed_count: int
+    total_count: int
+    is_valid: bool
+    pass_percentage: float
+    atr_info: ATRInfoData | None = None
+    confluence_score: int | None = None
+    confluence_breakdown: ConfluenceBreakdown | None = None
+    trade_category: TradeCategory | None = None
+
+
+# --- Response Models ---
 
 
 class TrendAssessment(BaseModel):
@@ -1210,7 +1213,7 @@ async def validate_trade(
     market_service: MarketDataService,
     atr_period: int = 14,
 ) -> ValidationResult:
-    """Validate a trade opportunity with 6 checks.
+    """Validate a trade opportunity with 7 checks.
 
     Performs the following validation checks:
     1. Trend Alignment - Higher/lower TF alignment per rules
@@ -1219,8 +1222,9 @@ async def validate_trade(
     4. RSI Confirmation - Momentum confirmation
     5. MACD Confirmation - Trend momentum intact
     6. Volume Confirmation - RVOL >= 1.0 (above average volume)
+    7. Confluence Score - Real confluence calculation (>=3 with-trend, >=5 counter)
 
-    Trade is valid when pass_percentage >= 60% (4+ checks).
+    Trade is valid when pass_percentage >= 60% (5+ checks).
 
     Args:
         symbol: Market symbol.
@@ -1231,7 +1235,7 @@ async def validate_trade(
         atr_period: Period for ATR calculation (default 14).
 
     Returns:
-        ValidationResult with all 6 checks and summary statistics.
+        ValidationResult with all 7 checks and summary statistics.
     """
     checks: list[ValidationCheck] = []
 
@@ -1273,6 +1277,12 @@ async def validate_trade(
     levels_result = await identify_fibonacci_levels(
         symbol, lower_timeframe, fib_direction, market_service
     )
+
+    # Also fetch higher TF levels for confluence calculation
+    higher_levels_result = await identify_fibonacci_levels(
+        symbol, higher_timeframe, fib_direction, market_service
+    )
+
     entry_zone_passed = len(levels_result.entry_zones) > 0
     entry_count = len(levels_result.entry_zones)
     entry_explanation = (
@@ -1398,6 +1408,78 @@ async def validate_trade(
         )
     )
 
+    # 7. Confluence Score Check (real confluence calculation)
+    # Get pivot prices from lower TF data for confluence
+    pivot_prices: list[float] = []
+    if lower_data.data:
+        pivot_bars = [
+            PivotOHLCBar(
+                time=bar.time,
+                open=bar.open,
+                high=bar.high,
+                low=bar.low,
+                close=bar.close,
+            )
+            for bar in lower_data.data
+        ]
+        pivot_result = detect_pivots(data=pivot_bars, lookback=5, count=10)
+        pivot_prices = [p.price for p in pivot_result.pivots]
+
+    # Calculate confluence for best entry level
+    confluence: ConfluenceScore | None = None
+    if levels_result.entry_zones:
+        entry_level = levels_result.entry_zones[0].price
+        # Same TF levels (exclude the best entry level itself)
+        same_tf_prices = [z.price for z in levels_result.entry_zones[1:]]
+        # Higher TF levels
+        higher_tf_prices = [z.price for z in higher_levels_result.entry_zones]
+
+        confluence = calculate_confluence_score(
+            level_price=entry_level,
+            same_tf_levels=same_tf_prices,
+            higher_tf_levels=higher_tf_prices,
+            previous_pivots=pivot_prices,
+        )
+    else:
+        # No entry zones - minimal confluence
+        confluence = ConfluenceScore(
+            total=1,
+            breakdown=ConfluenceBreakdown(),
+            interpretation="standard",
+        )
+
+    # Determine trade category based on real confluence score
+    trade_category = categorize_trade(
+        higher_tf_trend=higher_assessment.trend,
+        lower_tf_trend=lower_assessment.trend,
+        trade_direction=direction,
+        confluence_score=confluence.total,
+    )
+
+    # Counter-trend requires confluence >= 5, with-trend >= 3
+    min_confluence = 5 if trade_category in ("counter_trend", "reversal_attempt") else 3
+    confluence_passed = confluence.total >= min_confluence
+    confluence_explanation = (
+        f"Score {confluence.total} ({confluence.interpretation}) - "
+        f"{'meets' if confluence_passed else 'below'} {trade_category} threshold"
+    )
+    confluence_details = (
+        f"Min required: {min_confluence} for {trade_category}. "
+        f"Breakdown: base={confluence.breakdown.base_fib_level}, "
+        f"same_tf={confluence.breakdown.same_tf_confluence}, "
+        f"higher_tf={confluence.breakdown.higher_tf_confluence}, "
+        f"pivot={confluence.breakdown.previous_pivot}, "
+        f"psych={confluence.breakdown.psychological_level}"
+    )
+    checks.append(
+        ValidationCheck(
+            name="Confluence Score",
+            passed=confluence_passed,
+            explanation=confluence_explanation,
+            details=confluence_details,
+        )
+    )
+
     # Calculate ATR for volatility info (use lower timeframe for entry timing)
     atr_info: ATRInfoData | None = None
     if lower_data.data:
@@ -1432,6 +1514,9 @@ async def validate_trade(
         is_valid=is_valid,
         pass_percentage=pass_percentage,
         atr_info=atr_info,
+        confluence_score=confluence.total if confluence else None,
+        confluence_breakdown=confluence.breakdown if confluence else None,
+        trade_category=trade_category,
     )
 
 

@@ -1375,6 +1375,17 @@ class ATRInfoResponseData(BaseModel):
     interpretation: str
 
 
+class ConfluenceBreakdownData(BaseModel):
+    """Confluence breakdown data in validation response."""
+
+    base_fib_level: int
+    same_tf_confluence: int
+    higher_tf_confluence: int
+    cross_tool_confluence: int
+    previous_pivot: int
+    psychological_level: int
+
+
 class ValidationResultData(BaseModel):
     """Validation result data in response."""
 
@@ -1384,11 +1395,14 @@ class ValidationResultData(BaseModel):
     is_valid: bool
     pass_percentage: float
     atr_info: ATRInfoResponseData | None = None
+    confluence_score: int | None = None
+    confluence_breakdown: ConfluenceBreakdownData | None = None
+    trade_category: str | None = None
 
 
 @app.post("/workflow/validate", response_model=ValidationResultData)
 async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultData:
-    """Validate a trade opportunity with 6 checks.
+    """Validate a trade opportunity with 7 checks.
 
     Performs the following validation checks:
     1. Trend Alignment - Higher/lower TF alignment per spec rules
@@ -1397,13 +1411,14 @@ async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultDa
     4. RSI Confirmation - Momentum confirmation
     5. MACD Confirmation - Trend momentum intact
     6. Volume Confirmation - RVOL >= 1.0 (above average volume)
+    7. Confluence Score - Real confluence calculation (>=3 with-trend, >=5 counter)
 
-    Also returns ATR analysis for volatility info and stop loss suggestions.
+    Also returns ATR analysis, confluence breakdown, and trade category.
 
-    Trade is valid when pass_percentage >= 60% (4+ checks pass).
+    Trade is valid when pass_percentage >= 60% (5+ checks pass).
 
     Returns:
-        ValidationResultData with all 6 checks, summary statistics, and ATR info.
+        ValidationResultData with all 7 checks, summary statistics, ATR, confluence.
     """
     result = await validate_trade(
         symbol=request.symbol,
@@ -1427,6 +1442,17 @@ async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultDa
             interpretation=result.atr_info.interpretation,
         )
 
+    confluence_breakdown_response: ConfluenceBreakdownData | None = None
+    if result.confluence_breakdown:
+        confluence_breakdown_response = ConfluenceBreakdownData(
+            base_fib_level=result.confluence_breakdown.base_fib_level,
+            same_tf_confluence=result.confluence_breakdown.same_tf_confluence,
+            higher_tf_confluence=result.confluence_breakdown.higher_tf_confluence,
+            cross_tool_confluence=result.confluence_breakdown.cross_tool_confluence,
+            previous_pivot=result.confluence_breakdown.previous_pivot,
+            psychological_level=result.confluence_breakdown.psychological_level,
+        )
+
     return ValidationResultData(
         checks=[
             ValidationCheckData(
@@ -1442,4 +1468,7 @@ async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultDa
         is_valid=result.is_valid,
         pass_percentage=result.pass_percentage,
         atr_info=atr_info_response,
+        confluence_score=result.confluence_score,
+        confluence_breakdown=confluence_breakdown_response,
+        trade_category=result.trade_category,
     )

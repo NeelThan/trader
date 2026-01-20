@@ -1398,7 +1398,7 @@ class TestAnalyzeSymbolPairMultiTFLogic:
         assert result.opportunities[0].symbol == "TEST"
 
     async def test_both_bullish_returns_no_opportunity_by_default(self) -> None:
-        """Should return no opportunity when both TFs bullish without include_potential."""
+        """Should return no opportunity when both TFs bullish (default)."""
         from unittest.mock import patch
 
         from trader.workflow import TrendAssessment, scan_opportunities
@@ -1462,7 +1462,7 @@ class TestAnalyzeSymbolPairMultiTFLogic:
         assert result.opportunities[0].awaiting_confirmation is not None
 
     async def test_both_bearish_returns_no_opportunity_by_default(self) -> None:
-        """Should return no opportunity when both TFs bearish without include_potential."""
+        """Should return no opportunity when both TFs bearish (default)."""
         from unittest.mock import patch
 
         from trader.workflow import TrendAssessment, scan_opportunities
@@ -1669,10 +1669,10 @@ class TestValidateTradeFunction:
 
         assert isinstance(result, ValidationResult)
 
-    async def test_validate_trade_has_six_checks(
+    async def test_validate_trade_has_seven_checks(
         self, mock_market_service: MagicMock
     ) -> None:
-        """Should perform exactly 6 validation checks."""
+        """Should perform exactly 7 validation checks."""
         from trader.workflow import validate_trade
 
         result = await validate_trade(
@@ -1683,13 +1683,13 @@ class TestValidateTradeFunction:
             market_service=mock_market_service,
         )
 
-        assert result.total_count == 6
-        assert len(result.checks) == 6
+        assert result.total_count == 7
+        assert len(result.checks) == 7
 
     async def test_validate_trade_check_names(
         self, mock_market_service: MagicMock
     ) -> None:
-        """Should have the 6 required check names."""
+        """Should have the 7 required check names."""
         from trader.workflow import validate_trade
 
         result = await validate_trade(
@@ -1707,6 +1707,7 @@ class TestValidateTradeFunction:
         assert "RSI Confirmation" in check_names
         assert "MACD Confirmation" in check_names
         assert "Volume Confirmation" in check_names
+        assert "Confluence Score" in check_names
 
     async def test_validate_trade_calculates_pass_percentage(
         self, mock_market_service: MagicMock
@@ -1920,7 +1921,7 @@ class TestTradeOpportunityConfirmation:
     """Tests for TradeOpportunity confirmation fields."""
 
     def test_trade_opportunity_has_confirmation_fields(self) -> None:
-        """TradeOpportunity should have is_confirmed and awaiting_confirmation fields."""
+        """TradeOpportunity has is_confirmed and awaiting_confirmation fields."""
         from trader.workflow import TradeOpportunity
 
         opp = TradeOpportunity(
@@ -2057,3 +2058,209 @@ class TestWithTrendOpportunityLogic:
 
         assert "short" in result.reason.lower()
         assert "resistance" in result.reason.lower()
+
+
+class TestValidateTradeConfluence:
+    """Tests for confluence scoring in validate_trade function."""
+
+    @pytest.fixture
+    def sample_bars_with_volume(self) -> list[OHLCBar]:
+        """Create sample OHLC bars with volume data."""
+        return [
+            OHLCBar(
+                time=f"2024-01-{i:02d}",
+                open=100.0 + i,
+                high=105.0 + i,
+                low=99.0 + i,
+                close=103.0 + i,
+                volume=1000000 + i * 10000,
+            )
+            for i in range(1, 51)
+        ]
+
+    @pytest.fixture
+    def mock_market_service(self, sample_bars_with_volume: list[OHLCBar]) -> MagicMock:
+        """Create mock market data service."""
+        mock = MagicMock()
+        mock.get_ohlc = AsyncMock(
+            return_value=MarketDataResult.from_success(
+                data=sample_bars_with_volume,
+                market_status=MarketStatus.unknown(),
+                provider="test",
+            )
+        )
+        return mock
+
+    async def test_validate_trade_has_seven_checks(
+        self, mock_market_service: MagicMock
+    ) -> None:
+        """validate_trade should now have 7 checks including Confluence Score."""
+        from trader.workflow import validate_trade
+
+        result = await validate_trade(
+            symbol="TEST",
+            higher_timeframe="1D",
+            lower_timeframe="4H",
+            direction="long",
+            market_service=mock_market_service,
+        )
+
+        assert result.total_count == 7
+        assert len(result.checks) == 7
+        check_names = [c.name for c in result.checks]
+        assert "Confluence Score" in check_names
+
+    async def test_validate_trade_returns_confluence_score(
+        self, mock_market_service: MagicMock
+    ) -> None:
+        """validate_trade should return confluence_score field."""
+        from trader.workflow import validate_trade
+
+        result = await validate_trade(
+            symbol="TEST",
+            higher_timeframe="1D",
+            lower_timeframe="4H",
+            direction="long",
+            market_service=mock_market_service,
+        )
+
+        assert result.confluence_score is not None
+        assert result.confluence_score >= 1  # Base score is always 1
+
+    async def test_validate_trade_returns_confluence_breakdown(
+        self, mock_market_service: MagicMock
+    ) -> None:
+        """validate_trade should return confluence_breakdown field."""
+        from trader.workflow import validate_trade
+
+        result = await validate_trade(
+            symbol="TEST",
+            higher_timeframe="1D",
+            lower_timeframe="4H",
+            direction="long",
+            market_service=mock_market_service,
+        )
+
+        assert result.confluence_breakdown is not None
+        assert result.confluence_breakdown.base_fib_level == 1
+
+    async def test_validate_trade_returns_trade_category(
+        self, mock_market_service: MagicMock
+    ) -> None:
+        """validate_trade should return trade_category field."""
+        from trader.workflow import validate_trade
+
+        result = await validate_trade(
+            symbol="TEST",
+            higher_timeframe="1D",
+            lower_timeframe="4H",
+            direction="long",
+            market_service=mock_market_service,
+        )
+
+        assert result.trade_category is not None
+        valid_categories = ["with_trend", "counter_trend", "reversal_attempt"]
+        assert result.trade_category in valid_categories
+
+
+class TestConfluenceCheckRequirements:
+    """Tests for confluence check pass requirements based on trade category."""
+
+    def test_with_trend_requires_confluence_3(self) -> None:
+        """With-trend trades should pass confluence check with score >= 3."""
+        from trader.workflow import categorize_trade
+
+        # With confluence 3, with_trend should pass
+        category = categorize_trade(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bearish",
+            trade_direction="long",
+            confluence_score=3,
+        )
+        assert category == "with_trend"
+        # Min confluence for with_trend is 3, so score 3 passes
+
+    def test_counter_trend_requires_confluence_5(self) -> None:
+        """Counter-trend trades should require score >= 5 to pass confluence check."""
+        from trader.workflow import categorize_trade
+
+        # Score of 5 against higher TF = counter_trend (not reversal_attempt)
+        category = categorize_trade(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bullish",
+            trade_direction="short",
+            confluence_score=5,
+        )
+        assert category == "counter_trend"
+
+    def test_reversal_attempt_with_low_confluence(self) -> None:
+        """Low confluence against trend should be categorized as reversal_attempt."""
+        from trader.workflow import categorize_trade
+
+        # Score of 3 against higher TF = reversal_attempt (not counter_trend)
+        category = categorize_trade(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bullish",
+            trade_direction="short",
+            confluence_score=3,
+        )
+        assert category == "reversal_attempt"
+
+
+class TestValidationResultModel:
+    """Tests for ValidationResult model with confluence fields."""
+
+    def test_validation_result_has_confluence_fields(self) -> None:
+        """ValidationResult has confluence_score, breakdown, and trade_category."""
+        from trader.workflow import (
+            ConfluenceBreakdown,
+            ValidationCheck,
+            ValidationResult,
+        )
+
+        checks = [
+            ValidationCheck(name="Check 1", passed=True, explanation="Pass"),
+        ]
+        breakdown = ConfluenceBreakdown(
+            base_fib_level=1,
+            same_tf_confluence=2,
+            higher_tf_confluence=0,
+            previous_pivot=2,
+            psychological_level=0,
+        )
+
+        result = ValidationResult(
+            checks=checks,
+            passed_count=1,
+            total_count=1,
+            is_valid=True,
+            pass_percentage=100.0,
+            confluence_score=5,
+            confluence_breakdown=breakdown,
+            trade_category="with_trend",
+        )
+
+        assert result.confluence_score == 5
+        assert result.confluence_breakdown is not None
+        assert result.confluence_breakdown.same_tf_confluence == 2
+        assert result.trade_category == "with_trend"
+
+    def test_validation_result_confluence_fields_optional(self) -> None:
+        """ValidationResult confluence fields should be optional."""
+        from trader.workflow import ValidationCheck, ValidationResult
+
+        checks = [
+            ValidationCheck(name="Check 1", passed=True, explanation="Pass"),
+        ]
+
+        result = ValidationResult(
+            checks=checks,
+            passed_count=1,
+            total_count=1,
+            is_valid=True,
+            pass_percentage=100.0,
+        )
+
+        assert result.confluence_score is None
+        assert result.confluence_breakdown is None
+        assert result.trade_category is None
