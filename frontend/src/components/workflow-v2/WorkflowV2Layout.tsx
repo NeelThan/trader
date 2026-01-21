@@ -1268,6 +1268,18 @@ export function WorkflowV2Layout({
                     )}
                   </button>
 
+                  {/* Feature status messages */}
+                  {showTrendLines && !isLoadingTrendLines && trendLines && !trendLines.upper_line && !trendLines.lower_line && (
+                    <span className="text-[10px] text-amber-400/80 px-2">
+                      No HH/LL trend pattern
+                    </span>
+                  )}
+                  {showTrendLines && trendLinesError && (
+                    <span className="text-[10px] text-red-400/80 px-2">
+                      Trend error
+                    </span>
+                  )}
+
                   {/* Status badges */}
                   <div className="flex items-center gap-1 text-xs ml-auto">
                     {/* Trade view indicator */}
@@ -1448,13 +1460,31 @@ export function WorkflowV2Layout({
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="px-3 pb-3 pt-0">
-                    <ReversalTimePanel
-                      velocity={velocity}
-                      estimates={timeEstimates}
-                      currentPrice={marketData.length > 0 ? marketData[marketData.length - 1].close : 0}
-                      isLoading={isLoadingReversalTime}
-                      error={reversalTimeError}
-                    />
+                    {/* Show requirements if missing data */}
+                    {!swingSettings.enabled ? (
+                      <div className="text-sm text-muted-foreground text-center py-4 space-y-2">
+                        <p>Enable Swing markers to use time estimation.</p>
+                        <p className="text-xs opacity-70">Swing pivots are needed to calculate Fibonacci levels.</p>
+                      </div>
+                    ) : fibLevelsForTimeEstimate.length === 0 ? (
+                      <div className="text-sm text-muted-foreground text-center py-4 space-y-2">
+                        <p>No Fibonacci levels available.</p>
+                        <p className="text-xs opacity-70">Need at least 2 swing pivots (1 high + 1 low) to generate levels.</p>
+                      </div>
+                    ) : marketData.length < 15 ? (
+                      <div className="text-sm text-muted-foreground text-center py-4 space-y-2">
+                        <p>Need more price data.</p>
+                        <p className="text-xs opacity-70">At least 15 bars required for velocity calculation.</p>
+                      </div>
+                    ) : (
+                      <ReversalTimePanel
+                        velocity={velocity}
+                        estimates={timeEstimates}
+                        currentPrice={marketData.length > 0 ? marketData[marketData.length - 1].close : 0}
+                        isLoading={isLoadingReversalTime}
+                        error={reversalTimeError}
+                      />
+                    )}
                   </CardContent>
                 </Card>
               )}
