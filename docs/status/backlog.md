@@ -26,38 +26,33 @@ Last updated: 2026-01-21
 
 ## High-Priority Items
 
-### 1. Opportunity Scanning Alignment Rules
-**Status:** Not Started
+### 1. ~~Opportunity Scanning Alignment Rules~~ ✅
+**Status:** Complete (2026-01-21)
 **Files:** `backend/src/trader/workflow.py` (`scan_opportunities`, `_analyze_symbol_pair`)
 
-**Issue:** Opportunity scanning ignores HTF/LTF alignment rules. Direction is based only on higher TF trend, conflicting with SignalPro alignment matrix.
+**Completed:**
+- Enhanced TradeOpportunity model with entry_level, current_price, confluence_score, signal_bar_detected, distance_to_entry_pct
+- Updated _analyze_symbol_pair() to check Fib levels and signal bars
+- Pullbacks now require signal bar confirmation at entry level
 
-**Required Changes:**
-- Implement proper HTF/LTF alignment logic per `docs/signalpro-trading-system.md`
-- Apply alignment matrix rules before emitting opportunities
-- Include Fib-level and signal-bar checks
+### 2. ~~Direction-Based Fibonacci Display~~ ✅
+**Status:** Complete (2026-01-21)
+**Files:** `backend/src/trader/main.py`, `frontend/src/hooks/use-multi-tf-levels.ts`, `frontend/src/hooks/use-workflow-v2-levels.ts`
 
-### 2. Direction-Based Fibonacci Display
-**Status:** Not Started
-**Files:** `frontend/src/hooks/use-multi-tf-levels.ts`, `backend/src/trader/fibonacci.py`
+**Completed:**
+- Added swing_endpoint to pivot detection response (B<C = high/buy, B>C = low/sell)
+- Frontend hooks now filter Fib levels by swing direction
+- Only relevant direction levels are fetched/displayed
 
-**Issue:** Both long/short Fibonacci levels are calculated regardless of pivot relationships. Should enforce direction-based selection.
+### 3. ~~Signal Bar Confirmation Integration~~ ✅
+**Status:** Complete (2026-01-21)
+**Files:** `backend/src/trader/workflow.py`, `backend/src/trader/main.py`, `frontend/src/hooks/use-trade-validation.ts`
 
-**Required Changes:**
-- Implement pivot relationship logic from `docs/references/fibonacci_conditions.md`
-- ABC/pivot-aware direction logic for buy/sell level sets
-- Filter displayed levels based on determined direction
-
-### 3. Signal Bar Confirmation Integration
-**Status:** Not Started
-**Files:** `frontend/src/hooks/use-signal-detection.ts`, `frontend/src/hooks/use-trade-validation.ts`
-
-**Issue:** Signal bar confirmation is not part of the workflow validation flow (required by SignalPro docs as gatekeeper rule).
-
-**Required Changes:**
-- Integrate signal-bar detection into validation flow
-- Add signal bar as a required validation check
-- Block trade execution without confirmed signal bar
+**Completed:**
+- Added SignalBarData model and _check_signal_bar_confirmation() as 8th validation check
+- Updated validate_trade() to accept signal_bar_data and entry_level
+- Frontend hook passes signal bar data to backend
+- Per SignalPro spec: "No signal bar = No trade"
 
 ### 4. Strategy Selection Rules
 **Status:** Not Started
@@ -146,6 +141,12 @@ Last updated: 2026-01-21
 - [ ] Full workflow end-to-end test
 
 ## Completed Work Log
+
+### 2026-01-21: Direction-Based Fib, Signal Bar Gating, and Scanning Fixes
+- **Direction-Based Fibonacci:** Added swing_endpoint to pivot detection; frontend filters levels by direction
+- **Signal Bar Confirmation:** Added as 8th validation check; "No signal bar = No trade" enforced
+- **Opportunity Scanning:** Enhanced TradeOpportunity model; pullbacks require signal bar at entry level
+- **Result:** 157 workflow tests passing; 1046 lines added across 6 files
 
 ### 2026-01-21: Thin-Client Migration Complete
 - **Phase 1:** Refactored `use-trade-validation.ts`, `use-trade-execution.ts`, `use-trade-discovery.ts` to use existing backend APIs

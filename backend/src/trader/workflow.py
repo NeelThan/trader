@@ -276,10 +276,16 @@ class LevelsResult(BaseModel):
     Attributes:
         entry_zones: Retracement levels for potential entries.
         target_zones: Extension levels for potential targets.
+        selected_strategy: Auto-selected Fibonacci strategy based on price position.
+        abc_pivots: ABC pivot prices if pattern detected (a, b, c).
+        strategy_reason: Explanation of why this strategy was selected.
     """
 
     entry_zones: list[LevelZone]
     target_zones: list[LevelZone]
+    selected_strategy: FibStrategy | None = None
+    abc_pivots: dict[str, float] | None = None
+    strategy_reason: str | None = None
 
 
 class IndicatorSignal(BaseModel):
@@ -1019,22 +1025,147 @@ async def check_timeframe_alignment(
     )
 
 
+def extract_abc_pivots(
+    pivots: list[PivotPoint],
+    direction: Literal["long", "short"],
+) -> tuple[float, float, float] | None:
+    """Extract ABC pivot points for projection strategy.
+
+    For long direction (bullish ABC):
+      A = swing low (oldest)
+      B = swing high after A
+      C = higher low after B (retracement, must be > A)
+
+    For short direction (bearish ABC):
+      A = swing high (oldest)
+      B = swing low after A
+      C = lower high after B (retracement, must be < A)
+
+    Args:
+        pivots: List of detected pivot points in chronological order.
+        direction: Trade direction ("long" or "short").
+
+    Returns:
+        Tuple of (A, B, C) prices or None if valid pattern not found.
+    """
+    if len(pivots) < 3:
+        return None
+
+    # Get the most recent 3 pivots for ABC pattern
+    recent_pivots = pivots[-3:]
+
+    if direction == "long":
+        # Bullish ABC: A=low, B=high, C=low (higher than A)
+        a_pivot = recent_pivots[0]
+        b_pivot = recent_pivots[1]
+        c_pivot = recent_pivots[2]
+
+        # Validate pattern: A must be low, B must be high, C must be low
+        if a_pivot.type != "low" or b_pivot.type != "high" or c_pivot.type != "low":
+            return None
+
+        # C must be higher than A (higher low)
+        if c_pivot.price <= a_pivot.price:
+            return None
+
+        return (a_pivot.price, b_pivot.price, c_pivot.price)
+
+    else:  # short
+        # Bearish ABC: A=high, B=low, C=high (lower than A)
+        a_pivot = recent_pivots[0]
+        b_pivot = recent_pivots[1]
+        c_pivot = recent_pivots[2]
+
+        # Validate pattern: A must be high, B must be low, C must be high
+        if a_pivot.type != "high" or b_pivot.type != "low" or c_pivot.type != "high":
+            return None
+
+        # C must be lower than A (lower high)
+        if c_pivot.price >= a_pivot.price:
+            return None
+
+        return (a_pivot.price, b_pivot.price, c_pivot.price)
+
+
+def select_fibonacci_strategy(
+    pivot_a: float,
+    pivot_b: float,
+    pivot_c: float,
+    current_price: float,
+    direction: Literal["long", "short"],
+) -> FibStrategy:
+    """Select appropriate Fibonacci strategy based on pivot relationships.
+
+    Strategy Selection Rules:
+    1. RETRACEMENT: Price is pulling back toward A within the AB range
+    2. EXTENSION: Price has moved beyond B (continuation)
+    3. PROJECTION: Valid ABC pattern complete, project D target
+    4. EXPANSION: Price between C and B without valid projection criteria
+
+    Args:
+        pivot_a: First pivot point price (A).
+        pivot_b: Second pivot point price (B).
+        pivot_c: Third pivot point price (C).
+        current_price: Current market price.
+        direction: Trade direction ("long" or "short").
+
+    Returns:
+        Selected FibStrategy based on price position and pattern.
+    """
+    ab_range = abs(pivot_b - pivot_a)
+    bc_retracement = abs(pivot_c - pivot_b) / ab_range if ab_range > 0 else 0
+
+    if direction == "long":
+        # Price below C (pulling back) = retracement
+        if current_price < pivot_c:
+            return "retracement"
+        # Price beyond B = extension
+        if current_price > pivot_b:
+            return "extension"
+        # Valid ABC (C retraced 38.2-78.6% of AB) = projection
+        if 0.382 <= bc_retracement <= 0.786:
+            return "projection"
+        # Otherwise = expansion
+        return "expansion"
+
+    else:  # short
+        # Price above C (pulling back) = retracement
+        if current_price > pivot_c:
+            return "retracement"
+        # Price below B = extension
+        if current_price < pivot_b:
+            return "extension"
+        # Valid ABC (C retraced 38.2-78.6% of AB) = projection
+        if 0.382 <= bc_retracement <= 0.786:
+            return "projection"
+        # Otherwise = expansion
+        return "expansion"
+
+
 async def identify_fibonacci_levels(
     symbol: str,
     timeframe: str,
     direction: Literal["buy", "sell"],
     market_service: MarketDataService,
+    strategy: FibStrategy | None = None,
 ) -> LevelsResult:
-    """Identify Fibonacci levels for entries and targets.
+    """Identify Fibonacci levels for entries and targets with auto-strategy selection.
+
+    If strategy is None, automatically selects based on:
+    1. Detect pivots
+    2. Extract ABC pattern if available
+    3. Determine price position relative to pivots
+    4. Select appropriate strategy
 
     Args:
         symbol: Market symbol.
         timeframe: Chart timeframe.
         direction: Trade direction for level calculation.
         market_service: Service for fetching market data.
+        strategy: Optional strategy override. If None, auto-selects.
 
     Returns:
-        LevelsResult with entry and target zones.
+        LevelsResult with entry and target zones plus strategy metadata.
     """
     market_result = await market_service.get_ohlc(symbol, timeframe, periods=50)
 
@@ -1056,13 +1187,89 @@ async def identify_fibonacci_levels(
     high = pivot_result.swing_high.price
     low = pivot_result.swing_low.price
 
-    return _build_levels_result(high, low, direction)
+    # Get current price from the most recent bar
+    current_price = market_result.data[-1].close
+
+    # Try to extract ABC pivots for strategy selection
+    abc_direction: Literal["long", "short"] = "long" if direction == "buy" else "short"
+    abc_result = extract_abc_pivots(pivot_result.pivots, abc_direction)
+
+    # Auto-select strategy if not provided
+    selected_strategy: FibStrategy
+    abc_pivots: dict[str, float] | None = None
+    strategy_reason: str
+
+    if strategy is not None:
+        selected_strategy = strategy
+        strategy_reason = "Strategy manually specified"
+        if abc_result:
+            abc_pivots = {"a": abc_result[0], "b": abc_result[1], "c": abc_result[2]}
+    elif abc_result:
+        a, b, c = abc_result
+        abc_pivots = {"a": a, "b": b, "c": c}
+        selected_strategy = select_fibonacci_strategy(
+            a, b, c, current_price, abc_direction
+        )
+        strategy_reason = _get_strategy_reason(
+            selected_strategy, abc_direction, c, b, current_price
+        )
+    else:
+        # No ABC pattern found, default to retracement
+        selected_strategy = "retracement"
+        strategy_reason = "No ABC pattern detected, using retracement"
+
+    return _build_levels_result(
+        high, low, direction, selected_strategy, abc_pivots, strategy_reason
+    )
+
+
+def _get_strategy_reason(
+    strategy: FibStrategy,
+    direction: Literal["long", "short"],
+    pivot_c: float,
+    pivot_b: float,
+    current_price: float,
+) -> str:
+    """Generate human-readable reason for strategy selection."""
+    price_str = f"{current_price:.2f}"
+    c_str = f"{pivot_c:.2f}"
+    b_str = f"{pivot_b:.2f}"
+
+    if strategy == "retracement":
+        if direction == "long":
+            return f"Price ({price_str}) below C ({c_str}), pulling back"
+        return f"Price ({price_str}) above C ({c_str}), pulling back"
+    elif strategy == "extension":
+        if direction == "long":
+            return f"Price ({price_str}) beyond B ({b_str}), extending"
+        return f"Price ({price_str}) below B ({b_str}), extending"
+    elif strategy == "projection":
+        return "Valid ABC pattern with proper retracement, projecting D"
+    else:  # expansion
+        return "Price between C and B without valid projection criteria"
 
 
 def _build_levels_result(
-    high: float, low: float, direction: Literal["buy", "sell"]
+    high: float,
+    low: float,
+    direction: Literal["buy", "sell"],
+    selected_strategy: FibStrategy | None = None,
+    abc_pivots: dict[str, float] | None = None,
+    strategy_reason: str | None = None,
 ) -> LevelsResult:
-    """Build LevelsResult from swing high/low prices."""
+    """Build LevelsResult from swing high/low prices.
+
+    Args:
+        high: Swing high price.
+        low: Swing low price.
+        direction: Trade direction.
+        selected_strategy: Auto-selected or manual strategy.
+        abc_pivots: ABC pivot prices if detected.
+        strategy_reason: Explanation of strategy selection.
+
+    Returns:
+        LevelsResult with entry/target zones and strategy metadata.
+    """
     retracement = calculate_retracement_levels(high, low, direction)
     extension = calculate_extension_levels(high, low, direction)
 
@@ -1070,7 +1277,13 @@ def _build_levels_result(
     entry_zones = _create_entry_zones(retracement, high, price_range)
     target_zones = _create_target_zones(extension, low, price_range)
 
-    return LevelsResult(entry_zones=entry_zones, target_zones=target_zones)
+    return LevelsResult(
+        entry_zones=entry_zones,
+        target_zones=target_zones,
+        selected_strategy=selected_strategy,
+        abc_pivots=abc_pivots,
+        strategy_reason=strategy_reason,
+    )
 
 
 def _create_entry_zones(
@@ -1495,7 +1708,12 @@ async def validate_trade(
     entry_details = None
     if entry_zone_passed:
         best = levels_result.entry_zones[0]
-        entry_details = f"Best: {best.label} at {best.price:.2f}"
+        strategy_info = (
+            f" (Strategy: {levels_result.selected_strategy})"
+            if levels_result.selected_strategy
+            else ""
+        )
+        entry_details = f"Best: {best.label} at {best.price:.2f}{strategy_info}"
     checks.append(
         ValidationCheck(
             name="Entry Zone",

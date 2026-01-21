@@ -90,10 +90,10 @@ class TestFullWorkflowIntegration:
 
         # Verify validation structure
         assert "checks" in validate_data
-        assert len(validate_data["checks"]) == 7  # 7 validation checks
+        assert len(validate_data["checks"]) == 8  # 8 validation checks
         assert "passed_count" in validate_data
         assert "total_count" in validate_data
-        assert validate_data["total_count"] == 7
+        assert validate_data["total_count"] == 8
         assert "is_valid" in validate_data
         assert "pass_percentage" in validate_data
         assert "trade_category" in validate_data
@@ -429,8 +429,8 @@ class TestValidationEdgeCases:
         assert response.status_code == 200
         data = response.json()
 
-        # Always 7 checks
-        assert len(data["checks"]) == 7
+        # Always 8 checks
+        assert len(data["checks"]) == 8
 
         # Verify expected check names
         check_names = {c["name"] for c in data["checks"]}
@@ -442,6 +442,7 @@ class TestValidationEdgeCases:
             "MACD Confirmation",
             "Volume Confirmation",
             "Confluence Score",
+            "Signal Bar Confirmation",
         }
         assert check_names == expected_checks
 
@@ -480,11 +481,11 @@ class TestValidationEdgeCases:
         assert "is_valid" in short_data
 
         # Both should have valid structure
-        assert long_data["total_count"] == 7
-        assert short_data["total_count"] == 7
+        assert long_data["total_count"] == 8
+        assert short_data["total_count"] == 8
 
     async def test_validation_threshold_boundary(self, client: AsyncClient) -> None:
-        """Verify 60% pass threshold (5+ of 7 checks required)."""
+        """Verify 60% pass threshold (5+ of 8 checks required)."""
         response = await client.post(
             "/workflow/validate",
             json={

@@ -3441,3 +3441,277 @@ class TestOpportunityScanningWithFibAndSignal:
             if not opportunity.signal_bar_detected:
                 assert opportunity.is_confirmed is False
                 assert opportunity.awaiting_confirmation is not None
+
+
+class TestExtractAbcPivots:
+    """Tests for extract_abc_pivots function."""
+
+    def test_bullish_abc_pattern_extraction(self) -> None:
+        """Should extract A(low), B(high), C(higher low) for long direction."""
+        from trader.pivots import PivotPoint
+        from trader.workflow import extract_abc_pivots
+
+        # Bullish ABC: A=low, B=high, C=higher low
+        pivots = [
+            PivotPoint(index=0, price=100.0, type="low", time="2024-01-01"),  # A
+            PivotPoint(index=5, price=120.0, type="high", time="2024-01-06"),  # B
+            PivotPoint(index=10, price=108.0, type="low", time="2024-01-11"),  # C
+        ]
+
+        result = extract_abc_pivots(pivots, "long")
+
+        assert result is not None
+        a, b, c = result
+        assert a == 100.0  # A = low
+        assert b == 120.0  # B = high
+        assert c == 108.0  # C = higher low
+
+    def test_bearish_abc_pattern_extraction(self) -> None:
+        """Should extract A(high), B(low), C(lower high) for short direction."""
+        from trader.pivots import PivotPoint
+        from trader.workflow import extract_abc_pivots
+
+        # Bearish ABC: A=high, B=low, C=lower high
+        pivots = [
+            PivotPoint(index=0, price=120.0, type="high", time="2024-01-01"),  # A
+            PivotPoint(index=5, price=100.0, type="low", time="2024-01-06"),  # B
+            PivotPoint(index=10, price=112.0, type="high", time="2024-01-11"),  # C
+        ]
+
+        result = extract_abc_pivots(pivots, "short")
+
+        assert result is not None
+        a, b, c = result
+        assert a == 120.0  # A = high
+        assert b == 100.0  # B = low
+        assert c == 112.0  # C = lower high
+
+    def test_no_abc_when_insufficient_pivots(self) -> None:
+        """Should return None when less than 3 pivots."""
+        from trader.pivots import PivotPoint
+        from trader.workflow import extract_abc_pivots
+
+        pivots = [
+            PivotPoint(index=0, price=100.0, type="low", time="2024-01-01"),
+            PivotPoint(index=5, price=120.0, type="high", time="2024-01-06"),
+        ]
+
+        result = extract_abc_pivots(pivots, "long")
+
+        assert result is None
+
+    def test_no_abc_when_c_not_higher_low_for_bullish(self) -> None:
+        """Should return None when C is not a higher low for bullish pattern."""
+        from trader.pivots import PivotPoint
+        from trader.workflow import extract_abc_pivots
+
+        # C is lower than A (not valid bullish ABC)
+        pivots = [
+            PivotPoint(index=0, price=100.0, type="low", time="2024-01-01"),  # A
+            PivotPoint(index=5, price=120.0, type="high", time="2024-01-06"),  # B
+            PivotPoint(index=10, price=95.0, type="low", time="2024-01-11"),  # C < A
+        ]
+
+        result = extract_abc_pivots(pivots, "long")
+
+        assert result is None
+
+    def test_no_abc_when_c_not_lower_high_for_bearish(self) -> None:
+        """Should return None when C is not a lower high for bearish pattern."""
+        from trader.pivots import PivotPoint
+        from trader.workflow import extract_abc_pivots
+
+        # C is higher than A (not valid bearish ABC)
+        pivots = [
+            PivotPoint(index=0, price=120.0, type="high", time="2024-01-01"),  # A
+            PivotPoint(index=5, price=100.0, type="low", time="2024-01-06"),  # B
+            PivotPoint(index=10, price=125.0, type="high", time="2024-01-11"),  # C > A
+        ]
+
+        result = extract_abc_pivots(pivots, "short")
+
+        assert result is None
+
+
+class TestSelectFibonacciStrategy:
+    """Tests for select_fibonacci_strategy function."""
+
+    def test_retracement_when_price_pulling_back_long(self) -> None:
+        """Price below C in long direction = retracement."""
+        from trader.workflow import select_fibonacci_strategy
+
+        # Long: A=100, B=120, C=108, current=105 (below C)
+        result = select_fibonacci_strategy(
+            pivot_a=100.0,
+            pivot_b=120.0,
+            pivot_c=108.0,
+            current_price=105.0,
+            direction="long",
+        )
+
+        assert result == "retracement"
+
+    def test_retracement_when_price_pulling_back_short(self) -> None:
+        """Price above C in short direction = retracement."""
+        from trader.workflow import select_fibonacci_strategy
+
+        # Short: A=120, B=100, C=112, current=115 (above C)
+        result = select_fibonacci_strategy(
+            pivot_a=120.0,
+            pivot_b=100.0,
+            pivot_c=112.0,
+            current_price=115.0,
+            direction="short",
+        )
+
+        assert result == "retracement"
+
+    def test_extension_when_price_beyond_c_long(self) -> None:
+        """Price beyond B in long direction = extension."""
+        from trader.workflow import select_fibonacci_strategy
+
+        # Long: A=100, B=120, C=108, current=125 (beyond B)
+        result = select_fibonacci_strategy(
+            pivot_a=100.0,
+            pivot_b=120.0,
+            pivot_c=108.0,
+            current_price=125.0,
+            direction="long",
+        )
+
+        assert result == "extension"
+
+    def test_extension_when_price_beyond_c_short(self) -> None:
+        """Price beyond B in short direction = extension."""
+        from trader.workflow import select_fibonacci_strategy
+
+        # Short: A=120, B=100, C=112, current=95 (below B)
+        result = select_fibonacci_strategy(
+            pivot_a=120.0,
+            pivot_b=100.0,
+            pivot_c=112.0,
+            current_price=95.0,
+            direction="short",
+        )
+
+        assert result == "extension"
+
+    def test_projection_with_valid_abc_retracement_long(self) -> None:
+        """Valid ABC pattern with 50% retracement = projection for long."""
+        from trader.workflow import select_fibonacci_strategy
+
+        # Long: A=100, B=120, C=110 (50% retracement of AB)
+        # current=112 (between C and B)
+        result = select_fibonacci_strategy(
+            pivot_a=100.0,
+            pivot_b=120.0,
+            pivot_c=110.0,
+            current_price=112.0,
+            direction="long",
+        )
+
+        assert result == "projection"
+
+    def test_projection_with_valid_abc_retracement_short(self) -> None:
+        """Valid ABC pattern with 50% retracement = projection for short."""
+        from trader.workflow import select_fibonacci_strategy
+
+        # Short: A=120, B=100, C=110 (50% retracement of AB)
+        # current=108 (between C and B)
+        result = select_fibonacci_strategy(
+            pivot_a=120.0,
+            pivot_b=100.0,
+            pivot_c=110.0,
+            current_price=108.0,
+            direction="short",
+        )
+
+        assert result == "projection"
+
+    def test_expansion_when_no_other_conditions_met_long(self) -> None:
+        """Expansion when between C and B without valid projection criteria."""
+        from trader.workflow import select_fibonacci_strategy
+
+        # Long: A=100, B=120, C=118 (only 10% retracement - not valid projection)
+        # current=119 (between C and B)
+        result = select_fibonacci_strategy(
+            pivot_a=100.0,
+            pivot_b=120.0,
+            pivot_c=118.0,
+            current_price=119.0,
+            direction="long",
+        )
+
+        assert result == "expansion"
+
+    def test_expansion_when_no_other_conditions_met_short(self) -> None:
+        """Expansion when between C and B without valid projection criteria."""
+        from trader.workflow import select_fibonacci_strategy
+
+        # Short: A=120, B=100, C=102 (only 10% retracement - not valid projection)
+        # current=101 (between C and B)
+        result = select_fibonacci_strategy(
+            pivot_a=120.0,
+            pivot_b=100.0,
+            pivot_c=102.0,
+            current_price=101.0,
+            direction="short",
+        )
+
+        assert result == "expansion"
+
+
+class TestLevelsResultWithStrategy:
+    """Tests for enhanced LevelsResult with strategy fields."""
+
+    def test_levels_result_includes_selected_strategy(self) -> None:
+        """LevelsResult should have selected_strategy field."""
+        from trader.workflow import LevelsResult, LevelZone
+
+        result = LevelsResult(
+            entry_zones=[],
+            target_zones=[],
+            selected_strategy="projection",
+        )
+
+        assert result.selected_strategy == "projection"
+
+    def test_levels_result_includes_abc_pivots(self) -> None:
+        """LevelsResult should have abc_pivots field."""
+        from trader.workflow import LevelsResult, LevelZone
+
+        result = LevelsResult(
+            entry_zones=[],
+            target_zones=[],
+            abc_pivots={"a": 100.0, "b": 120.0, "c": 108.0},
+        )
+
+        assert result.abc_pivots is not None
+        assert result.abc_pivots["a"] == 100.0
+        assert result.abc_pivots["b"] == 120.0
+        assert result.abc_pivots["c"] == 108.0
+
+    def test_levels_result_includes_strategy_reason(self) -> None:
+        """LevelsResult should have strategy_reason field."""
+        from trader.workflow import LevelsResult, LevelZone
+
+        result = LevelsResult(
+            entry_zones=[],
+            target_zones=[],
+            strategy_reason="Price below C, pulling back in trend",
+        )
+
+        assert result.strategy_reason == "Price below C, pulling back in trend"
+
+    def test_levels_result_optional_fields_default_none(self) -> None:
+        """New optional fields should default to None."""
+        from trader.workflow import LevelsResult, LevelZone
+
+        result = LevelsResult(
+            entry_zones=[],
+            target_zones=[],
+        )
+
+        assert result.selected_strategy is None
+        assert result.abc_pivots is None
+        assert result.strategy_reason is None
