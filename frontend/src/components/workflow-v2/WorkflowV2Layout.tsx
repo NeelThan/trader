@@ -365,15 +365,16 @@ export function WorkflowV2Layout({
     editablePivots,
   });
 
-  // Trend lines - HH and LL separate lines
+  // Trend lines - HH and LL separate lines (independent of swing markers toggle)
   const {
     trendLines,
     overlays: trendLineOverlays,
     isLoading: isLoadingTrendLines,
+    error: trendLinesError,
   } = useTrendLines({
     data: marketData,
     lookback: swingSettings.settings.lookback,
-    enabled: showTrendLines && showSwingMarkers && swingSettings.enabled,
+    enabled: showTrendLines && marketData.length >= swingSettings.settings.lookback * 2 + 1,
     projectBars: 20,
   });
 
@@ -465,24 +466,27 @@ export function WorkflowV2Layout({
     return allLevels.filter((level) => isLevelVisible(level, visibilityConfig));
   }, [allLevels, visibilityConfig, showFibLevels, showTradeView, opportunity]);
 
-  // Prepare Fibonacci levels for reversal time estimation
+  // Prepare Fibonacci levels for reversal time estimation (use ALL levels, not just visible)
   const fibLevelsForTimeEstimate = useMemo(() => {
-    return visibleLevels.map((level) => ({
+    // Use allLevels so time estimation works even when Fib display is off
+    const levels = allLevels.length > 0 ? allLevels : visibleLevels;
+    return levels.map((level) => ({
       label: `${level.timeframe} ${level.label}`,
       price: level.price,
     }));
-  }, [visibleLevels]);
+  }, [allLevels, visibleLevels]);
 
   // Reversal time estimation
   const {
     velocity,
     estimates: timeEstimates,
     isLoading: isLoadingReversalTime,
+    error: reversalTimeError,
   } = useReversalTime({
     data: marketData,
     fibLevels: fibLevelsForTimeEstimate,
     timeframe,
-    enabled: showReversalTime && fibLevelsForTimeEstimate.length > 0,
+    enabled: showReversalTime,
   });
 
   // Convert levels to price lines (simplified labels for less clutter)
@@ -1171,28 +1175,44 @@ export function WorkflowV2Layout({
                   <button
                     onClick={() => dispatch(layoutActions.togglePanel("trendLines"))}
                     className={cn(
-                      "px-2 py-1 text-xs rounded transition-colors",
+                      "px-2 py-1 text-xs rounded transition-colors flex items-center gap-1",
                       showTrendLines
                         ? "bg-green-500/20 text-green-400"
                         : "text-muted-foreground hover:bg-muted"
                     )}
-                    title="Toggle HH/LL trend lines"
+                    title={trendLinesError ? `Error: ${trendLinesError}` : "Toggle HH/LL trend lines"}
                   >
                     Trend
+                    {showTrendLines && trendLines && (
+                      <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                        {(trendLines.upper_line ? 1 : 0) + (trendLines.lower_line ? 1 : 0)}
+                      </Badge>
+                    )}
+                    {showTrendLines && isLoadingTrendLines && (
+                      <span className="h-2 w-2 rounded-full bg-yellow-400 animate-pulse" />
+                    )}
                   </button>
 
                   {/* Reversal Time toggle - time to reach levels */}
                   <button
                     onClick={() => dispatch(layoutActions.togglePanel("reversalTime"))}
                     className={cn(
-                      "px-2 py-1 text-xs rounded transition-colors",
+                      "px-2 py-1 text-xs rounded transition-colors flex items-center gap-1",
                       showReversalTime
                         ? "bg-blue-500/20 text-blue-400"
                         : "text-muted-foreground hover:bg-muted"
                     )}
-                    title="Show estimated time to reach levels"
+                    title={reversalTimeError ? `Error: ${reversalTimeError}` : "Show estimated time to reach levels"}
                   >
                     Time
+                    {showReversalTime && velocity && (
+                      <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                        {velocity.direction === "up" ? "↑" : velocity.direction === "down" ? "↓" : "→"}
+                      </Badge>
+                    )}
+                    {showReversalTime && isLoadingReversalTime && (
+                      <span className="h-2 w-2 rounded-full bg-yellow-400 animate-pulse" />
+                    )}
                   </button>
 
                   {/* Status badges */}
@@ -1360,11 +1380,18 @@ export function WorkflowV2Layout({
                   <CardHeader className="py-2 px-3">
                     <CardTitle className="text-sm flex items-center justify-between">
                       <span>Reversal Time</span>
-                      {isLoadingReversalTime && (
-                        <Badge variant="secondary" className="text-[10px]">
-                          Loading...
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {fibLevelsForTimeEstimate.length > 0 && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {fibLevelsForTimeEstimate.length} levels
+                          </Badge>
+                        )}
+                        {isLoadingReversalTime && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            Loading...
+                          </Badge>
+                        )}
+                      </div>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="px-3 pb-3 pt-0">
@@ -1373,6 +1400,7 @@ export function WorkflowV2Layout({
                       estimates={timeEstimates}
                       currentPrice={marketData.length > 0 ? marketData[marketData.length - 1].close : 0}
                       isLoading={isLoadingReversalTime}
+                      error={reversalTimeError}
                     />
                   </CardContent>
                 </Card>
