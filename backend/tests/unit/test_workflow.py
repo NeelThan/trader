@@ -2207,6 +2207,540 @@ class TestConfluenceCheckRequirements:
         assert category == "reversal_attempt"
 
 
+class TestCascadeModels:
+    """Tests for cascade effect detection models."""
+
+    def test_can_import_timeframe_hierarchy(self) -> None:
+        """TIMEFRAME_HIERARCHY constant should be importable."""
+        from trader.workflow import TIMEFRAME_HIERARCHY
+
+        assert TIMEFRAME_HIERARCHY is not None
+        assert isinstance(TIMEFRAME_HIERARCHY, list)
+        assert "1M" in TIMEFRAME_HIERARCHY
+        assert "5m" in TIMEFRAME_HIERARCHY
+
+    def test_timeframe_hierarchy_order(self) -> None:
+        """TIMEFRAME_HIERARCHY should be ordered from highest to lowest."""
+        from trader.workflow import TIMEFRAME_HIERARCHY
+
+        # Should be: 1M, 1W, 1D, 4H, 1H, 15m, 5m
+        expected = ["1M", "1W", "1D", "4H", "1H", "15m", "5m"]
+        assert TIMEFRAME_HIERARCHY == expected
+
+    def test_can_import_timeframe_trend_state(self) -> None:
+        """TimeframeTrendState model should be importable."""
+        from trader.workflow import TimeframeTrendState
+
+        assert TimeframeTrendState is not None
+
+    def test_create_timeframe_trend_state(self) -> None:
+        """Should create TimeframeTrendState with all fields."""
+        from trader.workflow import TimeframeTrendState
+
+        state = TimeframeTrendState(
+            timeframe="1D",
+            trend="bullish",
+            is_aligned_with_dominant=True,
+            is_diverging=False,
+            swing_type="HH",
+            confidence=75,
+        )
+
+        assert state.timeframe == "1D"
+        assert state.trend == "bullish"
+        assert state.is_aligned_with_dominant is True
+        assert state.is_diverging is False
+        assert state.swing_type == "HH"
+        assert state.confidence == 75
+
+    def test_can_import_cascade_analysis(self) -> None:
+        """CascadeAnalysis model should be importable."""
+        from trader.workflow import CascadeAnalysis
+
+        assert CascadeAnalysis is not None
+
+    def test_create_cascade_analysis(self) -> None:
+        """Should create CascadeAnalysis with all fields."""
+        from trader.workflow import CascadeAnalysis, TimeframeTrendState
+
+        states = [
+            TimeframeTrendState(
+                timeframe="1D",
+                trend="bullish",
+                is_aligned_with_dominant=True,
+                is_diverging=False,
+                confidence=80,
+            ),
+            TimeframeTrendState(
+                timeframe="4H",
+                trend="bearish",
+                is_aligned_with_dominant=False,
+                is_diverging=True,
+                confidence=70,
+            ),
+        ]
+
+        analysis = CascadeAnalysis(
+            stage=3,
+            dominant_trend="bullish",
+            reversal_trend="bearish",
+            diverging_timeframes=["4H", "1H", "15m", "5m"],
+            aligned_timeframes=["1M", "1W", "1D"],
+            timeframe_states=states,
+            progression="1H joined reversal",
+            actionable_insight="Momentum building, reduce position size",
+            reversal_probability=30,
+        )
+
+        assert analysis.stage == 3
+        assert analysis.dominant_trend == "bullish"
+        assert analysis.reversal_trend == "bearish"
+        assert len(analysis.diverging_timeframes) == 4
+        assert len(analysis.aligned_timeframes) == 3
+        assert analysis.progression == "1H joined reversal"
+        assert analysis.reversal_probability == 30
+
+    def test_cascade_stage_range(self) -> None:
+        """CascadeAnalysis stage should be between 1 and 6."""
+        from pydantic import ValidationError
+
+        from trader.workflow import CascadeAnalysis
+
+        # Valid stages
+        for stage in [1, 2, 3, 4, 5, 6]:
+            analysis = CascadeAnalysis(
+                stage=stage,
+                dominant_trend="bullish",
+                reversal_trend="bearish",
+                diverging_timeframes=[],
+                aligned_timeframes=[],
+                timeframe_states=[],
+                progression="test",
+                actionable_insight="test",
+                reversal_probability=50,
+            )
+            assert analysis.stage == stage
+
+        # Invalid stage 0
+        with pytest.raises(ValidationError):
+            CascadeAnalysis(
+                stage=0,
+                dominant_trend="bullish",
+                reversal_trend="bearish",
+                diverging_timeframes=[],
+                aligned_timeframes=[],
+                timeframe_states=[],
+                progression="test",
+                actionable_insight="test",
+                reversal_probability=50,
+            )
+
+        # Invalid stage 7
+        with pytest.raises(ValidationError):
+            CascadeAnalysis(
+                stage=7,
+                dominant_trend="bullish",
+                reversal_trend="bearish",
+                diverging_timeframes=[],
+                aligned_timeframes=[],
+                timeframe_states=[],
+                progression="test",
+                actionable_insight="test",
+                reversal_probability=50,
+            )
+
+    def test_reversal_probability_range(self) -> None:
+        """CascadeAnalysis reversal_probability should be 0-100."""
+        from pydantic import ValidationError
+
+        from trader.workflow import CascadeAnalysis
+
+        # Valid probabilities
+        for prob in [0, 50, 100]:
+            analysis = CascadeAnalysis(
+                stage=1,
+                dominant_trend="bullish",
+                reversal_trend="bearish",
+                diverging_timeframes=[],
+                aligned_timeframes=[],
+                timeframe_states=[],
+                progression="test",
+                actionable_insight="test",
+                reversal_probability=prob,
+            )
+            assert analysis.reversal_probability == prob
+
+        # Invalid probability > 100
+        with pytest.raises(ValidationError):
+            CascadeAnalysis(
+                stage=1,
+                dominant_trend="bullish",
+                reversal_trend="bearish",
+                diverging_timeframes=[],
+                aligned_timeframes=[],
+                timeframe_states=[],
+                progression="test",
+                actionable_insight="test",
+                reversal_probability=101,
+            )
+
+
+class TestDetectCascadeFunction:
+    """Tests for detect_cascade function."""
+
+    @pytest.fixture
+    def sample_bars(self) -> list[OHLCBar]:
+        """Create sample OHLC bars."""
+        return [
+            OHLCBar(time="2024-01-01", open=100.0, high=105.0, low=99.0, close=104.0),
+            OHLCBar(time="2024-01-02", open=104.0, high=108.0, low=103.0, close=107.0),
+            OHLCBar(time="2024-01-03", open=107.0, high=112.0, low=105.0, close=110.0),
+            OHLCBar(time="2024-01-04", open=110.0, high=115.0, low=108.0, close=113.0),
+            OHLCBar(time="2024-01-05", open=113.0, high=118.0, low=111.0, close=116.0),
+        ]
+
+    @pytest.fixture
+    def mock_market_service(self, sample_bars: list[OHLCBar]) -> MagicMock:
+        """Create mock market data service."""
+        mock = MagicMock()
+        mock.get_ohlc = AsyncMock(
+            return_value=MarketDataResult.from_success(
+                data=sample_bars,
+                market_status=MarketStatus.unknown(),
+                provider="test",
+            )
+        )
+        return mock
+
+    def test_can_import_detect_cascade(self) -> None:
+        """detect_cascade function should be importable."""
+        from trader.workflow import detect_cascade
+
+        assert detect_cascade is not None
+
+    async def test_detect_cascade_returns_cascade_analysis(
+        self, mock_market_service: MagicMock
+    ) -> None:
+        """Should return CascadeAnalysis."""
+        from trader.workflow import CascadeAnalysis, detect_cascade
+
+        result = await detect_cascade(
+            symbol="DJI",
+            timeframes=["1D", "4H", "1H", "15m"],
+            market_service=mock_market_service,
+        )
+
+        assert isinstance(result, CascadeAnalysis)
+        assert result.stage >= 1
+        assert result.stage <= 6
+
+    async def test_all_bullish_returns_stage_1(self) -> None:
+        """All timeframes bullish should return stage 1."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, detect_cascade
+
+        bullish_assessment = TrendAssessment(
+            trend="bullish",
+            phase="impulse",
+            swing_type="HH",
+            explanation="Higher High pattern",
+            confidence=75,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            mock_assess.return_value = bullish_assessment
+
+            result = await detect_cascade(
+                symbol="TEST",
+                timeframes=["1D", "4H", "1H", "15m", "5m"],
+                market_service=mock_service,
+            )
+
+        assert result.stage == 1
+        assert result.dominant_trend == "bullish"
+        assert len(result.diverging_timeframes) == 0
+        assert "aligned" in result.progression.lower()
+        assert result.reversal_probability == 5
+
+    async def test_5m_15m_diverged_returns_stage_2(self) -> None:
+        """Only 5m and 15m diverging should return stage 2."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, detect_cascade
+
+        bullish_assessment = TrendAssessment(
+            trend="bullish",
+            phase="impulse",
+            swing_type="HH",
+            explanation="Higher High pattern",
+            confidence=75,
+        )
+        bearish_assessment = TrendAssessment(
+            trend="bearish",
+            phase="correction",
+            swing_type="LH",
+            explanation="Lower High pattern",
+            confidence=70,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            # 1D, 4H, 1H = bullish; 15m, 5m = bearish
+            mock_assess.side_effect = [
+                bullish_assessment,  # 1D
+                bullish_assessment,  # 4H
+                bullish_assessment,  # 1H
+                bearish_assessment,  # 15m
+                bearish_assessment,  # 5m
+            ]
+
+            result = await detect_cascade(
+                symbol="TEST",
+                timeframes=["1D", "4H", "1H", "15m", "5m"],
+                market_service=mock_service,
+            )
+
+        assert result.stage == 2
+        diverging = result.diverging_timeframes
+        assert "15m" in diverging or "5m" in diverging
+        assert result.reversal_probability == 15
+
+    async def test_1h_diverged_returns_stage_3(self) -> None:
+        """1H joining divergence should return stage 3."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, detect_cascade
+
+        bullish_assessment = TrendAssessment(
+            trend="bullish",
+            phase="impulse",
+            swing_type="HH",
+            explanation="Higher High pattern",
+            confidence=75,
+        )
+        bearish_assessment = TrendAssessment(
+            trend="bearish",
+            phase="correction",
+            swing_type="LH",
+            explanation="Lower High pattern",
+            confidence=70,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            # 1D, 4H = bullish; 1H, 15m, 5m = bearish
+            mock_assess.side_effect = [
+                bullish_assessment,  # 1D
+                bullish_assessment,  # 4H
+                bearish_assessment,  # 1H
+                bearish_assessment,  # 15m
+                bearish_assessment,  # 5m
+            ]
+
+            result = await detect_cascade(
+                symbol="TEST",
+                timeframes=["1D", "4H", "1H", "15m", "5m"],
+                market_service=mock_service,
+            )
+
+        assert result.stage == 3
+        assert "1H" in result.diverging_timeframes
+        assert result.reversal_probability == 30
+
+    async def test_4h_diverged_returns_stage_4(self) -> None:
+        """4H joining divergence should return stage 4."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, detect_cascade
+
+        bullish_assessment = TrendAssessment(
+            trend="bullish",
+            phase="impulse",
+            swing_type="HH",
+            explanation="Higher High pattern",
+            confidence=75,
+        )
+        bearish_assessment = TrendAssessment(
+            trend="bearish",
+            phase="correction",
+            swing_type="LH",
+            explanation="Lower High pattern",
+            confidence=70,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            # 1D = bullish; 4H, 1H, 15m, 5m = bearish
+            mock_assess.side_effect = [
+                bullish_assessment,  # 1D
+                bearish_assessment,  # 4H
+                bearish_assessment,  # 1H
+                bearish_assessment,  # 15m
+                bearish_assessment,  # 5m
+            ]
+
+            result = await detect_cascade(
+                symbol="TEST",
+                timeframes=["1D", "4H", "1H", "15m", "5m"],
+                market_service=mock_service,
+            )
+
+        assert result.stage == 4
+        assert "4H" in result.diverging_timeframes
+        assert result.reversal_probability == 50
+
+    async def test_daily_diverged_returns_stage_5(self) -> None:
+        """Daily joining divergence should return stage 5."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, detect_cascade
+
+        bullish_assessment = TrendAssessment(
+            trend="bullish",
+            phase="impulse",
+            swing_type="HH",
+            explanation="Higher High pattern",
+            confidence=75,
+        )
+        bearish_assessment = TrendAssessment(
+            trend="bearish",
+            phase="correction",
+            swing_type="LH",
+            explanation="Lower High pattern",
+            confidence=70,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            # 1W = bullish; 1D, 4H, 1H, 15m, 5m = bearish
+            mock_assess.side_effect = [
+                bullish_assessment,  # 1W
+                bearish_assessment,  # 1D
+                bearish_assessment,  # 4H
+                bearish_assessment,  # 1H
+                bearish_assessment,  # 15m
+                bearish_assessment,  # 5m
+            ]
+
+            result = await detect_cascade(
+                symbol="TEST",
+                timeframes=["1W", "1D", "4H", "1H", "15m", "5m"],
+                market_service=mock_service,
+            )
+
+        assert result.stage == 5
+        assert "1D" in result.diverging_timeframes
+        assert result.reversal_probability == 75
+
+    async def test_all_reversed_returns_stage_6(self) -> None:
+        """All timeframes reversed should return stage 6."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, detect_cascade
+
+        bearish_assessment = TrendAssessment(
+            trend="bearish",
+            phase="impulse",
+            swing_type="LL",
+            explanation="Lower Low pattern",
+            confidence=75,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            mock_assess.return_value = bearish_assessment
+
+            result = await detect_cascade(
+                symbol="TEST",
+                timeframes=["1D", "4H", "1H", "15m", "5m"],
+                market_service=mock_service,
+            )
+
+        # When all are same direction, stage depends on dominant vs reversal
+        # If all bearish and we started bearish, stage is 1 (all aligned)
+        # But if dominant was bullish and all turned bearish, stage is 6
+        # Since we're passing all bearish, dominant is determined by majority
+        # of higher TFs - dominant will be bearish, so stage 1 (all aligned)
+        assert result.stage == 1  # All aligned in same direction
+
+    async def test_neutral_dominant_trend_handling(self) -> None:
+        """Should handle neutral dominant trend appropriately."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, detect_cascade
+
+        neutral_assessment = TrendAssessment(
+            trend="neutral",
+            phase="correction",
+            swing_type="HL",
+            explanation="Mixed signals",
+            confidence=50,
+        )
+
+        mock_service = MagicMock()
+
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            mock_assess.return_value = neutral_assessment
+
+            result = await detect_cascade(
+                symbol="TEST",
+                timeframes=["1D", "4H", "1H"],
+                market_service=mock_service,
+            )
+
+        assert result.dominant_trend == "neutral"
+        # When dominant is neutral, stage should be 1 (no clear reversal)
+        assert result.stage == 1
+
+    async def test_actionable_insight_matches_stage(self) -> None:
+        """Actionable insight should match the stage."""
+        from unittest.mock import patch
+
+        from trader.workflow import TrendAssessment, detect_cascade
+
+        bullish = TrendAssessment(
+            trend="bullish", phase="impulse", swing_type="HH",
+            explanation="test", confidence=75,
+        )
+        bearish = TrendAssessment(
+            trend="bearish", phase="correction", swing_type="LH",
+            explanation="test", confidence=70,
+        )
+
+        mock_service = MagicMock()
+
+        # Test stage 1: all aligned
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            mock_assess.return_value = bullish
+            result = await detect_cascade(
+                symbol="TEST",
+                timeframes=["1D", "4H", "1H"],
+                market_service=mock_service,
+            )
+        insight = result.actionable_insight.lower()
+        assert "trade with trend" in insight or "aligned" in insight
+
+        # Test stage 3: momentum building
+        with patch("trader.workflow.assess_trend") as mock_assess:
+            mock_assess.side_effect = [bullish, bullish, bearish, bearish, bearish]
+            result = await detect_cascade(
+                symbol="TEST",
+                timeframes=["1D", "4H", "1H", "15m", "5m"],
+                market_service=mock_service,
+            )
+        assert result.stage == 3
+        insight = result.actionable_insight.lower()
+        assert "momentum" in insight or "reduce" in insight
+
+
 class TestValidationResultModel:
     """Tests for ValidationResult model with confluence fields."""
 

@@ -54,6 +54,7 @@ from trader.workflow import (
     categorize_trade,
     check_timeframe_alignment,
     confirm_with_indicators,
+    detect_cascade,
     identify_fibonacci_levels,
     scan_opportunities,
     validate_trade,
@@ -1434,6 +1435,31 @@ class ValidationResultData(BaseModel):
     trade_category: str | None = None
 
 
+class TimeframeTrendStateData(BaseModel):
+    """Timeframe trend state data in response."""
+
+    timeframe: str
+    trend: str
+    is_aligned_with_dominant: bool
+    is_diverging: bool
+    swing_type: str | None = None
+    confidence: int
+
+
+class CascadeAnalysisData(BaseModel):
+    """Cascade analysis data in response."""
+
+    stage: int
+    dominant_trend: str
+    reversal_trend: str
+    diverging_timeframes: list[str]
+    aligned_timeframes: list[str]
+    timeframe_states: list[TimeframeTrendStateData]
+    progression: str
+    actionable_insight: str
+    reversal_probability: int
+
+
 @app.post("/workflow/validate", response_model=ValidationResultData)
 async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultData:
     """Validate a trade opportunity with 7 checks.
@@ -1505,4 +1531,61 @@ async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultDa
         confluence_score=result.confluence_score,
         confluence_breakdown=confluence_breakdown_response,
         trade_category=result.trade_category,
+    )
+
+
+@app.get("/workflow/cascade", response_model=CascadeAnalysisData)
+async def workflow_cascade(
+    symbol: str,
+    timeframes: str = "1M,1W,1D,4H,1H,15m,5m",
+) -> CascadeAnalysisData:
+    """Detect cascade effect for early reversal identification.
+
+    A trend reversal "bubbles up" from smaller to larger timeframes:
+    - Stage 1: All TFs aligned (no reversal)
+    - Stage 2: 5m/15m diverged (minor pullback)
+    - Stage 3: 1H joined reversal (momentum building)
+    - Stage 4: 4H joined reversal (significant move)
+    - Stage 5: Daily turning (major reversal signal)
+    - Stage 6: Weekly/Monthly turned (reversal confirmed)
+
+    Trading Value: Bi-directional traders can catch reversals at Stage 2-3,
+    rather than waiting until Stage 6 when the move is nearly complete.
+
+    Args:
+        symbol: Market symbol to analyze (e.g., "DJI", "SPX").
+        timeframes: Comma-separated list of timeframes to analyze.
+                   Defaults to "1M,1W,1D,4H,1H,15m,5m".
+
+    Returns:
+        CascadeAnalysisData with stage, trends, and actionable insights.
+    """
+    timeframe_list = [tf.strip() for tf in timeframes.split(",")]
+
+    result = await detect_cascade(
+        symbol=symbol,
+        timeframes=timeframe_list,
+        market_service=_market_data_service,
+    )
+
+    return CascadeAnalysisData(
+        stage=result.stage,
+        dominant_trend=result.dominant_trend,
+        reversal_trend=result.reversal_trend,
+        diverging_timeframes=result.diverging_timeframes,
+        aligned_timeframes=result.aligned_timeframes,
+        timeframe_states=[
+            TimeframeTrendStateData(
+                timeframe=state.timeframe,
+                trend=state.trend,
+                is_aligned_with_dominant=state.is_aligned_with_dominant,
+                is_diverging=state.is_diverging,
+                swing_type=state.swing_type,
+                confidence=state.confidence,
+            )
+            for state in result.timeframe_states
+        ],
+        progression=result.progression,
+        actionable_insight=result.actionable_insight,
+        reversal_probability=result.reversal_probability,
     )

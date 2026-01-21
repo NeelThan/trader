@@ -43,6 +43,9 @@ TradeCategory = Literal["with_trend", "counter_trend", "reversal_attempt"]
 ConfluenceInterpretation = Literal["standard", "important", "significant", "major"]
 FibStrategy = Literal["retracement", "extension", "projection", "expansion"]
 
+# --- Cascade Effect Constants ---
+TIMEFRAME_HIERARCHY = ["1M", "1W", "1D", "4H", "1H", "15m", "5m"]
+
 
 class LevelWithStrategy(BaseModel):
     """A Fibonacci level with its strategy type for cross-tool confluence detection."""
@@ -317,6 +320,63 @@ class OpportunityScanResult(BaseModel):
     symbols_scanned: list[str]
     opportunities: list[TradeOpportunity]
     scan_time_ms: int = Field(ge=0)
+
+
+# --- Cascade Effect Models ---
+
+
+class TimeframeTrendState(BaseModel):
+    """Trend state for a single timeframe with cascade context.
+
+    Attributes:
+        timeframe: Timeframe code (e.g., "1D", "4H").
+        trend: Trend direction for this timeframe.
+        is_aligned_with_dominant: True if aligned with dominant higher TF trend.
+        is_diverging: True if this TF has diverged from dominant trend.
+        swing_type: Latest swing type detected (HH/HL/LH/LL).
+        confidence: Confidence level 0-100.
+    """
+
+    timeframe: str
+    trend: TrendDirection
+    is_aligned_with_dominant: bool
+    is_diverging: bool
+    swing_type: SwingType | None = None
+    confidence: int = Field(ge=0, le=100)
+
+
+class CascadeAnalysis(BaseModel):
+    """Complete cascade effect analysis result.
+
+    Cascade stages represent how a trend reversal "bubbles up":
+    - Stage 1: All TFs aligned (no reversal)
+    - Stage 2: 5m/15m diverged (minor pullback)
+    - Stage 3: 1H joined reversal (momentum building)
+    - Stage 4: 4H joined reversal (significant move)
+    - Stage 5: Daily turning (major reversal signal)
+    - Stage 6: Weekly/Monthly turned (reversal confirmed)
+
+    Attributes:
+        stage: Cascade stage 1-6.
+        dominant_trend: Overall trend from highest TFs.
+        reversal_trend: Opposite of dominant trend.
+        diverging_timeframes: TFs that have diverged from dominant.
+        aligned_timeframes: TFs still aligned with dominant.
+        timeframe_states: Detailed state for each TF analyzed.
+        progression: Human-readable cascade progression description.
+        actionable_insight: Trading recommendation based on stage.
+        reversal_probability: Estimated reversal probability 0-100.
+    """
+
+    stage: int = Field(ge=1, le=6)
+    dominant_trend: TrendDirection
+    reversal_trend: TrendDirection
+    diverging_timeframes: list[str]
+    aligned_timeframes: list[str]
+    timeframe_states: list[TimeframeTrendState]
+    progression: str
+    actionable_insight: str
+    reversal_probability: int = Field(ge=0, le=100)
 
 
 # --- Helper Functions (Private) ---
@@ -1657,3 +1717,248 @@ def _get_macd_explanation(
     if macd_signal == "bearish":
         return f"MACD bearish confirms {direction} momentum"
     return f"MACD {macd_signal} - momentum not confirmed"
+
+
+# --- Cascade Effect Functions ---
+
+
+def _get_opposite_trend(trend: TrendDirection) -> TrendDirection:
+    """Get the opposite trend direction."""
+    if trend == "bullish":
+        return "bearish"
+    if trend == "bearish":
+        return "bullish"
+    return "neutral"
+
+
+def _determine_dominant_trend(
+    trend_assessments: list[tuple[str, TrendDirection]],
+) -> TrendDirection:
+    """Determine dominant trend from highest timeframe assessments.
+
+    The dominant trend is determined by the HIGHEST timeframes in the analysis.
+    For cascade detection, we consider only the major timeframes (1M, 1W, 1D)
+    if present, using majority vote among them. If none of these are present,
+    we use the single highest timeframe's trend.
+
+    This ensures the "established" trend from higher timeframes is captured,
+    allowing cascade detection to identify when lower timeframes diverge.
+    """
+    if not trend_assessments:
+        return "neutral"
+
+    # Sort by TIMEFRAME_HIERARCHY order (highest first)
+    def tf_order(item: tuple[str, TrendDirection]) -> int:
+        tf = item[0]
+        return TIMEFRAME_HIERARCHY.index(tf) if tf in TIMEFRAME_HIERARCHY else 999
+
+    sorted_assessments = sorted(trend_assessments, key=tf_order)
+
+    # Check for major timeframes (1M, 1W, 1D)
+    major_tfs = ["1M", "1W", "1D"]
+    major_assessments = [
+        (tf, trend) for tf, trend in sorted_assessments if tf in major_tfs
+    ]
+
+    if major_assessments:
+        # Use majority vote among major timeframes
+        bullish_count = sum(1 for _, trend in major_assessments if trend == "bullish")
+        bearish_count = sum(1 for _, trend in major_assessments if trend == "bearish")
+
+        if bullish_count > bearish_count:
+            return "bullish"
+        if bearish_count > bullish_count:
+            return "bearish"
+        # Tie - use the highest major TF trend
+        return major_assessments[0][1]
+
+    # No major TFs - use the single highest TF's trend
+    return sorted_assessments[0][1] if sorted_assessments else "neutral"
+
+
+def _calculate_cascade_stage(
+    diverging_tfs: list[str],
+    all_tfs: list[str],
+    dominant_trend: TrendDirection,
+) -> int:
+    """Calculate cascade stage based on diverging timeframes.
+
+    Stage logic based on which timeframes have diverged:
+    - Stage 1: No diverging TFs (all aligned)
+    - Stage 2: Only 5m/15m diverged
+    - Stage 3: 1H joined the divergence
+    - Stage 4: 4H joined the divergence
+    - Stage 5: 1D joined the divergence
+    - Stage 6: 1W/1M joined (full reversal)
+    """
+    if not diverging_tfs or dominant_trend == "neutral":
+        return 1
+
+    # Check which significant TFs have diverged
+    has_5m = "5m" in diverging_tfs
+    has_15m = "15m" in diverging_tfs
+    has_1h = "1H" in diverging_tfs
+    has_4h = "4H" in diverging_tfs
+    has_1d = "1D" in diverging_tfs
+    has_1w = "1W" in diverging_tfs
+    has_1m = "1M" in diverging_tfs
+
+    # Stage 6: Weekly or Monthly diverged
+    if has_1w or has_1m:
+        return 6
+
+    # Stage 5: Daily diverged (and weekly/monthly not in analysis or still aligned)
+    if has_1d:
+        return 5
+
+    # Stage 4: 4H diverged
+    if has_4h:
+        return 4
+
+    # Stage 3: 1H diverged
+    if has_1h:
+        return 3
+
+    # Stage 2: Only 5m/15m diverged
+    if has_5m or has_15m:
+        return 2
+
+    # Stage 1: All aligned
+    return 1
+
+
+def _get_cascade_progression(stage: int, dominant_trend: TrendDirection) -> str:
+    """Get human-readable progression description for cascade stage."""
+    reversal = _get_opposite_trend(dominant_trend)
+
+    progressions = {
+        1: f"All TFs aligned {dominant_trend}",
+        2: f"5m/15m turned {reversal}",
+        3: f"1H joined reversal to {reversal}",
+        4: f"4H joined reversal to {reversal}",
+        5: f"Daily turning {reversal}",
+        6: f"All TFs reversed to {reversal}",
+    }
+
+    return progressions.get(stage, f"Stage {stage}")
+
+
+def _get_cascade_insight(stage: int, reversal_trend: TrendDirection) -> str:
+    """Get actionable trading insight for cascade stage."""
+    insights = {
+        1: "Strong trend, trade with trend",
+        2: "Minor pullback, watch for continuation",
+        3: "Momentum building, reduce position size",
+        4: "Significant move, prepare for trend change",
+        5: "Major reversal signal, exit trend trades",
+        6: f"New {reversal_trend} trend confirmed",
+    }
+
+    return insights.get(stage, "Monitor for confirmation")
+
+
+def _get_reversal_probability(stage: int) -> int:
+    """Get estimated reversal probability for cascade stage."""
+    probabilities = {
+        1: 5,
+        2: 15,
+        3: 30,
+        4: 50,
+        5: 75,
+        6: 95,
+    }
+
+    return probabilities.get(stage, 50)
+
+
+async def detect_cascade(
+    symbol: str,
+    timeframes: list[str],
+    market_service: MarketDataService,
+) -> CascadeAnalysis:
+    """Detect cascade effect across multiple timeframes.
+
+    A trend reversal propagates from smallest to largest timeframes:
+    - Stage 1: All aligned (e.g., all bullish)
+    - Stage 2: Smallest TFs turn (5m/15m diverge)
+    - Stage 3: 1H joins the reversal
+    - Stage 4: 4H joins
+    - Stage 5: Daily joins
+    - Stage 6: Weekly/Monthly turn (reversal confirmed)
+
+    Trading Value: Bi-directional traders can catch reversals at Stage 2-3.
+
+    Args:
+        symbol: Market symbol to analyze.
+        timeframes: List of timeframes to analyze (e.g., ["1D", "4H", "1H", "15m"]).
+        market_service: Service for fetching market data.
+
+    Returns:
+        CascadeAnalysis with stage, dominant trend, and actionable insights.
+    """
+    # Assess trend for each timeframe
+    trend_assessments: list[tuple[str, TrendDirection]] = []
+    timeframe_states: list[TimeframeTrendState] = []
+
+    for tf in timeframes:
+        assessment = await assess_trend(symbol, tf, market_service)
+        trend_assessments.append((tf, assessment.trend))
+
+        # Create state (alignment/divergence determined after dominant is known)
+        state = TimeframeTrendState(
+            timeframe=tf,
+            trend=assessment.trend,
+            is_aligned_with_dominant=False,  # Updated below
+            is_diverging=False,  # Updated below
+            swing_type=assessment.swing_type,
+            confidence=assessment.confidence,
+        )
+        timeframe_states.append(state)
+
+    # Determine dominant trend from highest TFs
+    dominant_trend = _determine_dominant_trend(trend_assessments)
+    reversal_trend = _get_opposite_trend(dominant_trend)
+
+    # Classify each TF as aligned or diverging
+    diverging_timeframes: list[str] = []
+    aligned_timeframes: list[str] = []
+
+    for state in timeframe_states:
+        if dominant_trend == "neutral":
+            # When dominant is neutral, nothing is truly diverging
+            state.is_aligned_with_dominant = True
+            state.is_diverging = False
+            aligned_timeframes.append(state.timeframe)
+        elif state.trend == dominant_trend:
+            state.is_aligned_with_dominant = True
+            state.is_diverging = False
+            aligned_timeframes.append(state.timeframe)
+        elif state.trend == reversal_trend:
+            state.is_aligned_with_dominant = False
+            state.is_diverging = True
+            diverging_timeframes.append(state.timeframe)
+        else:
+            # Neutral TF - treat as neither aligned nor diverging
+            state.is_aligned_with_dominant = False
+            state.is_diverging = False
+            aligned_timeframes.append(state.timeframe)
+
+    # Calculate cascade stage
+    stage = _calculate_cascade_stage(diverging_timeframes, timeframes, dominant_trend)
+
+    # Generate progression and insight
+    progression = _get_cascade_progression(stage, dominant_trend)
+    insight = _get_cascade_insight(stage, reversal_trend)
+    probability = _get_reversal_probability(stage)
+
+    return CascadeAnalysis(
+        stage=stage,
+        dominant_trend=dominant_trend,
+        reversal_trend=reversal_trend,
+        diverging_timeframes=diverging_timeframes,
+        aligned_timeframes=aligned_timeframes,
+        timeframe_states=timeframe_states,
+        progression=progression,
+        actionable_insight=insight,
+        reversal_probability=probability,
+    )
