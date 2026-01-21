@@ -466,15 +466,56 @@ export function WorkflowV2Layout({
     return allLevels.filter((level) => isLevelVisible(level, visibilityConfig));
   }, [allLevels, visibilityConfig, showFibLevels, showTradeView, opportunity]);
 
-  // Prepare Fibonacci levels for reversal time estimation (use ALL levels, not just visible)
+  // Prepare Fibonacci levels for reversal time estimation
+  // Falls back to generating basic levels from swing high/low if no multi-TF levels available
   const fibLevelsForTimeEstimate = useMemo(() => {
-    // Use allLevels so time estimation works even when Fib display is off
-    const levels = allLevels.length > 0 ? allLevels : visibleLevels;
-    return levels.map((level) => ({
-      label: `${level.timeframe} ${level.label}`,
-      price: level.price,
-    }));
-  }, [allLevels, visibleLevels]);
+    // Use multi-TF levels if available
+    if (allLevels.length > 0) {
+      return allLevels.map((level) => ({
+        label: `${level.timeframe} ${level.label}`,
+        price: level.price,
+      }));
+    }
+
+    // Fallback: generate basic Fib levels from current chart's swing pivots
+    if (swingResult?.pivots && swingResult.pivots.length >= 2) {
+      const highPivots = swingResult.pivots.filter((p) => p.type === "high");
+      const lowPivots = swingResult.pivots.filter((p) => p.type === "low");
+
+      if (highPivots.length > 0 && lowPivots.length > 0) {
+        const high = Math.max(...highPivots.map((p) => p.price));
+        const low = Math.min(...lowPivots.map((p) => p.price));
+        const range = high - low;
+
+        if (range > 0) {
+          // Standard Fibonacci retracement levels
+          const ratios = [0.236, 0.382, 0.5, 0.618, 0.786];
+          const levels: Array<{ label: string; price: number }> = [];
+
+          // Retracement levels (from high, going down)
+          for (const ratio of ratios) {
+            levels.push({
+              label: `R${(ratio * 100).toFixed(1)}%`,
+              price: high - range * ratio,
+            });
+          }
+
+          // Extension levels (beyond high)
+          const extRatios = [1.272, 1.618, 2.0];
+          for (const ratio of extRatios) {
+            levels.push({
+              label: `E${(ratio * 100).toFixed(1)}%`,
+              price: low + range * ratio,
+            });
+          }
+
+          return levels;
+        }
+      }
+    }
+
+    return [];
+  }, [allLevels, swingResult]);
 
   // Reversal time estimation
   const {
