@@ -65,6 +65,20 @@ interface BackendValidationResult {
 }
 
 /**
+ * Signal bar data for validation
+ */
+export interface SignalBarData {
+  /** Bar open price */
+  open: number;
+  /** Bar high price */
+  high: number;
+  /** Bar low price */
+  low: number;
+  /** Bar close price */
+  close: number;
+}
+
+/**
  * Single validation check result
  */
 export type ValidationCheck = {
@@ -140,6 +154,10 @@ export type UseTradeValidationOptions = {
   opportunity: TradeOpportunity | null;
   enabled: boolean;
   atrPeriod?: number;
+  /** Signal bar data for confirmation check (8th check) */
+  signalBar?: SignalBarData | null;
+  /** Explicit entry level for signal bar check */
+  entryLevel?: number | null;
 };
 
 export type UseTradeValidationResult = {
@@ -253,19 +271,38 @@ function getTargetLevels(
  */
 async function fetchBackendValidation(
   opportunity: TradeOpportunity,
-  atrPeriod: number = 14
+  atrPeriod: number = 14,
+  signalBar?: SignalBarData | null,
+  entryLevel?: number | null
 ): Promise<BackendValidationResult | null> {
   try {
+    const requestBody: Record<string, unknown> = {
+      symbol: opportunity.symbol,
+      higher_timeframe: opportunity.higherTimeframe,
+      lower_timeframe: opportunity.lowerTimeframe,
+      direction: opportunity.direction,
+      atr_period: atrPeriod,
+    };
+
+    // Add signal bar data if provided
+    if (signalBar) {
+      requestBody.signal_bar = {
+        open: signalBar.open,
+        high: signalBar.high,
+        low: signalBar.low,
+        close: signalBar.close,
+      };
+    }
+
+    // Add entry level if provided
+    if (entryLevel != null) {
+      requestBody.entry_level = entryLevel;
+    }
+
     const response = await fetch("/api/trader/workflow/validate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        symbol: opportunity.symbol,
-        higher_timeframe: opportunity.higherTimeframe,
-        lower_timeframe: opportunity.lowerTimeframe,
-        direction: opportunity.direction,
-        atr_period: atrPeriod,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -338,13 +375,15 @@ export function useTradeValidation({
   opportunity,
   enabled,
   atrPeriod = 14,
+  signalBar = null,
+  entryLevel = null,
 }: UseTradeValidationOptions): UseTradeValidationResult {
   // State for backend validation result
   const [backendResult, setBackendResult] = useState<BackendValidationResult | null>(null);
   const [isLoadingBackend, setIsLoadingBackend] = useState(false);
   const [backendError, setBackendError] = useState(false);
 
-  // Fetch backend validation when opportunity or ATR period changes
+  // Fetch backend validation when opportunity, ATR period, or signal bar changes
   useEffect(() => {
     if (!enabled || !opportunity) {
       setBackendResult(null);
@@ -355,7 +394,7 @@ export function useTradeValidation({
     let cancelled = false;
     setIsLoadingBackend(true);
 
-    fetchBackendValidation(opportunity, atrPeriod).then((result) => {
+    fetchBackendValidation(opportunity, atrPeriod, signalBar, entryLevel).then((result) => {
       if (!cancelled) {
         setBackendResult(result);
         setBackendError(result === null);
@@ -366,7 +405,7 @@ export function useTradeValidation({
     return () => {
       cancelled = true;
     };
-  }, [opportunity, enabled, atrPeriod]);
+  }, [opportunity, enabled, atrPeriod, signalBar, entryLevel]);
 
   // Create visibility config for this specific opportunity
   const visibilityConfig = useMemo((): VisibilityConfig => {

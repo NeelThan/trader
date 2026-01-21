@@ -50,8 +50,9 @@ type PivotResponse = {
   }>;
   pivot_high: number;
   pivot_low: number;
-  swing_high: { price: number; time: string | number } | null;
-  swing_low: { price: number; time: string | number } | null;
+  swing_high: { price: number; time: string | number; index: number } | null;
+  swing_low: { price: number; time: string | number; index: number } | null;
+  swing_endpoint: "high" | "low" | null;
 };
 
 type FibonacciResponse = {
@@ -444,15 +445,25 @@ export function useMultiTFLevels({
       const high = pivots.swing_high.price;
       const low = pivots.swing_low.price;
 
-      // Determine which pivot is most recent (swing endpoint)
-      // This tells us the actual B vs C relationship for smart direction detection
-      const highTime = typeof pivots.swing_high.time === "string"
-        ? new Date(pivots.swing_high.time).getTime()
-        : pivots.swing_high.time;
-      const lowTime = typeof pivots.swing_low.time === "string"
-        ? new Date(pivots.swing_low.time).getTime()
-        : pivots.swing_low.time;
-      const swingEndpoint: "high" | "low" = highTime > lowTime ? "high" : "low";
+      // Use swing_endpoint from backend (or calculate from time if not present)
+      // B < C (swing UP, most recent is HIGH) → Show BUY levels only
+      // B > C (swing DOWN, most recent is LOW) → Show SELL levels only
+      let swingEndpoint: "high" | "low" = pivots.swing_endpoint ?? "high";
+      if (!pivots.swing_endpoint) {
+        // Fallback: calculate from time if backend didn't provide it
+        const highTime = typeof pivots.swing_high.time === "string"
+          ? new Date(pivots.swing_high.time).getTime()
+          : pivots.swing_high.time;
+        const lowTime = typeof pivots.swing_low.time === "string"
+          ? new Date(pivots.swing_low.time).getTime()
+          : pivots.swing_low.time;
+        swingEndpoint = highTime > lowTime ? "high" : "low";
+      }
+
+      // Determine which direction to show based on swing endpoint
+      // swing_endpoint = "high" (most recent is swing high) → long/buy direction
+      // swing_endpoint = "low" (most recent is swing low) → short/sell direction
+      const directionFromSwing = swingEndpoint === "high" ? "long" : "short";
 
       const levels: StrategyLevel[] = [];
 
@@ -460,9 +471,14 @@ export function useMultiTFLevels({
       const buyABC = extractABCPoints(pivots.pivots, "buy");
       const sellABC = extractABCPoints(pivots.pivots, "sell");
 
-      // Fetch levels for LONG direction
-      const longStrategies = getEnabledStrategies(visibilityConfig, timeframe, "long");
-      const shortStrategies = getEnabledStrategies(visibilityConfig, timeframe, "short");
+      // Filter strategies by swing endpoint direction
+      // Only fetch levels for the direction matching the pivot relationship
+      const longStrategies = directionFromSwing === "long"
+        ? getEnabledStrategies(visibilityConfig, timeframe, "long")
+        : [];
+      const shortStrategies = directionFromSwing === "short"
+        ? getEnabledStrategies(visibilityConfig, timeframe, "short")
+        : [];
 
       for (const strategy of longStrategies) {
         if (strategy === "RETRACEMENT") {

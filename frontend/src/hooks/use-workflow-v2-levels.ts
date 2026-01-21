@@ -40,8 +40,9 @@ type FibonacciResponse = {
 type PivotResponse = {
   pivot_high: number;
   pivot_low: number;
-  swing_high: { price: number } | null;
-  swing_low: { price: number } | null;
+  swing_high: { price: number; index: number } | null;
+  swing_low: { price: number; index: number } | null;
+  swing_endpoint: "high" | "low" | null;
 };
 
 export type WorkflowLevel = FibonacciLevel & {
@@ -322,14 +323,26 @@ export function useWorkflowV2Levels({
 
       const high = pivots.swing_high.price;
       const low = pivots.swing_low.price;
+
+      // Determine direction from swing endpoint (pivot relationship)
+      // B < C (swing UP, most recent is HIGH) → Show BUY levels only
+      // B > C (swing DOWN, most recent is LOW) → Show SELL levels only
+      const swingEndpoint = pivots.swing_endpoint;
+      const directionFromSwing: TradeDirection | null = swingEndpoint
+        ? (swingEndpoint === "high" ? "long" : "short")
+        : null;
+
+      // Apply direction filter: use swing direction if no explicit filter
+      const effectiveFilter = filter ?? directionFromSwing;
+
       const allLevels: WorkflowLevel[] = [];
 
       for (const strategy of strats) {
         // Only fetch retracement and extension for now (expansion/projection need ABC)
         if (strategy !== "retracement" && strategy !== "extension") continue;
 
-        // Long direction (buy)
-        if (!filter || filter === "long") {
+        // Long direction (buy) - only if direction matches
+        if (!effectiveFilter || effectiveFilter === "long") {
           const response = await fetchFibLevels(high, low, "buy", strategy);
           if (response) {
             allLevels.push(
@@ -338,8 +351,8 @@ export function useWorkflowV2Levels({
           }
         }
 
-        // Short direction (sell)
-        if (!filter || filter === "short") {
+        // Short direction (sell) - only if direction matches
+        if (!effectiveFilter || effectiveFilter === "short") {
           const response = await fetchFibLevels(high, low, "sell", strategy);
           if (response) {
             allLevels.push(

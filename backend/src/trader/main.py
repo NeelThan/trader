@@ -49,6 +49,7 @@ from trader.workflow import (
     LevelsResult,
     OpportunityScanResult,
     SignalAggregationResult,
+    SignalBarData,
     SignalSuggestionsResult,
     TradeCategory,
     TrendAlignmentResult,
@@ -299,6 +300,7 @@ class PivotDetectResponse(BaseModel):
     pivot_low: float
     swing_high: PivotPointData | None
     swing_low: PivotPointData | None
+    swing_endpoint: Literal["high", "low"] | None = None
 
 
 class SwingMarkerData(BaseModel):
@@ -786,6 +788,17 @@ async def pivot_detect(request: PivotDetectRequest) -> PivotDetectResponse:
             time=pivot.time,
         )
 
+    # Determine swing endpoint (which swing is most recent)
+    # B < C (swing UP, most recent is HIGH) → Show BUY levels only
+    # B > C (swing DOWN, most recent is LOW) → Show SELL levels only
+    swing_endpoint: Literal["high", "low"] | None = None
+    if result.swing_high and result.swing_low:
+        # Compare indices to determine which is more recent
+        if result.swing_high.index > result.swing_low.index:
+            swing_endpoint = "high"  # Most recent swing is high → buy direction
+        else:
+            swing_endpoint = "low"  # Most recent swing is low → sell direction
+
     return PivotDetectResponse(
         pivots=[pivot_to_data(p) for p in result.pivots],
         recent_pivots=[pivot_to_data(p) for p in result.recent_pivots],
@@ -793,6 +806,7 @@ async def pivot_detect(request: PivotDetectRequest) -> PivotDetectResponse:
         pivot_low=result.pivot_low,
         swing_high=pivot_to_data(result.swing_high) if result.swing_high else None,
         swing_low=pivot_to_data(result.swing_low) if result.swing_low else None,
+        swing_endpoint=swing_endpoint,
     )
 
 
@@ -1384,6 +1398,15 @@ async def workflow_opportunities(
     )
 
 
+class SignalBarInput(BaseModel):
+    """Input model for signal bar data in validation request."""
+
+    open: float
+    high: float
+    low: float
+    close: float
+
+
 class ValidateTradeRequest(BaseModel):
     """Request model for trade validation."""
 
@@ -1392,6 +1415,8 @@ class ValidateTradeRequest(BaseModel):
     lower_timeframe: str
     direction: Literal["long", "short"]
     atr_period: int = 14  # Default to 14, can be adjusted by user
+    signal_bar: SignalBarInput | None = None  # Signal bar data for 8th check
+    entry_level: float | None = None  # Entry level for signal bar check
 
 
 class ValidationCheckData(BaseModel):
@@ -1468,7 +1493,7 @@ class CascadeAnalysisData(BaseModel):
 
 @app.post("/workflow/validate", response_model=ValidationResultData)
 async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultData:
-    """Validate a trade opportunity with 7 checks.
+    """Validate a trade opportunity with 8 checks.
 
     Performs the following validation checks:
     1. Trend Alignment - Higher/lower TF alignment per spec rules
@@ -1478,14 +1503,25 @@ async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultDa
     5. MACD Confirmation - Trend momentum intact
     6. Volume Confirmation - RVOL >= 1.0 (above average volume)
     7. Confluence Score - Real confluence calculation (>=3 with-trend, >=5 counter)
+    8. Signal Bar Confirmation - Gatekeeper check (No signal bar = No trade)
 
     Also returns ATR analysis, confluence breakdown, and trade category.
 
     Trade is valid when pass_percentage >= 60% (5+ checks pass).
 
     Returns:
-        ValidationResultData with all 7 checks, summary statistics, ATR, confluence.
+        ValidationResultData with all 8 checks, summary statistics, ATR, confluence.
     """
+    # Convert signal bar input to workflow model if provided
+    signal_bar_data: SignalBarData | None = None
+    if request.signal_bar:
+        signal_bar_data = SignalBarData(
+            open=request.signal_bar.open,
+            high=request.signal_bar.high,
+            low=request.signal_bar.low,
+            close=request.signal_bar.close,
+        )
+
     result = await validate_trade(
         symbol=request.symbol,
         higher_timeframe=request.higher_timeframe,
@@ -1493,6 +1529,8 @@ async def workflow_validate(request: ValidateTradeRequest) -> ValidationResultDa
         direction=request.direction,
         market_service=_market_data_service,
         atr_period=request.atr_period,
+        signal_bar_data=signal_bar_data,
+        entry_level=request.entry_level,
     )
 
     atr_info_response: ATRInfoResponseData | None = None

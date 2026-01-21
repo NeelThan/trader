@@ -29,6 +29,8 @@ from trader.market_data import MarketDataService
 from trader.market_data.models import OHLCBar as MarketOHLCBar
 from trader.pivots import OHLCBar as PivotOHLCBar
 from trader.pivots import PivotPoint, detect_pivots
+from trader.signals import Bar as SignalBar
+from trader.signals import detect_signal
 from trader.volume_indicators import analyze_volume
 
 # --- Type Aliases ---
@@ -150,11 +152,40 @@ class ConfluenceScore(BaseModel):
     interpretation: ConfluenceInterpretation
 
 
+class SignalBarData(BaseModel):
+    """Signal bar data for validation.
+
+    Represents a single price bar for signal bar confirmation check.
+    Per SignalPro spec: "No signal bar = No trade".
+
+    Attributes:
+        open: Bar open price.
+        high: Bar high price.
+        low: Bar low price.
+        close: Bar close price.
+    """
+
+    open: float
+    high: float
+    low: float
+    close: float
+
+
 class ValidationResult(BaseModel):
     """Complete validation result for a trade.
 
-    Contains all 7 validation checks and summary statistics.
+    Contains all 8 validation checks and summary statistics.
     Trade is valid when pass_percentage >= 60%.
+
+    Checks:
+    1. Trend Alignment
+    2. Entry Zone
+    3. Target Zones
+    4. RSI Confirmation
+    5. MACD Confirmation
+    6. Volume Confirmation
+    7. Confluence Score
+    8. Signal Bar Confirmation (gatekeeper)
     """
 
     checks: list[ValidationCheck]
@@ -294,6 +325,11 @@ class TradeOpportunity(BaseModel):
         is_confirmed: True when signal bar exists at Fib level.
         awaiting_confirmation: What confirmation is needed (None if confirmed).
         is_pullback: True for pullback setups, False for with-trend setups.
+        entry_level: Fibonacci entry level price (if found).
+        current_price: Current market price.
+        confluence_score: Confluence score at entry level (1-10).
+        signal_bar_detected: Whether a signal bar was detected at entry.
+        distance_to_entry_pct: Percentage distance to entry level.
     """
 
     symbol: str
@@ -307,6 +343,12 @@ class TradeOpportunity(BaseModel):
     is_confirmed: bool = True  # True when setup is confirmed (pullback or signal bar)
     awaiting_confirmation: str | None = None  # What confirmation is needed
     is_pullback: bool = True  # True for pullback, False for with-trend
+    # New fields for Fib/signal bar integration
+    entry_level: float | None = None  # Fibonacci entry level price
+    current_price: float | None = None  # Current market price
+    confluence_score: int | None = None  # Confluence rating (1-10)
+    signal_bar_detected: bool = False  # Whether signal bar found at entry
+    distance_to_entry_pct: float | None = None  # % distance to entry level
 
 
 class OpportunityScanResult(BaseModel):
@@ -1200,6 +1242,11 @@ async def _analyze_symbol_pair(
     - Higher TF UP + Lower TF UP = GO LONG (with-trend) - POTENTIAL
     - Higher TF DOWN + Lower TF DOWN = GO SHORT (with-trend) - POTENTIAL
 
+    Also checks:
+    - Fibonacci entry levels for the trade
+    - Signal bar confirmation at entry level
+    - Distance to entry level
+
     Args:
         symbol: Market symbol to analyze.
         higher_tf: Higher timeframe for trend context.
@@ -1234,32 +1281,99 @@ async def _analyze_symbol_pair(
     combined = higher_assessment.confidence + lower_assessment.confidence
     confidence = min(100, combined // 2)
 
-    # Determine confirmation status
-    # Pullback setups are confirmed (opposite TF alignment)
-    # With-trend setups need signal bar confirmation (same TF alignment)
+    # Get Fibonacci levels for entry zone
+    fib_direction: Literal["buy", "sell"] = "buy" if direction == "long" else "sell"
+    levels_result = await identify_fibonacci_levels(
+        symbol=symbol,
+        timeframe=lower_tf,
+        direction=fib_direction,
+        market_service=market_service,
+    )
+
+    # Get current price from market data
+    market_data = await market_service.get_ohlc(symbol, lower_tf, periods=5)
+    current_price: float | None = None
+    if market_data.success and market_data.data:
+        current_price = market_data.data[-1].close
+
+    # Find entry level and calculate distance
+    entry_level: float | None = None
+    distance_to_entry_pct: float | None = None
+    confluence_score_val: int | None = None
+
+    if levels_result.entry_zones:
+        # Find nearest retracement level (38.2%, 50%, 61.8%, 78.6%)
+        for zone in levels_result.entry_zones:
+            entry_level = zone.price
+            if current_price:
+                distance_to_entry_pct = (
+                    abs(current_price - entry_level) / entry_level * 100
+                )
+            break  # Use first entry zone (best entry)
+
+        # Calculate confluence score for the entry level
+        if entry_level:
+            confluence_result = calculate_confluence_score(
+                level_price=entry_level,
+                same_tf_levels=[z.price for z in levels_result.entry_zones[1:]],
+                higher_tf_levels=[],  # Would need higher TF levels
+                previous_pivots=[],
+            )
+            confluence_score_val = confluence_result.total
+
+    # Check for signal bar at entry level
+    signal_bar_detected = False
+    if entry_level and market_data.success and market_data.data:
+        recent_bar = market_data.data[-1]
+        bar = SignalBar(
+            open=recent_bar.open,
+            high=recent_bar.high,
+            low=recent_bar.low,
+            close=recent_bar.close,
+        )
+        signal = detect_signal(bar, entry_level)
+        if signal is not None:
+            # Check if signal matches our direction
+            if (fib_direction == "buy" and signal.direction == "buy") or (
+                fib_direction == "sell" and signal.direction == "sell"
+            ):
+                signal_bar_detected = True
+
+    # Update confirmation logic based on signal bar detection
     if is_pullback:
-        is_confirmed = True
-        awaiting_confirmation = None
+        # Pullback confirmed only if signal bar detected at entry
+        if signal_bar_detected:
+            is_confirmed = True
+            awaiting_confirmation = None
+        else:
+            is_confirmed = False
+            awaiting_confirmation = "Awaiting signal bar at entry level"
     else:
-        # With-trend: would need signal bar at Fib level for full confirmation
-        # For now, mark as potential (awaiting confirmation)
-        is_confirmed = False
-        entry_type = "support" if direction == "long" else "resistance"
-        awaiting_confirmation = f"Awaiting signal bar at Fib {entry_type}"
+        # With-trend: always needs signal bar at Fib level for full confirmation
+        if signal_bar_detected:
+            is_confirmed = True
+            awaiting_confirmation = None
+        else:
+            is_confirmed = False
+            entry_type = "support" if direction == "long" else "resistance"
+            awaiting_confirmation = (
+                f"With-trend: awaiting signal bar at {entry_type}"
+            )
 
         # If not including potential opportunities, skip unconfirmed setups
-        if not include_potential:
+        if not include_potential and not is_confirmed:
             return None
 
         # Reduce confidence for unconfirmed setups
-        confidence = max(50, confidence - 10)
+        if not is_confirmed:
+            confidence = max(50, confidence - 10)
 
-    # Determine trade category
+    # Determine trade category (use actual confluence score)
     category = categorize_trade(
         higher_tf_trend=higher_assessment.trend,
         lower_tf_trend=lower_assessment.trend,
         trade_direction=direction,
-        confluence_score=3,  # Default moderate confluence
+        confluence_score=confluence_score_val or 3,
     )
 
     # Build description
@@ -1280,6 +1394,11 @@ async def _analyze_symbol_pair(
         is_confirmed=is_confirmed,
         awaiting_confirmation=awaiting_confirmation,
         is_pullback=is_pullback,
+        entry_level=entry_level,
+        current_price=current_price,
+        confluence_score=confluence_score_val,
+        signal_bar_detected=signal_bar_detected,
+        distance_to_entry_pct=distance_to_entry_pct,
     )
 
 
@@ -1290,8 +1409,10 @@ async def validate_trade(
     direction: Literal["long", "short"],
     market_service: MarketDataService,
     atr_period: int = 14,
+    signal_bar_data: SignalBarData | None = None,
+    entry_level: float | None = None,
 ) -> ValidationResult:
-    """Validate a trade opportunity with 7 checks.
+    """Validate a trade opportunity with 8 checks.
 
     Performs the following validation checks:
     1. Trend Alignment - Higher/lower TF alignment per rules
@@ -1301,6 +1422,7 @@ async def validate_trade(
     5. MACD Confirmation - Trend momentum intact
     6. Volume Confirmation - RVOL >= 1.0 (above average volume)
     7. Confluence Score - Real confluence calculation (>=3 with-trend, >=5 counter)
+    8. Signal Bar Confirmation - Gatekeeper check (No signal bar = No trade)
 
     Trade is valid when pass_percentage >= 60% (5+ checks).
 
@@ -1311,9 +1433,11 @@ async def validate_trade(
         direction: Trade direction (long/short).
         market_service: Service for fetching market data.
         atr_period: Period for ATR calculation (default 14).
+        signal_bar_data: Optional OHLC data for signal bar confirmation.
+        entry_level: Optional entry level for signal bar check.
 
     Returns:
-        ValidationResult with all 7 checks and summary statistics.
+        ValidationResult with all 8 checks and summary statistics.
     """
     checks: list[ValidationCheck] = []
 
@@ -1558,6 +1682,19 @@ async def validate_trade(
         )
     )
 
+    # 8. Signal Bar Confirmation Check
+    # Determine entry level: use provided entry_level or derive from best entry zone
+    effective_entry_level = entry_level
+    if effective_entry_level is None and levels_result.entry_zones:
+        effective_entry_level = levels_result.entry_zones[0].price
+
+    signal_bar_check = _check_signal_bar_confirmation(
+        signal_bar_data=signal_bar_data,
+        direction=direction,
+        entry_level=effective_entry_level,
+    )
+    checks.append(signal_bar_check)
+
     # Calculate ATR for volatility info (use lower timeframe for entry timing)
     atr_info: ATRInfoData | None = None
     if lower_data.data:
@@ -1735,6 +1872,99 @@ def _get_macd_explanation(
     if macd_signal == "bearish":
         return f"MACD bearish confirms {direction} momentum"
     return f"MACD {macd_signal} - momentum not confirmed"
+
+
+def _check_signal_bar_confirmation(
+    signal_bar_data: SignalBarData | None,
+    direction: Literal["long", "short"],
+    entry_level: float | None,
+) -> ValidationCheck:
+    """Check 8: Signal bar confirmation at entry level.
+
+    Per SignalPro spec: "No signal bar = No trade".
+
+    A signal bar confirms entry when:
+    - LONG: Bullish bar (close > open) with close > entry level
+    - SHORT: Bearish bar (close < open) with close < entry level
+
+    Args:
+        signal_bar_data: OHLC data for the most recent bar.
+        direction: Trade direction (long/short).
+        entry_level: Fibonacci entry level price.
+
+    Returns:
+        ValidationCheck with pass/fail status and explanation.
+    """
+    if signal_bar_data is None:
+        return ValidationCheck(
+            name="Signal Bar Confirmation",
+            passed=False,
+            explanation="No signal bar data provided",
+            details="Signal bar is required before entry (SignalPro rule)",
+        )
+
+    if entry_level is None:
+        return ValidationCheck(
+            name="Signal Bar Confirmation",
+            passed=False,
+            explanation="No entry level available for signal bar check",
+            details="Cannot validate signal bar without entry level",
+        )
+
+    bar = SignalBar(
+        open=signal_bar_data.open,
+        high=signal_bar_data.high,
+        low=signal_bar_data.low,
+        close=signal_bar_data.close,
+    )
+
+    # Use detect_signal to check if bar is a valid signal at entry level
+    signal_direction: Literal["buy", "sell"] = "buy" if direction == "long" else "sell"
+    signal = detect_signal(bar, entry_level)
+
+    # Check if signal matches our direction
+    if signal is not None:
+        if (signal_direction == "buy" and signal.direction == "buy") or (
+            signal_direction == "sell" and signal.direction == "sell"
+        ):
+            return ValidationCheck(
+                name="Signal Bar Confirmation",
+                passed=True,
+                explanation=f"Signal bar confirmed ({signal.signal_type.value})",
+                details=(
+                    f"O={signal_bar_data.open:.2f} C={signal_bar_data.close:.2f} "
+                    f"Level={entry_level:.2f} Strength={signal.strength:.2f}"
+                ),
+            )
+
+    # No valid signal found - check why
+    is_bullish = signal_bar_data.close > signal_bar_data.open
+    is_bearish = signal_bar_data.close < signal_bar_data.open
+
+    if direction == "long":
+        if not is_bullish:
+            explanation = "No signal: bar is not bullish (close <= open)"
+        elif signal_bar_data.close <= entry_level:
+            explanation = "No signal: close not above entry level"
+        else:
+            explanation = "No valid buy signal detected"
+    else:  # short
+        if not is_bearish:
+            explanation = "No signal: bar is not bearish (close >= open)"
+        elif signal_bar_data.close >= entry_level:
+            explanation = "No signal: close not below entry level"
+        else:
+            explanation = "No valid sell signal detected"
+
+    return ValidationCheck(
+        name="Signal Bar Confirmation",
+        passed=False,
+        explanation=explanation,
+        details=(
+            f"O={signal_bar_data.open:.2f} C={signal_bar_data.close:.2f} "
+            f"Level={entry_level:.2f}"
+        ),
+    )
 
 
 # --- Cascade Effect Functions ---
