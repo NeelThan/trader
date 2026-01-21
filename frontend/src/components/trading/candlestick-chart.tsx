@@ -167,8 +167,19 @@ function timeToUnix(time: Time): number {
   return Math.floor(new Date(time as string).getTime() / 1000);
 }
 
+// Check if OHLC bar has valid (non-null, non-NaN) price values
+function isValidOHLCBar(d: OHLCData): boolean {
+  return (
+    d.open != null && !isNaN(d.open) &&
+    d.high != null && !isNaN(d.high) &&
+    d.low != null && !isNaN(d.low) &&
+    d.close != null && !isNaN(d.close)
+  );
+}
+
 // Deduplicate and sort data by time (ascending) to prevent Lightweight Charts errors
 // Also normalizes time to Unix seconds for consistent handling
+// Filters out any bars with null/undefined OHLC values
 function deduplicateAndSort(data: OHLCData[]): OHLCData[] {
   if (data.length === 0) return [];
 
@@ -176,6 +187,9 @@ function deduplicateAndSort(data: OHLCData[]): OHLCData[] {
   // Also normalize time to Unix seconds for chart consistency
   const uniqueMap = new Map<number, OHLCData>();
   for (const d of data) {
+    // Skip bars with invalid OHLC values
+    if (!isValidOHLCBar(d)) continue;
+
     const unixTime = timeToUnix(d.time);
     // Store with normalized Unix timestamp
     uniqueMap.set(unixTime, {

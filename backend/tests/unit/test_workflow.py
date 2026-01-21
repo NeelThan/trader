@@ -2223,8 +2223,8 @@ class TestCascadeModels:
         """TIMEFRAME_HIERARCHY should be ordered from highest to lowest."""
         from trader.workflow import TIMEFRAME_HIERARCHY
 
-        # Should be: 1M, 1W, 1D, 4H, 1H, 15m, 5m
-        expected = ["1M", "1W", "1D", "4H", "1H", "15m", "5m"]
+        # Should be: 1M, 1W, 1D, 4H, 1H, 15m, 5m, 3m, 1m
+        expected = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"]
         assert TIMEFRAME_HIERARCHY == expected
 
     def test_can_import_timeframe_trend_state(self) -> None:

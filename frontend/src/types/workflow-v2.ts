@@ -474,6 +474,81 @@ export const DEFAULT_WORKFLOW_V2_STORAGE: WorkflowV2Storage = {
 };
 
 // ============================================================================
+// Cascade Effect Types (for early reversal detection)
+// ============================================================================
+
+/**
+ * Timeframe hierarchy for cascade detection.
+ * Ordered from highest (1M) to lowest (1m).
+ */
+export const TIMEFRAME_HIERARCHY = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"] as const;
+
+/**
+ * Trend state for a single timeframe in cascade analysis.
+ */
+export type TimeframeTrendState = {
+  /** Timeframe code (e.g., "1D", "4H") */
+  timeframe: string;
+  /** Trend direction for this timeframe */
+  trend: "bullish" | "bearish" | "neutral";
+  /** True if aligned with dominant higher TF trend */
+  is_aligned_with_dominant: boolean;
+  /** True if this TF has diverged from dominant trend */
+  is_diverging: boolean;
+  /** Latest swing type detected (HH/HL/LH/LL) */
+  swing_type: "HH" | "HL" | "LH" | "LL" | null;
+  /** Confidence level 0-100 */
+  confidence: number;
+};
+
+/**
+ * Complete cascade effect analysis result.
+ *
+ * Cascade stages represent how a trend reversal "bubbles up":
+ * - Stage 1: All TFs aligned (no reversal)
+ * - Stage 2: 5m/15m diverged (minor pullback)
+ * - Stage 3: 1H joined reversal (momentum building)
+ * - Stage 4: 4H joined reversal (significant move)
+ * - Stage 5: Daily turning (major reversal signal)
+ * - Stage 6: Weekly/Monthly turned (reversal confirmed)
+ */
+export type CascadeAnalysis = {
+  /** Cascade stage 1-6 */
+  stage: number;
+  /** Overall trend from highest TFs */
+  dominant_trend: "bullish" | "bearish" | "neutral";
+  /** Opposite of dominant trend */
+  reversal_trend: "bullish" | "bearish" | "neutral";
+  /** TFs that have diverged from dominant */
+  diverging_timeframes: string[];
+  /** TFs still aligned with dominant */
+  aligned_timeframes: string[];
+  /** Detailed state for each TF analyzed */
+  timeframe_states: TimeframeTrendState[];
+  /** Human-readable cascade progression description */
+  progression: string;
+  /** Trading recommendation based on stage */
+  actionable_insight: string;
+  /** Estimated reversal probability 0-100 */
+  reversal_probability: number;
+};
+
+/**
+ * Stage-specific display configuration.
+ */
+export const CASCADE_STAGE_CONFIG: Record<
+  number,
+  { label: string; color: string; bgColor: string; icon: string }
+> = {
+  1: { label: "All Aligned", color: "#22c55e", bgColor: "#22c55e20", icon: "✓" },
+  2: { label: "Minor Divergence", color: "#84cc16", bgColor: "#84cc1620", icon: "◐" },
+  3: { label: "Momentum Building", color: "#eab308", bgColor: "#eab30820", icon: "◑" },
+  4: { label: "Significant Move", color: "#f97316", bgColor: "#f9731620", icon: "◕" },
+  5: { label: "Major Reversal", color: "#ef4444", bgColor: "#ef444420", icon: "◉" },
+  6: { label: "Full Reversal", color: "#dc2626", bgColor: "#dc262620", icon: "●" },
+};
+
+// ============================================================================
 // Trading Style Configuration
 // ============================================================================
 

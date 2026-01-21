@@ -44,7 +44,7 @@ ConfluenceInterpretation = Literal["standard", "important", "significant", "majo
 FibStrategy = Literal["retracement", "extension", "projection", "expansion"]
 
 # --- Cascade Effect Constants ---
-TIMEFRAME_HIERARCHY = ["1M", "1W", "1D", "4H", "1H", "15m", "5m"]
+TIMEFRAME_HIERARCHY = ["1M", "1W", "1D", "4H", "1H", "15m", "5m", "3m", "1m"]
 
 
 class LevelWithStrategy(BaseModel):
@@ -903,16 +903,33 @@ async def assess_trend(
 
 
 def _detect_latest_swing_type(pivots: list[PivotPoint]) -> SwingType:
-    """Detect swing type from recent pivots."""
+    """Detect swing type from recent pivots.
+
+    Compares highs to previous highs and lows to previous lows:
+    - HH (Higher High): Latest high > previous high
+    - LH (Lower High): Latest high < previous high
+    - HL (Higher Low): Latest low > previous low
+    - LL (Lower Low): Latest low < previous low
+    """
     if len(pivots) < 2:
         return "HL"
 
     latest = pivots[-1]
-    previous = pivots[-2]
+
+    # Find the previous pivot of the SAME TYPE (high vs high, low vs low)
+    previous_same_type = None
+    for pivot in reversed(pivots[:-1]):
+        if pivot.type == latest.type:
+            previous_same_type = pivot
+            break
+
+    if previous_same_type is None:
+        # No previous pivot of same type found, default based on latest type
+        return "HL" if latest.type == "low" else "HH"
 
     if latest.type == "high":
-        return "HH" if latest.price > previous.price else "LH"
-    return "HL" if latest.price > previous.price else "LL"
+        return "HH" if latest.price > previous_same_type.price else "LH"
+    return "HL" if latest.price > previous_same_type.price else "LL"
 
 
 async def check_timeframe_alignment(
@@ -1785,7 +1802,7 @@ def _calculate_cascade_stage(
 
     Stage logic based on which timeframes have diverged:
     - Stage 1: No diverging TFs (all aligned)
-    - Stage 2: Only 5m/15m diverged
+    - Stage 2: Only smallest TFs diverged (1m/3m/5m/15m)
     - Stage 3: 1H joined the divergence
     - Stage 4: 4H joined the divergence
     - Stage 5: 1D joined the divergence
@@ -1795,16 +1812,18 @@ def _calculate_cascade_stage(
         return 1
 
     # Check which significant TFs have diverged
+    has_1min = "1m" in diverging_tfs
+    has_3m = "3m" in diverging_tfs
     has_5m = "5m" in diverging_tfs
     has_15m = "15m" in diverging_tfs
     has_1h = "1H" in diverging_tfs
     has_4h = "4H" in diverging_tfs
     has_1d = "1D" in diverging_tfs
     has_1w = "1W" in diverging_tfs
-    has_1m = "1M" in diverging_tfs
+    has_1M = "1M" in diverging_tfs
 
     # Stage 6: Weekly or Monthly diverged
-    if has_1w or has_1m:
+    if has_1w or has_1M:
         return 6
 
     # Stage 5: Daily diverged (and weekly/monthly not in analysis or still aligned)
@@ -1819,8 +1838,8 @@ def _calculate_cascade_stage(
     if has_1h:
         return 3
 
-    # Stage 2: Only 5m/15m diverged
-    if has_5m or has_15m:
+    # Stage 2: Only smallest TFs diverged (1m/3m/5m/15m)
+    if has_1min or has_3m or has_5m or has_15m:
         return 2
 
     # Stage 1: All aligned
@@ -1833,7 +1852,7 @@ def _get_cascade_progression(stage: int, dominant_trend: TrendDirection) -> str:
 
     progressions = {
         1: f"All TFs aligned {dominant_trend}",
-        2: f"5m/15m turned {reversal}",
+        2: f"Smallest TFs (1m-15m) turned {reversal}",
         3: f"1H joined reversal to {reversal}",
         4: f"4H joined reversal to {reversal}",
         5: f"Daily turning {reversal}",

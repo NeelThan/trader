@@ -49,6 +49,8 @@ import { SwingSettingsPopover } from "./SwingSettingsPopover";
 import { ATRSettingsPopover } from "./ATRSettingsPopover";
 import { DataSourceControl, type DataMode } from "./DataSourceControl";
 import { TrendAlignmentPanel, TrendIndicatorButton } from "./TrendAlignmentPanel";
+import { CascadePanel } from "./CascadePanel";
+import { useCascade } from "@/hooks/use-cascade";
 import { LevelTooltip, ConfluenceZoneIndicator, calculateConfluenceZones } from "./LevelTooltip";
 import type { UseTradeDiscoveryResult, TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
@@ -112,6 +114,7 @@ export function WorkflowV2Layout({
   const showPivotEditor = panels.pivotEditor;
   const showTradeView = panels.tradeView;
   const showTrendPanel = panels.trendPanel;
+  const showCascadePanel = panels.cascadePanel;
   const showConfluenceZones = panels.confluenceZones;
   const showPsychologicalLevels = panels.psychologicalLevels;
   const showVolume = panels.volumePane;
@@ -588,6 +591,17 @@ export function WorkflowV2Layout({
   const { trends: trendData, overall: overallTrend, isLoading: isLoadingTrend } = useTrendAlignment({
     symbol,
     enabled: true,
+  });
+
+  // Cascade effect detection
+  const {
+    cascade: cascadeData,
+    isLoading: isLoadingCascade,
+    error: cascadeError,
+  } = useCascade({
+    symbol,
+    timeframes: "1M,1W,1D,4H,1H,15m,5m,3m,1m",
+    enabled: showCascadePanel,
   });
 
   // Current MACD values
@@ -1082,6 +1096,32 @@ export function WorkflowV2Layout({
                     />
                   )}
 
+                  {/* Cascade button - reversal detection */}
+                  <button
+                    onClick={() => dispatch(layoutActions.togglePanel("cascadePanel"))}
+                    className={cn(
+                      "px-2 py-1 text-xs rounded transition-colors flex items-center gap-1",
+                      showCascadePanel
+                        ? "bg-amber-500/20 text-amber-400"
+                        : "text-muted-foreground hover:bg-muted"
+                    )}
+                    title="Cascade Effect - Early reversal detection"
+                  >
+                    <span>Cascade</span>
+                    {cascadeData && !isLoadingCascade && (
+                      <Badge
+                        variant="secondary"
+                        className="h-4 px-1 text-[10px]"
+                        style={{
+                          backgroundColor: cascadeData.stage >= 3 ? "#f9731620" : undefined,
+                          color: cascadeData.stage >= 3 ? "#f97316" : undefined,
+                        }}
+                      >
+                        S{cascadeData.stage}
+                      </Badge>
+                    )}
+                  </button>
+
                   {/* Status badges */}
                   <div className="flex items-center gap-1 text-xs ml-auto">
                     {/* Trade view indicator */}
@@ -1227,6 +1267,16 @@ export function WorkflowV2Layout({
                   trends={trendData}
                   overall={overallTrend}
                   isLoading={isLoadingTrend}
+                  chartColors={chartColors}
+                />
+              )}
+
+              {/* Cascade Effect Panel */}
+              {showCascadePanel && (
+                <CascadePanel
+                  cascade={cascadeData}
+                  isLoading={isLoadingCascade}
+                  error={cascadeError}
                   chartColors={chartColors}
                 />
               )}

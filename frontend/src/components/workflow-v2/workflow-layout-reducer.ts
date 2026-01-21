@@ -26,6 +26,8 @@ export type PanelVisibility = {
   tradeView: boolean;
   /** Trend alignment panel */
   trendPanel: boolean;
+  /** Cascade effect panel for reversal detection */
+  cascadePanel: boolean;
   /** Confluence zones panel */
   confluenceZones: boolean;
   /** Levels table panel */
@@ -77,6 +79,7 @@ export const initialLayoutState: WorkflowLayoutState = {
     pivotEditor: false,
     tradeView: false,
     trendPanel: false,
+    cascadePanel: false,
     confluenceZones: false,
     levelsTable: false,
     chartExpanded: false,
@@ -319,6 +322,7 @@ export const layoutSelectors = {
       panels.indicators ||
       panels.pivotEditor ||
       panels.trendPanel ||
+      panels.cascadePanel ||
       panels.confluenceZones ||
       panels.levelsTable
     );
@@ -331,6 +335,7 @@ export const layoutSelectors = {
       panels.indicators,
       panels.pivotEditor,
       panels.trendPanel,
+      panels.cascadePanel,
       panels.confluenceZones,
       panels.levelsTable,
     ].filter(Boolean).length;
