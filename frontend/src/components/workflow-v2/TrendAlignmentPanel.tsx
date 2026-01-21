@@ -26,6 +26,8 @@ import { TIMEFRAME_COLORS } from "@/lib/chart-pro/strategy-types";
 import { detectTrendPhaseFromTrend } from "@/hooks/use-trade-discovery";
 import type { TrendPhase } from "@/types/workflow-v2";
 import { RangingWarningBanner } from "./RangingWarningBanner";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { TREND_ALIGNMENT } from "@/lib/educational-content";
 
 type TrendAlignmentPanelProps = {
   /** Per-timeframe trend data */
@@ -266,6 +268,12 @@ function TimeframeBreakdown({
         <div className="flex items-center gap-1 mb-1">
           <Info size={10} />
           <span className="font-medium">How it's calculated:</span>
+          <InfoTooltip
+            title={TREND_ALIGNMENT.weights.title}
+            content={TREND_ALIGNMENT.weights.content}
+            side="top"
+            iconClassName="w-3 h-3 text-[8px]"
+          />
         </div>
         <p>
           Trend = (Swing × 40%) + (RSI × 30%) + (MACD × 30%)
@@ -435,6 +443,11 @@ export function TrendAlignmentPanel({
         <CardTitle className="text-sm flex items-center justify-between">
           <span className="flex items-center gap-2">
             Trend Alignment
+            <InfoTooltip
+              title={TREND_ALIGNMENT.multiTfAlignment.title}
+              content={TREND_ALIGNMENT.multiTfAlignment.content}
+              side="right"
+            />
             <Badge
               variant="outline"
               className="text-[10px] px-1.5 py-0"
@@ -534,7 +547,15 @@ export function TrendAlignmentPanel({
 
         {/* Confidence indicator */}
         <div className="mt-2 flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground">Confidence:</span>
+          <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+            Confidence:
+            <InfoTooltip
+              title={TREND_ALIGNMENT.confidence.title}
+              content={TREND_ALIGNMENT.confidence.content}
+              side="top"
+              iconClassName="w-3 h-3 text-[9px]"
+            />
+          </span>
           <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all"

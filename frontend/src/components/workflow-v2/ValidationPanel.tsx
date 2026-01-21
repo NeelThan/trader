@@ -18,6 +18,7 @@ import { InfoTooltip } from "@/components/ui/info-tooltip";
 import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { ValidationResult, ValidationCheck, ATRInfo } from "@/hooks/use-trade-validation";
 import type { ConfluenceScore } from "@/types/workflow-v2";
+import { CONFLUENCE_CONTENT, VALIDATION_CHECKS, ATR_CONTENT } from "@/lib/educational-content";
 
 type ValidationPanelProps = {
   opportunity: TradeOpportunity;
@@ -99,7 +100,20 @@ function ConfluenceDisplay({ confluenceScore }: { confluenceScore: ConfluenceSco
           <div className="flex items-center gap-2">
             <span>Confluence Score</span>
             <InfoTooltip
-              content="Higher confluence = stronger support/resistance. Major (7+) levels are high-probability zones."
+              title={CONFLUENCE_CONTENT.title}
+              content={
+                <div className="space-y-2">
+                  <p>{CONFLUENCE_CONTENT.description}</p>
+                  <div className="text-xs space-y-1">
+                    {CONFLUENCE_CONTENT.factors.map((f) => (
+                      <div key={f.label} className="flex justify-between">
+                        <span>{f.label}</span>
+                        <span className="font-mono text-primary">{f.points}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              }
               side="right"
             />
           </div>
@@ -188,7 +202,14 @@ function ATRInfoDisplay({
             <Activity className="w-4 h-4" />
             <span>Volatility (ATR)</span>
             <InfoTooltip
-              content="Average True Range measures volatility. Use for stop loss placement: 1x ATR (tight), 1.5x (standard), 2x (wide)."
+              title={ATR_CONTENT.title}
+              content={
+                <div className="space-y-2">
+                  <p>{ATR_CONTENT.description}</p>
+                  <p className="text-xs">{ATR_CONTENT.usage.stopPlacement}</p>
+                  <p className="text-xs text-muted-foreground">{ATR_CONTENT.period}</p>
+                </div>
+              }
               side="right"
             />
           </div>
@@ -316,7 +337,14 @@ export function ValidationPanel({
       <Card>
         <CardHeader className="py-3">
           <CardTitle className="text-sm flex items-center justify-between">
-            <span>Validation Score</span>
+            <div className="flex items-center gap-2">
+              <span>Validation Score</span>
+              <InfoTooltip
+                title={VALIDATION_CHECKS.passThreshold.title}
+                content={VALIDATION_CHECKS.passThreshold.content}
+                side="right"
+              />
+            </div>
             <span className={validation.isValid ? "text-green-400" : "text-amber-400"}>
               {validation.passedCount}/{validation.totalCount} passed
             </span>
@@ -373,7 +401,13 @@ export function ValidationPanel({
       {/* Validation Checks */}
       <Card>
         <CardHeader className="py-3">
-          <CardTitle className="text-sm">Checklist</CardTitle>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <span>Checklist</span>
+            <InfoTooltip
+              content="Each check validates a key aspect of the trade setup. Green checks passed, red checks failed."
+              side="right"
+            />
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-1">
           {validation.checks.map((check, index) => (

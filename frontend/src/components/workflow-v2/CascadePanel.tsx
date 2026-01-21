@@ -14,6 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { CascadeAnalysis, TimeframeTrendState } from "@/types/workflow-v2";
 import { CASCADE_STAGE_CONFIG } from "@/types/workflow-v2";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { CASCADE_STAGES } from "@/lib/educational-content";
 
 type CascadePanelProps = {
   /** Cascade analysis data */
@@ -26,18 +28,31 @@ type CascadePanelProps = {
   chartColors: { up: string; down: string };
 };
 
+/** Get stage-specific tooltip content */
+function getStageTooltip(stage: number) {
+  const stageKey = `stage${stage}` as keyof typeof CASCADE_STAGES;
+  return CASCADE_STAGES[stageKey] || CASCADE_STAGES.stage1;
+}
+
 /**
  * Visual progress bar showing cascade stage (1-6).
  */
 function CascadeStageBar({ stage }: { stage: number }) {
   const config = CASCADE_STAGE_CONFIG[stage] || CASCADE_STAGE_CONFIG[1];
+  const stageTooltip = getStageTooltip(stage);
 
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">Reversal Progress</span>
-        <span style={{ color: config.color }} className="font-medium">
+        <span style={{ color: config.color }} className="font-medium flex items-center gap-1">
           Stage {stage}/6
+          <InfoTooltip
+            title={stageTooltip.title}
+            content={stageTooltip.content}
+            side="left"
+            iconClassName="w-3 h-3 text-[8px]"
+          />
         </span>
       </div>
       <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -92,12 +107,20 @@ function TimeframeStateRow({
       </div>
       <div className="flex items-center gap-2">
         {state.is_diverging && (
-          <Badge
-            variant="secondary"
-            className="text-[10px] px-1 py-0 bg-amber-500/20 text-amber-400"
-          >
-            Diverging
-          </Badge>
+          <span className="flex items-center gap-1">
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1 py-0 bg-amber-500/20 text-amber-400"
+            >
+              Diverging
+            </Badge>
+            <InfoTooltip
+              title={CASCADE_STAGES.diverging.title}
+              content={CASCADE_STAGES.diverging.content}
+              side="left"
+              iconClassName="w-3 h-3 text-[8px] text-amber-400"
+            />
+          </span>
         )}
         <span className="text-muted-foreground text-[10px]">
           {state.confidence}%
@@ -175,7 +198,14 @@ export function CascadePanel({
     <Card className="shrink-0">
       <CardHeader className="py-2 px-3">
         <CardTitle className="text-sm flex items-center justify-between">
-          <span>Cascade Effect</span>
+          <span className="flex items-center gap-2">
+            Cascade Effect
+            <InfoTooltip
+              title={CASCADE_STAGES.overview.title}
+              content={CASCADE_STAGES.overview.content}
+              side="right"
+            />
+          </span>
           <Badge
             variant="outline"
             className="text-[10px] px-1.5"
@@ -196,7 +226,15 @@ export function CascadePanel({
         {/* Dominant Trend & Reversal Probability */}
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">Dominant:</span>
+            <span className="text-muted-foreground flex items-center gap-1">
+              Dominant:
+              <InfoTooltip
+                title={CASCADE_STAGES.dominantTrend.title}
+                content={CASCADE_STAGES.dominantTrend.content}
+                side="top"
+                iconClassName="w-3 h-3 text-[8px]"
+              />
+            </span>
             <Badge
               variant="outline"
               className="capitalize text-[10px] px-1.5 py-0"
@@ -206,7 +244,15 @@ export function CascadePanel({
             </Badge>
           </div>
           <div className="flex items-center gap-1">
-            <span className="text-muted-foreground">Rev. Prob:</span>
+            <span className="text-muted-foreground flex items-center gap-1">
+              Rev. Prob:
+              <InfoTooltip
+                title={CASCADE_STAGES.reversalProbability.title}
+                content={CASCADE_STAGES.reversalProbability.content}
+                side="top"
+                iconClassName="w-3 h-3 text-[8px]"
+              />
+            </span>
             <span
               className="font-medium"
               style={{ color: stageConfig.color }}

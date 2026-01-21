@@ -19,6 +19,8 @@ import type { TradeOpportunity } from "@/hooks/use-trade-discovery";
 import type { SizingData, CapturedValidation, CategoryInfo } from "@/hooks/use-trade-execution";
 import type { ValidationResult } from "@/hooks/use-trade-validation";
 import type { TradeCategory } from "@/types/workflow-v2";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { POSITION_SIZING, TRADE_CATEGORIES } from "@/lib/educational-content";
 
 export type SizingPanelProps = {
   opportunity: TradeOpportunity;
@@ -37,7 +39,7 @@ export type SizingPanelProps = {
 };
 
 /**
- * Get category badge styling
+ * Get category badge styling and tooltip
  */
 function getCategoryBadgeProps(category: TradeCategory) {
   switch (category) {
@@ -46,18 +48,21 @@ function getCategoryBadgeProps(category: TradeCategory) {
         icon: ShieldCheck,
         label: "With Trend",
         className: "border-green-500/50 text-green-400",
+        tooltip: TRADE_CATEGORIES.withTrend,
       };
     case "counter_trend":
       return {
         icon: Shield,
         label: "Counter",
         className: "border-amber-500/50 text-amber-400",
+        tooltip: TRADE_CATEGORIES.counterTrend,
       };
     case "reversal_attempt":
       return {
         icon: ShieldAlert,
         label: "Reversal",
         className: "border-red-500/50 text-red-400",
+        tooltip: TRADE_CATEGORIES.reversalAttempt,
       };
   }
 }
@@ -236,10 +241,18 @@ export function SizingPanel({
           {opportunity.direction.toUpperCase()}
         </span>
         {/* Category Badge */}
-        <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${categoryProps.className}`}>
-          <CategoryIcon className="w-3 h-3 mr-0.5" />
-          {categoryProps.label}
-        </Badge>
+        <span className="flex items-center gap-1">
+          <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${categoryProps.className}`}>
+            <CategoryIcon className="w-3 h-3 mr-0.5" />
+            {categoryProps.label}
+          </Badge>
+          <InfoTooltip
+            title={categoryProps.tooltip.title}
+            content={categoryProps.tooltip.content}
+            side="right"
+            iconClassName="w-3 h-3 text-[8px]"
+          />
+        </span>
       </div>
 
       {/* Account Settings */}
@@ -259,7 +272,15 @@ export function SizingPanel({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="risk-percentage">Risk per Trade (%)</Label>
+            <Label htmlFor="risk-percentage" className="flex items-center gap-1">
+              Risk per Trade (%)
+              <InfoTooltip
+                title={POSITION_SIZING.riskPercentage.title}
+                content={POSITION_SIZING.riskPercentage.content}
+                side="right"
+                iconClassName="w-3 h-3 text-[9px]"
+              />
+            </Label>
             <Input
               id="risk-percentage"
               type="number"
@@ -272,7 +293,15 @@ export function SizingPanel({
             {/* Category-adjusted risk display */}
             {categoryInfo.riskMultiplier < 1 && (
               <div className="flex items-center gap-2 mt-2 text-xs">
-                <span className="text-muted-foreground">Adjusted:</span>
+                <span className="text-muted-foreground flex items-center gap-1">
+                  Adjusted:
+                  <InfoTooltip
+                    title={POSITION_SIZING.categoryAdjustment.title}
+                    content={POSITION_SIZING.categoryAdjustment.content}
+                    side="right"
+                    iconClassName="w-2.5 h-2.5 text-[8px]"
+                  />
+                </span>
                 <span className={categoryProps.className.replace("border-", "text-").replace("/50", "")}>
                   {categoryInfo.adjustedRiskPercentage.toFixed(1)}%
                 </span>
@@ -478,26 +507,66 @@ export function SizingPanel({
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-medium">Calculated Values</CardTitle>
-            <Badge className={getRecommendationStyle(sizing.recommendation)}>
-              {formatRecommendation(sizing.recommendation)}
-            </Badge>
+            <span className="flex items-center gap-1">
+              <Badge className={getRecommendationStyle(sizing.recommendation)}>
+                {formatRecommendation(sizing.recommendation)}
+              </Badge>
+              <InfoTooltip
+                title={POSITION_SIZING.recommendation.title}
+                content={POSITION_SIZING.recommendation.content}
+                side="left"
+                iconClassName="w-3 h-3 text-[8px]"
+              />
+            </span>
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Position Size</span>
+            <span className="text-muted-foreground flex items-center gap-1">
+              Position Size
+              <InfoTooltip
+                title={POSITION_SIZING.positionSize.title}
+                content={POSITION_SIZING.positionSize.content}
+                side="right"
+                iconClassName="w-3 h-3 text-[8px]"
+              />
+            </span>
             <span className="font-medium">{sizing.positionSize.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Risk Amount</span>
+            <span className="text-muted-foreground flex items-center gap-1">
+              Risk Amount
+              <InfoTooltip
+                title={POSITION_SIZING.riskAmount.title}
+                content={POSITION_SIZING.riskAmount.content}
+                side="right"
+                iconClassName="w-3 h-3 text-[8px]"
+              />
+            </span>
             <span className="font-medium">${sizing.riskAmount}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Stop Distance</span>
+            <span className="text-muted-foreground flex items-center gap-1">
+              Stop Distance
+              <InfoTooltip
+                title={POSITION_SIZING.stopDistance.title}
+                content={POSITION_SIZING.stopDistance.content}
+                side="right"
+                iconClassName="w-3 h-3 text-[8px]"
+              />
+            </span>
             <span className="font-medium">{sizing.stopDistance}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">R:R Ratio</span>
+            <span className="text-muted-foreground flex items-center gap-1">
+              R:R Ratio
+              <InfoTooltip
+                title={POSITION_SIZING.riskRewardRatio.title}
+                content={POSITION_SIZING.riskRewardRatio.content}
+                side="right"
+                iconClassName="w-3 h-3 text-[8px]"
+              />
+            </span>
             <span className="font-medium">{sizing.riskRewardRatio.toFixed(2)}</span>
           </div>
         </CardContent>

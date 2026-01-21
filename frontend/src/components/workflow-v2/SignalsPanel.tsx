@@ -30,6 +30,8 @@ import {
   Target,
   AlertCircle,
 } from "lucide-react";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { SIGNAL_TYPES, FIB_RATIOS } from "@/lib/educational-content";
 
 export type SignalsPanelProps = {
   /** Signals to display */
@@ -60,17 +62,37 @@ function formatConfidence(confidence: number): string {
 }
 
 /**
- * Get signal type icon
+ * Get signal type tooltip content
  */
-function getSignalTypeIcon(type: AggregatedSignal["type"]) {
+function getSignalTypeTooltip(type: AggregatedSignal["type"]) {
   switch (type) {
     case "trend_alignment":
-      return <TrendingUp className="w-3 h-3" />;
+      return SIGNAL_TYPES.trendAlignment;
     case "fib_rejection":
-      return <Target className="w-3 h-3" />;
+      return SIGNAL_TYPES.fibRejection;
     case "confluence":
-      return <Layers className="w-3 h-3" />;
+      return SIGNAL_TYPES.confluence;
   }
+}
+
+/**
+ * Get signal type icon with tooltip
+ */
+function SignalTypeIcon({ type }: { type: AggregatedSignal["type"] }) {
+  const tooltip = getSignalTypeTooltip(type);
+  const Icon = type === "trend_alignment" ? TrendingUp : type === "fib_rejection" ? Target : Layers;
+
+  return (
+    <span className="flex items-center gap-0.5">
+      <Icon className="w-3 h-3" />
+      <InfoTooltip
+        title={tooltip.title}
+        content={tooltip.content}
+        side="top"
+        iconClassName="w-2.5 h-2.5 text-[7px]"
+      />
+    </span>
+  );
 }
 
 /**
@@ -301,7 +323,7 @@ export function SignalsPanel({
                       </span>
                       {/* Signal Type Icon */}
                       <span className="text-zinc-500">
-                        {getSignalTypeIcon(signal.type)}
+                        <SignalTypeIcon type={signal.type} />
                       </span>
                     </div>
                     {/* Confidence */}
@@ -332,14 +354,29 @@ export function SignalsPanel({
                     </span>
                     {/* Fib Level */}
                     {signal.fibLevel && (
-                      <span className="text-blue-400">
+                      <span className="text-blue-400 flex items-center gap-0.5">
                         {(signal.fibLevel * 100).toFixed(1)}%
+                        <InfoTooltip
+                          title={`${(signal.fibLevel * 100).toFixed(1)}% Fibonacci Level`}
+                          content={
+                            FIB_RATIOS[signal.fibLevel.toFixed(3) as keyof typeof FIB_RATIOS]?.content ||
+                            "Fibonacci retracement level - price reversal zone"
+                          }
+                          side="top"
+                          iconClassName="w-2.5 h-2.5 text-[7px]"
+                        />
                       </span>
                     )}
                     {/* Confluence Count */}
                     {signal.confluenceCount && (
-                      <span className="text-purple-400">
+                      <span className="text-purple-400 flex items-center gap-0.5">
                         {signal.confluenceCount} levels
+                        <InfoTooltip
+                          title="Confluence Count"
+                          content="Number of technical factors converging at this level. More confluence = stronger signal."
+                          side="top"
+                          iconClassName="w-2.5 h-2.5 text-[7px]"
+                        />
                       </span>
                     )}
                     {/* Active Indicator */}
