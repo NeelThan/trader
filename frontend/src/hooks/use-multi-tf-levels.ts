@@ -72,6 +72,13 @@ export type UseMultiTFLevelsReturn = MultiTFLevelsResult & {
   isLoading: boolean;
   refresh: () => void;
   toggleLevelVisibility: (levelId: string) => void;
+  /** Auto-refresh state and controls */
+  lastUpdated: Date | null;
+  countdown: number;
+  autoRefreshEnabled: boolean;
+  setAutoRefreshEnabled: (enabled: boolean) => void;
+  /** Current refresh interval in seconds (based on fastest enabled timeframe) */
+  refreshInterval: number;
 };
 
 /**
@@ -375,6 +382,19 @@ function hasAnyDirectionEnabled(
   return tfConfig.strategies.some((s) => s.long.enabled || s.short.enabled);
 }
 
+/**
+ * Get the shortest refresh interval from enabled timeframes.
+ * Uses TIMEFRAME_CONFIG.refreshInterval values.
+ * Falls back to 300 seconds (5 min) if no timeframes enabled.
+ */
+function getShortestRefreshInterval(enabledTimeframes: Timeframe[]): number {
+  if (enabledTimeframes.length === 0) return 300;
+
+  return Math.min(
+    ...enabledTimeframes.map((tf) => TIMEFRAME_CONFIG[tf].refreshInterval)
+  );
+}
+
 export function useMultiTFLevels({
   symbol,
   visibilityConfig,
@@ -392,6 +412,11 @@ export function useMultiTFLevels({
   const [visibilityOverrides, setVisibilityOverrides] = useState<
     Record<string, boolean>
   >({});
+
+  // Auto-refresh state
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const [countdown, setCountdown] = useState<number>(0);
 
   // Cache for market data to avoid refetching
   const marketDataCache = useRef<Record<string, OHLCData[]>>({});
@@ -680,6 +705,7 @@ export function useMultiTFLevels({
     );
 
     setByTimeframe(validResults);
+    setLastUpdated(new Date());
   }, [enabled, fetchLevelsForTimeframe]);
 
   // Clear cache when symbol changes
@@ -724,6 +750,50 @@ export function useMultiTFLevels({
       }
     };
   }, [fetchAllLevels, enabled]);
+
+  // Calculate refresh interval based on fastest enabled timeframe
+  const refreshInterval = useMemo(() => {
+    return getShortestRefreshInterval(enabledTimeframes);
+  }, [enabledTimeframes]);
+
+  // Initialize countdown when refresh interval changes or after successful fetch
+  useEffect(() => {
+    if (lastUpdated && countdown === 0) {
+      setCountdown(refreshInterval);
+    }
+  }, [refreshInterval, lastUpdated, countdown]);
+
+  // Auto-refresh countdown timer
+  useEffect(() => {
+    // Skip if auto-refresh disabled, hook disabled, or in simulated mode
+    if (!autoRefreshEnabled || !enabled || dataMode === "simulated") {
+      return;
+    }
+
+    // Skip if no data has been fetched yet (countdown will be 0)
+    if (countdown <= 0) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          // Time to refresh - trigger fetch if not already fetching
+          if (!isFetching.current) {
+            isFetching.current = true;
+            fetchAllLevels().finally(() => {
+              isFetching.current = false;
+            });
+          }
+          // Reset countdown to refresh interval
+          return refreshInterval;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [autoRefreshEnabled, enabled, dataMode, refreshInterval, fetchAllLevels]);
 
   // Calculate all levels with heat scores
   const allLevels = useMemo(() => {
@@ -788,5 +858,11 @@ export function useMultiTFLevels({
     isLoading,
     refresh: fetchAllLevels,
     toggleLevelVisibility,
+    // Auto-refresh state and controls
+    lastUpdated,
+    countdown,
+    autoRefreshEnabled,
+    setAutoRefreshEnabled,
+    refreshInterval,
   };
 }

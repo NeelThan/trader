@@ -54,40 +54,45 @@ Last updated: 2026-01-21
 - Frontend hook passes signal bar data to backend
 - Per SignalPro spec: "No signal bar = No trade"
 
-### 4. Strategy Selection Rules
-**Status:** Not Started
+### 4. ~~Strategy Selection Rules~~ ✅
+**Status:** Complete (2026-01-21)
 **Files:** `backend/src/trader/workflow.py`
 
-**Issue:** Strategy selection (retracement vs extension vs projection vs expansion) is not implemented in workflow flow. Validation mostly uses retracement/extension only.
-
-**Required Changes:**
-- Implement strategy selection based on market conditions
-- Apply correct Fibonacci strategy per trading scenario
-- Document strategy selection criteria
+**Completed:**
+- Added extract_abc_pivots() to identify ABC patterns from pivot detection
+- Added select_fibonacci_strategy() with rules based on price vs pivot positions
+- Enhanced LevelsResult with selected_strategy, abc_pivots, strategy_reason fields
+- Auto-selects strategy: retracement, extension, projection, or expansion
+- Strategy selection rules:
+  - Retracement: Price pulling back (below C for long, above C for short)
+  - Extension: Price beyond B (continuation)
+  - Projection: Valid ABC with 38.2-78.6% retracement
+  - Expansion: Price between C and B without valid projection
 
 ## Medium-Priority Items
 
-### 5. Watchlist Management UI
-**Status:** Not Started
+### 5. ~~Watchlist Management UI~~ ✅
+**Status:** Complete (2026-01-21)
 **Files:** `frontend/src/components/workflow-v2/DiscoveryModePanel.tsx`
 
-**Issue:** Scan uses a hardcoded watchlist. No UI for managing watchlist.
+**Completed:**
+- Connected scanner to use stored watchlist from `useWorkflowV2Storage` (was hardcoded)
+- Added inline watchlist management UI in scan mode with add/remove symbols
+- Watchlist persists to localStorage automatically
+- Shows available symbols in dropdown to add
+- Badge-style display with X button to remove (minimum 1 symbol enforced)
 
-**Required Changes:**
-- Add watchlist management component
-- Persist user watchlist preferences
-- Allow add/remove/reorder symbols
-
-### 6. Auto-Refresh by Timeframe
-**Status:** Partial
+### 6. ~~Auto-Refresh by Timeframe~~ ✅
+**Status:** Complete (2026-01-21)
 **Files:** `frontend/src/hooks/use-multi-tf-levels.ts`
 
-**Issue:** Auto-refresh intervals by timeframe are not enforced for multi-TF levels. Only active chart feed auto-refreshes.
-
-**Required Changes:**
-- Implement timeframe-specific refresh intervals
-- Apply ADR refresh interval guidelines
-- Prevent excessive API calls
+**Completed:**
+- Added auto-refresh state: `lastUpdated`, `countdown`, `autoRefreshEnabled`
+- Added `getShortestRefreshInterval()` to use fastest enabled timeframe's interval
+- Added 1-second countdown timer with automatic refresh trigger
+- Uses `TIMEFRAME_CONFIG.refreshInterval` values per ADR guidelines
+- Prevents excessive API calls via debouncing and `isFetching` guard
+- Respects data mode (no auto-refresh in simulated mode)
 
 ### 7. Educational Tooltips
 **Status:** Not Started
@@ -141,6 +146,23 @@ Last updated: 2026-01-21
 - [ ] Full workflow end-to-end test
 
 ## Completed Work Log
+
+### 2026-01-21: Watchlist Management UI
+- Connected `DiscoveryModePanel` scanner to use stored watchlist (was hardcoded 6 symbols)
+- Added inline watchlist management UI with add dropdown and remove buttons
+- Watchlist persists to localStorage via existing `useWorkflowV2Storage` hook
+
+### 2026-01-21: Auto-Refresh by Timeframe
+- Added auto-refresh to `use-multi-tf-levels.ts` hook
+- Uses shortest enabled timeframe's refresh interval from ADR guidelines
+- Added countdown timer, lastUpdated state, and autoRefreshEnabled toggle
+- Returns new properties: `lastUpdated`, `countdown`, `autoRefreshEnabled`, `setAutoRefreshEnabled`, `refreshInterval`
+
+### 2026-01-21: Strategy Selection Rules
+- Added extract_abc_pivots() and select_fibonacci_strategy() functions
+- Enhanced LevelsResult model with strategy metadata
+- Auto-selects retracement/extension/projection/expansion based on ABC pivots and price position
+- **Result:** 17 new tests, 612 total tests passing
 
 ### 2026-01-21: Direction-Based Fib, Signal Bar Gating, and Scanning Fixes
 - **Direction-Based Fibonacci:** Added swing_endpoint to pivot detection; frontend filters levels by direction

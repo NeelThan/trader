@@ -5,29 +5,43 @@
  *
  * Provides a toggle between:
  * - Single Symbol: Shows opportunities for the currently selected symbol
- * - Scan All: Scans multiple symbols from watchlist
+ * - Scan All: Scans multiple symbols from user's watchlist
  *
  * Both modes now use the backend API for consistent opportunity detection.
  * Per ADR-20260101, frontend is a dumb client - all calculations done by backend.
  *
  * Supports showing potential (unconfirmed with-trend) opportunities via toggle.
+ * Watchlist is persisted to localStorage via useWorkflowV2Storage hook.
  */
 
 import { useState, useMemo } from "react";
-import { Scan, Target, Eye, EyeOff } from "lucide-react";
+import { Scan, Target, Eye, EyeOff, Plus, X, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 import { DiscoveryPanel } from "./DiscoveryPanel";
 import { OpportunitiesPanel } from "./OpportunitiesPanel";
 import { useOpportunities } from "@/hooks/use-opportunities";
+import { useWorkflowV2Storage } from "@/hooks/use-workflow-v2-storage";
 import type { TradeOpportunity as DiscoveryOpportunity } from "@/hooks/use-trade-discovery";
 import type { TradeOpportunity as ScannerOpportunity } from "@/types/workflow-v2";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
-import { TIMEFRAME_PAIR_PRESETS } from "@/lib/chart-constants";
+import { TIMEFRAME_PAIR_PRESETS, MARKET_CONFIG } from "@/lib/chart-constants";
 
-// Watchlist symbols to scan
-const WATCHLIST_SYMBOLS: MarketSymbol[] = ["DJI", "SPX", "NDX", "BTCUSD", "EURUSD", "GOLD"];
+// All available symbols for watchlist
+const ALL_SYMBOLS: MarketSymbol[] = ["DJI", "SPX", "NDX", "BTCUSD", "EURUSD", "GOLD"];
+
+// Default watchlist if user has none
+const DEFAULT_WATCHLIST: MarketSymbol[] = ["DJI", "SPX", "NDX"];
 
 // Default timeframe pairs for scanning
 const DEFAULT_TIMEFRAME_PAIRS = TIMEFRAME_PAIR_PRESETS.slice(0, 4).map(p => ({
@@ -123,6 +137,23 @@ export function DiscoveryModePanel({
   const [mode, setMode] = useState<DiscoveryMode>("single");
   const [includePotential, setIncludePotential] = useState(false);
 
+  // Watchlist from persistent storage
+  const {
+    storage,
+    addToWatchlist,
+    removeFromWatchlist,
+  } = useWorkflowV2Storage();
+
+  // Use stored watchlist or default if empty
+  const watchlist = useMemo(() => {
+    return storage.watchlist.length > 0 ? storage.watchlist : DEFAULT_WATCHLIST;
+  }, [storage.watchlist]);
+
+  // Symbols available to add (not already in watchlist)
+  const availableSymbols = useMemo(() => {
+    return ALL_SYMBOLS.filter((s) => !watchlist.includes(s));
+  }, [watchlist]);
+
   // Single-symbol scanner (uses backend API for consistent opportunity detection)
   const singleScanner = useOpportunities({
     symbols: [symbol],
@@ -131,9 +162,9 @@ export function DiscoveryModePanel({
     includePotential,
   });
 
-  // Multi-symbol scanner
+  // Multi-symbol scanner - uses user's watchlist
   const multiScanner = useOpportunities({
-    symbols: WATCHLIST_SYMBOLS,
+    symbols: watchlist,
     timeframePairs: DEFAULT_TIMEFRAME_PAIRS,
     enabled: mode === "scan",
     includePotential,
@@ -203,6 +234,69 @@ export function DiscoveryModePanel({
           aria-label="Show potential opportunities awaiting confirmation"
         />
       </div>
+
+      {/* Watchlist Management - only shown in scan mode */}
+      {mode === "scan" && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Settings2 className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Watchlist</span>
+              <span className="text-xs text-muted-foreground">
+                ({watchlist.length} symbols)
+              </span>
+            </div>
+            {/* Add Symbol Dropdown */}
+            {availableSymbols.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1">
+                    <Plus className="w-3 h-3" />
+                    <span className="hidden sm:inline">Add</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Add Symbol</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {availableSymbols.map((sym) => (
+                    <DropdownMenuItem
+                      key={sym}
+                      onClick={() => addToWatchlist(sym)}
+                      className="cursor-pointer"
+                    >
+                      <span className="font-medium">{sym}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {MARKET_CONFIG[sym].name}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+          {/* Watchlist Symbols */}
+          <div className="flex flex-wrap gap-1.5">
+            {watchlist.map((sym) => (
+              <Badge
+                key={sym}
+                variant="secondary"
+                className="gap-1 pr-1 hover:bg-secondary/80"
+              >
+                <span>{sym}</span>
+                <button
+                  onClick={() => removeFromWatchlist(sym)}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-destructive/20 hover:text-destructive transition-colors"
+                  aria-label={`Remove ${sym} from watchlist`}
+                  disabled={watchlist.length <= 1}
+                  title={watchlist.length <= 1 ? "Cannot remove last symbol" : `Remove ${sym}`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Panel Content */}
       {mode === "single" ? (
