@@ -40,6 +40,10 @@ export type PanelVisibility = {
   volumePane: boolean;
   /** ATR indicator pane below price chart */
   atrPane: boolean;
+  /** HH/LL trend lines overlay */
+  trendLines: boolean;
+  /** Reversal time estimation panel */
+  reversalTime: boolean;
 };
 
 export type ChartDisplaySettings = {
@@ -86,6 +90,8 @@ export const initialLayoutState: WorkflowLayoutState = {
     psychologicalLevels: false,
     volumePane: false,
     atrPane: false,
+    trendLines: false,
+    reversalTime: false,
   },
   chart: {
     chartType: "bar",
@@ -324,7 +330,8 @@ export const layoutSelectors = {
       panels.trendPanel ||
       panels.cascadePanel ||
       panels.confluenceZones ||
-      panels.levelsTable
+      panels.levelsTable ||
+      panels.reversalTime
     );
   },
 
@@ -338,6 +345,7 @@ export const layoutSelectors = {
       panels.cascadePanel,
       panels.confluenceZones,
       panels.levelsTable,
+      panels.reversalTime,
     ].filter(Boolean).length;
   },
 };

@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CandlestickChart, CandlestickChartHandle, PriceLine, LineOverlay, type ChartType } from "@/components/trading";
-import { RSIPane, MACDChart, PivotPointsEditor, LevelsTable } from "@/components/chart-pro";
+import { RSIPane, MACDChart, PivotPointsEditor, LevelsTable, ReversalTimePanel } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
 import { useMultiTFLevels } from "@/hooks/use-multi-tf-levels";
@@ -33,9 +33,11 @@ import { useMACD } from "@/hooks/use-macd";
 import { useRSI } from "@/hooks/use-rsi";
 import { useTrendAlignment } from "@/hooks/use-trend-alignment";
 import { useATR } from "@/hooks/use-atr";
+import { useTrendLines } from "@/hooks/use-trend-lines";
+import { useReversalTime } from "@/hooks/use-reversal-time";
 import { usePersistedVisibilityConfig } from "@/hooks/use-persisted-visibility-config";
 import { usePersistedSwingSettings } from "@/hooks/use-persisted-swing-settings";
-import { generateSwingLineOverlays } from "@/lib/chart-pro/swing-overlays";
+import { generateSwingLineOverlays, generateTrendLineOverlays } from "@/lib/chart-pro/swing-overlays";
 import {
   isLevelVisible,
   DIRECTION_COLORS,
@@ -119,6 +121,8 @@ export function WorkflowV2Layout({
   const showPsychologicalLevels = panels.psychologicalLevels;
   const showVolume = panels.volumePane;
   const showAtr = panels.atrPane;
+  const showTrendLines = panels.trendLines;
+  const showReversalTime = panels.reversalTime;
   const atrPeriod = chart.atrPeriod;
   const showFibLabels = chart.fibLabels;
   const showFibLines = chart.fibLines;
@@ -361,6 +365,27 @@ export function WorkflowV2Layout({
     editablePivots,
   });
 
+  // Trend lines - HH and LL separate lines
+  const {
+    trendLines,
+    overlays: trendLineOverlays,
+    isLoading: isLoadingTrendLines,
+  } = useTrendLines({
+    data: marketData,
+    lookback: swingSettings.settings.lookback,
+    enabled: showTrendLines && showSwingMarkers && swingSettings.enabled,
+    projectBars: 20,
+  });
+
+  // Combine all line overlays for the chart
+  const allLineOverlays = useMemo<LineOverlay[]>(() => {
+    const overlays = [...swingLineOverlays];
+    if (showTrendLines) {
+      overlays.push(...trendLineOverlays);
+    }
+    return overlays;
+  }, [swingLineOverlays, trendLineOverlays, showTrendLines]);
+
   // Multi-TF Fibonacci levels
   const { allLevels, byTimeframe, isLoading: isLoadingLevels } = useMultiTFLevels({
     symbol,
@@ -439,6 +464,26 @@ export function WorkflowV2Layout({
 
     return allLevels.filter((level) => isLevelVisible(level, visibilityConfig));
   }, [allLevels, visibilityConfig, showFibLevels, showTradeView, opportunity]);
+
+  // Prepare Fibonacci levels for reversal time estimation
+  const fibLevelsForTimeEstimate = useMemo(() => {
+    return visibleLevels.map((level) => ({
+      label: `${level.timeframe} ${level.label}`,
+      price: level.price,
+    }));
+  }, [visibleLevels]);
+
+  // Reversal time estimation
+  const {
+    velocity,
+    estimates: timeEstimates,
+    isLoading: isLoadingReversalTime,
+  } = useReversalTime({
+    data: marketData,
+    fibLevels: fibLevelsForTimeEstimate,
+    timeframe,
+    enabled: showReversalTime && fibLevelsForTimeEstimate.length > 0,
+  });
 
   // Convert levels to price lines (simplified labels for less clutter)
   // Returns empty when showFibLines is false (hides lines but keeps zones)
@@ -1122,6 +1167,34 @@ export function WorkflowV2Layout({
                     )}
                   </button>
 
+                  {/* Trend Lines toggle - HH/LL trend lines */}
+                  <button
+                    onClick={() => dispatch(layoutActions.togglePanel("trendLines"))}
+                    className={cn(
+                      "px-2 py-1 text-xs rounded transition-colors",
+                      showTrendLines
+                        ? "bg-green-500/20 text-green-400"
+                        : "text-muted-foreground hover:bg-muted"
+                    )}
+                    title="Toggle HH/LL trend lines"
+                  >
+                    Trend
+                  </button>
+
+                  {/* Reversal Time toggle - time to reach levels */}
+                  <button
+                    onClick={() => dispatch(layoutActions.togglePanel("reversalTime"))}
+                    className={cn(
+                      "px-2 py-1 text-xs rounded transition-colors",
+                      showReversalTime
+                        ? "bg-blue-500/20 text-blue-400"
+                        : "text-muted-foreground hover:bg-muted"
+                    )}
+                    title="Show estimated time to reach levels"
+                  >
+                    Time
+                  </button>
+
                   {/* Status badges */}
                   <div className="flex items-center gap-1 text-xs ml-auto">
                     {/* Trade view indicator */}
@@ -1230,7 +1303,7 @@ export function WorkflowV2Layout({
                     chartType={chartType}
                     markers={chartMarkers}
                     priceLines={allPriceLines}
-                    lineOverlays={swingLineOverlays}
+                    lineOverlays={allLineOverlays}
                     upColor={chartColors.up}
                     downColor={chartColors.down}
                     onCrosshairMove={handleCrosshairMove}
@@ -1279,6 +1352,30 @@ export function WorkflowV2Layout({
                   error={cascadeError}
                   chartColors={chartColors}
                 />
+              )}
+
+              {/* Reversal Time Panel - time to reach Fib levels */}
+              {showReversalTime && (
+                <Card className="shrink-0">
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm flex items-center justify-between">
+                      <span>Reversal Time</span>
+                      {isLoadingReversalTime && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Loading...
+                        </Badge>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 pt-0">
+                    <ReversalTimePanel
+                      velocity={velocity}
+                      estimates={timeEstimates}
+                      currentPrice={marketData.length > 0 ? marketData[marketData.length - 1].close : 0}
+                      isLoading={isLoadingReversalTime}
+                    />
+                  </CardContent>
+                </Card>
               )}
 
               {/* Indicators Panel - RSI and MACD */}
@@ -1432,6 +1529,7 @@ export function WorkflowV2Layout({
                     <LevelsTable
                       levels={allLevels}
                       visibilityConfig={visibilityConfig}
+                      timeEstimates={showReversalTime ? timeEstimates : undefined}
                     />
                   </CardContent>
                 </Card>
