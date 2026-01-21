@@ -42,6 +42,19 @@ from trader.position_sizing import (
     calculate_risk_reward,
 )
 from trader.signals import Bar, detect_signal
+from trader.trend_lines import (
+    TrendLine,
+    TrendLineBreak,
+    TrendLinePoint,
+    TrendLinesResult,
+    analyze_trend_lines,
+)
+from trader.velocity import (
+    LevelTimeEstimate,
+    ReversalTimeResult,
+    VelocityMetrics,
+    estimate_reversal_times,
+)
 from trader.volume_indicators import analyze_volume
 from trader.workflow import (
     AlignmentResult,
@@ -1723,4 +1736,258 @@ async def workflow_signal_aggregation(
         symbol=symbol,
         timeframes=timeframe_list,
         market_service=_market_data_service,
+    )
+
+
+# --- Trend Lines Endpoints ---
+
+
+class TrendLinePointData(BaseModel):
+    """Point on a trend line in response."""
+
+    index: int
+    price: float
+    time: str | int
+
+
+class TrendLineData(BaseModel):
+    """Trend line data in response."""
+
+    swing_type: str  # "HH" or "LL"
+    points: list[TrendLinePointData]
+    slope: float
+    intercept: float
+    is_valid: bool
+
+
+class TrendLineBreakData(BaseModel):
+    """Trend line break data in response."""
+
+    line_type: str  # "HH" or "LL"
+    break_index: int
+    break_price: float
+    break_time: str | int | None
+    break_direction: str  # "above" or "below"
+
+
+class TrendLinesRequest(BaseModel):
+    """Request model for trend line analysis."""
+
+    data: list[OHLCBarModel]
+    lookback: int = 5
+
+
+class TrendLinesResponseData(BaseModel):
+    """Response model for trend line analysis."""
+
+    upper_line: TrendLineData | None
+    lower_line: TrendLineData | None
+    breaks: list[TrendLineBreakData]
+    current_position: str  # "above_upper", "in_channel", "below_lower", "no_channel"
+
+
+@app.post("/pivot/trend-lines", response_model=TrendLinesResponseData)
+async def pivot_trend_lines(request: TrendLinesRequest) -> TrendLinesResponseData:
+    """Calculate trend lines from swing markers.
+
+    Extracts HH (Higher High) and LL (Lower Low) points from swing detection,
+    then calculates separate trend lines for each:
+    - Upper line: Connects HH points (resistance trend)
+    - Lower line: Connects LL points (support trend)
+
+    Also detects breaks above/below these lines and determines
+    the current price position relative to the channel.
+
+    Args:
+        request: OHLC data and lookback period for pivot detection.
+
+    Returns:
+        TrendLinesResponseData with both lines, breaks, and position.
+    """
+    if len(request.data) < request.lookback * 2 + 1:
+        return TrendLinesResponseData(
+            upper_line=None,
+            lower_line=None,
+            breaks=[],
+            current_position="no_channel",
+        )
+
+    # Convert to OHLCBar dataclasses
+    ohlc_data = [
+        OHLCBar(
+            time=bar.time,
+            open=bar.open,
+            high=bar.high,
+            low=bar.low,
+            close=bar.close,
+        )
+        for bar in request.data
+    ]
+
+    # Detect pivots and classify swings
+    pivot_result = detect_pivots(data=ohlc_data, lookback=request.lookback)
+    swing_markers = classify_swings(pivot_result.pivots)
+
+    # Extract price arrays
+    closes = [bar.close for bar in request.data]
+    highs = [bar.high for bar in request.data]
+    lows = [bar.low for bar in request.data]
+
+    # Analyze trend lines
+    result = analyze_trend_lines(swing_markers, closes, highs, lows)
+
+    # Convert to response format
+    def convert_line(line: TrendLine | None) -> TrendLineData | None:
+        if line is None:
+            return None
+        return TrendLineData(
+            swing_type=line.swing_type,
+            points=[
+                TrendLinePointData(index=p.index, price=p.price, time=p.time)
+                for p in line.points
+            ],
+            slope=line.slope,
+            intercept=line.intercept,
+            is_valid=line.is_valid,
+        )
+
+    return TrendLinesResponseData(
+        upper_line=convert_line(result.upper_line),
+        lower_line=convert_line(result.lower_line),
+        breaks=[
+            TrendLineBreakData(
+                line_type=b.line_type,
+                break_index=b.break_index,
+                break_price=b.break_price,
+                break_time=b.break_time,
+                break_direction=b.break_direction,
+            )
+            for b in result.breaks
+        ],
+        current_position=result.current_position,
+    )
+
+
+# --- Reversal Time Estimation Endpoints ---
+
+
+class FibLevelInput(BaseModel):
+    """Fibonacci level input for time estimation."""
+
+    label: str
+    price: float
+
+
+class VelocityMetricsData(BaseModel):
+    """Velocity metrics in response."""
+
+    bars_per_atr: float
+    price_per_bar: float
+    direction: str  # "up", "down", "sideways"
+    consistency: float
+
+
+class LevelTimeEstimateData(BaseModel):
+    """Time estimate for a single level in response."""
+
+    target_price: float
+    target_label: str
+    estimated_bars: int
+    estimated_time: str | None
+    confidence: float
+    distance_atr: float
+
+
+class ReversalTimeRequest(BaseModel):
+    """Request model for reversal time estimation."""
+
+    data: list[OHLCBarModel]
+    fib_levels: list[FibLevelInput]
+    timeframe: str = "1D"
+    lookback: int = 10
+    atr_period: int = 14
+
+
+class ReversalTimeResponseData(BaseModel):
+    """Response model for reversal time estimation."""
+
+    estimates: list[LevelTimeEstimateData]
+    velocity: VelocityMetricsData
+    current_price: float
+
+
+@app.post("/workflow/reversal-time", response_model=ReversalTimeResponseData)
+async def workflow_reversal_time(
+    request: ReversalTimeRequest,
+) -> ReversalTimeResponseData:
+    """Estimate time to reach Fibonacci reversal levels.
+
+    Calculates price velocity from recent data and estimates how many bars
+    (and clock time) it would take to reach each Fibonacci level.
+
+    Velocity is ATR-normalized to account for volatility:
+    - bars_per_atr: How many bars to move 1 ATR
+    - price_per_bar: Average price change per bar
+
+    Confidence is based on:
+    - Trend consistency (steady vs choppy)
+    - Direction alignment (moving toward vs away from target)
+    - Proximity (closer targets = higher confidence)
+
+    Args:
+        request: OHLC data, Fibonacci levels, and parameters.
+
+    Returns:
+        ReversalTimeResponseData with estimates sorted by distance.
+    """
+    if not request.data:
+        return ReversalTimeResponseData(
+            estimates=[],
+            velocity=VelocityMetricsData(
+                bars_per_atr=0.0,
+                price_per_bar=0.0,
+                direction="sideways",
+                consistency=0.0,
+            ),
+            current_price=0.0,
+        )
+
+    # Extract price arrays
+    closes = [bar.close for bar in request.data]
+    highs = [bar.high for bar in request.data]
+    lows = [bar.low for bar in request.data]
+
+    # Convert fib levels to dict format
+    fib_levels = [{"label": lvl.label, "price": lvl.price} for lvl in request.fib_levels]
+
+    # Calculate reversal times
+    result = estimate_reversal_times(
+        closes=closes,
+        highs=highs,
+        lows=lows,
+        fib_levels=fib_levels,
+        timeframe=request.timeframe,
+        lookback=request.lookback,
+        atr_period=request.atr_period,
+    )
+
+    return ReversalTimeResponseData(
+        estimates=[
+            LevelTimeEstimateData(
+                target_price=e.target_price,
+                target_label=e.target_label,
+                estimated_bars=e.estimated_bars,
+                estimated_time=e.estimated_time,
+                confidence=e.confidence,
+                distance_atr=e.distance_atr,
+            )
+            for e in result.estimates
+        ],
+        velocity=VelocityMetricsData(
+            bars_per_atr=result.velocity.bars_per_atr,
+            price_per_bar=result.velocity.price_per_bar,
+            direction=result.velocity.direction,
+            consistency=result.velocity.consistency,
+        ),
+        current_price=result.current_price,
     )

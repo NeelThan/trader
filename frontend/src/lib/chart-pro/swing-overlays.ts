@@ -3,6 +3,7 @@
  *
  * Generates line overlays for the CandlestickChart that connect
  * pivot points in chronological sequence to visualize swing structure.
+ * Also provides trend line overlays connecting HH/LL points separately.
  */
 
 import type { Time } from "lightweight-charts";
@@ -15,6 +16,15 @@ import { getTimestamp } from "@/lib/format-utils";
  * Color for the swing line
  */
 export const SWING_LINE_COLOR = "#eab308"; // Yellow - for swing structure visibility
+
+/**
+ * Colors for trend lines
+ */
+export const TREND_LINE_COLORS = {
+  upper: "#22c55e", // Green for HH (resistance trend)
+  lower: "#ef4444", // Red for LL (support trend)
+  break: "#f59e0b", // Amber for break markers
+} as const;
 
 /**
  * Sort pivots by time and index for line drawing
@@ -47,13 +57,17 @@ function deduplicateByTime<T extends { time: string | number }>(pivots: T[]): T[
 /**
  * Convert pivot time to lightweight-charts Time format
  */
-function toChartTime(time: string | number): Time {
+function toChartTime(time: string | number | Time): Time {
   if (typeof time === "number") {
     return time as Time;
   }
-  // Convert ISO string to date string (YYYY-MM-DD)
-  const date = new Date(time);
-  return date.toISOString().split("T")[0] as Time;
+  if (typeof time === "string") {
+    // Convert ISO string to date string (YYYY-MM-DD)
+    const date = new Date(time);
+    return date.toISOString().split("T")[0] as Time;
+  }
+  // Already a Time (BusinessDay) - return as-is
+  return time;
 }
 
 /**
@@ -139,4 +153,206 @@ export function generateAllSwingOverlays(
   }
 
   return mainOverlays;
+}
+
+// --- Trend Line Types and Functions ---
+
+/**
+ * Point on a trend line
+ */
+export type TrendLinePoint = {
+  index: number;
+  price: number;
+  time: string | number;
+};
+
+/**
+ * Trend line data from backend
+ */
+export type TrendLineData = {
+  swing_type: "HH" | "LL";
+  points: TrendLinePoint[];
+  slope: number;
+  intercept: number;
+  is_valid: boolean;
+};
+
+/**
+ * Trend line break data from backend
+ */
+export type TrendLineBreak = {
+  line_type: "HH" | "LL";
+  break_index: number;
+  break_price: number;
+  break_time: string | number | null;
+  break_direction: "above" | "below";
+};
+
+/**
+ * Full trend lines result from backend
+ */
+export type TrendLinesResult = {
+  upper_line: TrendLineData | null;
+  lower_line: TrendLineData | null;
+  breaks: TrendLineBreak[];
+  current_position: "above_upper" | "in_channel" | "below_lower" | "no_channel";
+};
+
+/**
+ * Calculate the trend line value at a specific index
+ */
+function getTrendLineValue(line: TrendLineData, index: number): number {
+  return line.intercept + line.slope * index;
+}
+
+/**
+ * Generate a single trend line overlay
+ */
+function generateSingleTrendLineOverlay(
+  line: TrendLineData,
+  color: string
+): LineOverlay | null {
+  if (!line.is_valid || line.points.length < 2) {
+    return null;
+  }
+
+  // Create data points for the line
+  const dataPoints: Array<{ time: Time; value: number }> = [];
+
+  // Add actual pivot points
+  for (const point of line.points) {
+    dataPoints.push({
+      time: toChartTime(point.time),
+      value: point.price,
+    });
+  }
+
+  // Sort by time to ensure correct order
+  dataPoints.sort((a, b) => {
+    const getTimeValue = (t: Time): number => {
+      if (typeof t === "number") return t;
+      if (typeof t === "string") return new Date(t).getTime();
+      // BusinessDay object
+      return new Date(t.year, t.month - 1, t.day).getTime();
+    };
+    return getTimeValue(a.time) - getTimeValue(b.time);
+  });
+
+  return {
+    data: dataPoints,
+    color,
+    lineWidth: 2,
+    lineStyle: 0, // Solid
+  };
+}
+
+/**
+ * Generate projected extension of a trend line (dashed)
+ */
+function generateTrendLineProjection(
+  line: TrendLineData,
+  color: string,
+  marketData: Array<{ time: Time }>,
+  projectBars: number = 20
+): LineOverlay | null {
+  if (!line.is_valid || line.points.length < 2 || marketData.length === 0) {
+    return null;
+  }
+
+  // Get the last actual data point index
+  const lastDataIndex = marketData.length - 1;
+
+  // Get the last trend line point
+  const lastTrendPoint = line.points[line.points.length - 1];
+
+  // If trend line doesn't extend to current data, return null
+  if (lastTrendPoint.index > lastDataIndex) {
+    return null;
+  }
+
+  // Calculate projected points
+  // Start from the last trend line point and extend forward
+  const startValue = getTrendLineValue(line, lastTrendPoint.index);
+
+  // We need time values - use the last available time and project forward
+  const lastTime = marketData[lastDataIndex].time;
+  const lastTrendTime = lastTrendPoint.time;
+
+  return {
+    data: [
+      { time: toChartTime(lastTrendTime), value: startValue },
+      // For projection, we'd need future time values
+      // For now, just show extension to current bar
+      { time: toChartTime(lastTime), value: getTrendLineValue(line, lastDataIndex) },
+    ],
+    color,
+    lineWidth: 1,
+    lineStyle: 2, // Dashed
+  };
+}
+
+/**
+ * Generate trend line overlays from trend lines result
+ *
+ * Creates separate lines for:
+ * - Upper (HH) trend line (green, solid)
+ * - Lower (LL) trend line (red, solid)
+ * - Projections (same colors, dashed)
+ */
+export function generateTrendLineOverlays(
+  trendLines: TrendLinesResult | null,
+  marketData: Array<{ time: Time }> = [],
+  projectBars: number = 20
+): LineOverlay[] {
+  if (!trendLines) {
+    return [];
+  }
+
+  const overlays: LineOverlay[] = [];
+
+  // Generate upper (HH) trend line
+  if (trendLines.upper_line) {
+    const upperLine = generateSingleTrendLineOverlay(
+      trendLines.upper_line,
+      TREND_LINE_COLORS.upper
+    );
+    if (upperLine) {
+      overlays.push(upperLine);
+    }
+
+    // Add projection
+    const upperProjection = generateTrendLineProjection(
+      trendLines.upper_line,
+      TREND_LINE_COLORS.upper,
+      marketData,
+      projectBars
+    );
+    if (upperProjection) {
+      overlays.push(upperProjection);
+    }
+  }
+
+  // Generate lower (LL) trend line
+  if (trendLines.lower_line) {
+    const lowerLine = generateSingleTrendLineOverlay(
+      trendLines.lower_line,
+      TREND_LINE_COLORS.lower
+    );
+    if (lowerLine) {
+      overlays.push(lowerLine);
+    }
+
+    // Add projection
+    const lowerProjection = generateTrendLineProjection(
+      trendLines.lower_line,
+      TREND_LINE_COLORS.lower,
+      marketData,
+      projectBars
+    );
+    if (lowerProjection) {
+      overlays.push(lowerProjection);
+    }
+  }
+
+  return overlays;
 }

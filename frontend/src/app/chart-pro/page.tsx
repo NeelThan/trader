@@ -27,6 +27,7 @@ import {
   SignalSuggestionsPanel,
   MACDChart,
   StatusItem,
+  ReversalTimePanel,
 } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useMACD } from "@/hooks/use-macd";
@@ -41,7 +42,9 @@ import { useDataMode } from "@/hooks/use-data-mode";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
 import { useTrendAlignment } from "@/hooks/use-trend-alignment";
 import { useSignalSuggestions, type SignalFilters } from "@/hooks/use-signal-suggestions";
-import { generateSwingLineOverlays } from "@/lib/chart-pro/swing-overlays";
+import { useTrendLines } from "@/hooks/use-trend-lines";
+import { useReversalTime } from "@/hooks/use-reversal-time";
+import { generateSwingLineOverlays, generateTrendLineOverlays } from "@/lib/chart-pro/swing-overlays";
 import {
   Timeframe,
   MarketSymbol,
@@ -108,6 +111,8 @@ export default function ChartProPage() {
   const [showSignalSuggestions, setShowSignalSuggestions] = useState(true);
   const [showIndicatorsPanel, setShowIndicatorsPanel] = useState(true);
   const [showLevelsTable, setShowLevelsTable] = useState(true);
+  const [showTrendLines, setShowTrendLines] = useState(false);
+  const [showReversalTime, setShowReversalTime] = useState(false);
 
   // Signal filters - default to showing Long signals (most common use case)
   const [signalFilters, setSignalFilters] = useState<SignalFilters>({
@@ -297,6 +302,27 @@ export default function ChartProPage() {
     return generateSwingLineOverlays(editablePivots, { lookback: swingLookback, showLines: swingShowLines });
   }, [editablePivots, swingEnabled, swingShowLines, swingLookback]);
 
+  // Trend lines - HH and LL separate lines
+  const {
+    trendLines,
+    overlays: trendLineOverlays,
+    isLoading: isLoadingTrendLines,
+  } = useTrendLines({
+    data: marketData,
+    lookback: swingLookback,
+    enabled: showTrendLines && swingEnabled,
+    projectBars: 20,
+  });
+
+  // Combine all line overlays for the chart
+  const allLineOverlays = useMemo<LineOverlay[]>(() => {
+    const overlays = [...swingLineOverlays];
+    if (showTrendLines) {
+      overlays.push(...trendLineOverlays);
+    }
+    return overlays;
+  }, [swingLineOverlays, trendLineOverlays, showTrendLines]);
+
   // Get multi-TF Fibonacci levels (hook fetches its own market data per timeframe)
   const {
     allLevels,
@@ -335,6 +361,26 @@ export default function ChartProPage() {
   const visibleLevels = useMemo(() => {
     return allLevels.filter((level) => isLevelVisible(level, visibilityConfig));
   }, [allLevels, visibilityConfig]);
+
+  // Prepare Fibonacci levels for reversal time estimation
+  const fibLevelsForTimeEstimate = useMemo(() => {
+    return visibleLevels.map((level) => ({
+      label: `${level.timeframe} ${level.label}`,
+      price: level.price,
+    }));
+  }, [visibleLevels]);
+
+  // Reversal time estimation
+  const {
+    velocity,
+    estimates: timeEstimates,
+    isLoading: isLoadingReversalTime,
+  } = useReversalTime({
+    data: marketData,
+    fibLevels: fibLevelsForTimeEstimate,
+    timeframe,
+    enabled: showReversalTime && fibLevelsForTimeEstimate.length > 0,
+  });
 
   // Convert strategy levels to price lines for chart
   const strategyPriceLines = useMemo<PriceLine[]>(() => {
@@ -552,6 +598,32 @@ export default function ChartProPage() {
                     {isSimulated ? "Cached" : "Live"}
                   </button>
 
+                  {/* Trend Lines Toggle */}
+                  <button
+                    onClick={() => setShowTrendLines(!showTrendLines)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      showTrendLines
+                        ? "bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30"
+                        : "bg-muted/50 text-muted-foreground border border-muted hover:bg-muted"
+                    }`}
+                    title="Toggle HH/LL trend lines"
+                  >
+                    Trend Lines
+                  </button>
+
+                  {/* Reversal Time Toggle */}
+                  <button
+                    onClick={() => setShowReversalTime(!showReversalTime)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      showReversalTime
+                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30"
+                        : "bg-muted/50 text-muted-foreground border border-muted hover:bg-muted"
+                    }`}
+                    title="Show estimated time to reach levels"
+                  >
+                    Time Est.
+                  </button>
+
                   {/* OHLC Values - pushed to the right */}
                   {currentOHLC && (
                     <div className="flex items-center gap-4 ml-auto text-sm font-mono">
@@ -636,7 +708,7 @@ export default function ChartProPage() {
                     data={marketData}
                     markers={chartMarkers}
                     priceLines={strategyPriceLines}
-                    lineOverlays={swingLineOverlays}
+                    lineOverlays={allLineOverlays}
                     upColor={chartColors.up}
                     downColor={chartColors.down}
                     chartType={chartType}
@@ -838,6 +910,38 @@ export default function ChartProPage() {
             )}
           </Card>
 
+          {/* Reversal Time Panel - shows when enabled */}
+          {showReversalTime && (
+            <Card>
+              <CardHeader className="py-3">
+                <CardTitle className="text-base flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    Reversal Time Estimation
+                    {isLoadingReversalTime && (
+                      <Badge variant="secondary" className="text-xs">
+                        Loading...
+                      </Badge>
+                    )}
+                  </span>
+                  <button
+                    onClick={() => setShowReversalTime(false)}
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Hide
+                  </button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ReversalTimePanel
+                  velocity={velocity}
+                  estimates={timeEstimates}
+                  currentPrice={marketData.length > 0 ? marketData[marketData.length - 1].close : 0}
+                  isLoading={isLoadingReversalTime}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           {/* Levels Table */}
           <Card>
             <CardHeader className="py-3">
@@ -864,6 +968,7 @@ export default function ChartProPage() {
                   levels={allLevels}
                   visibilityConfig={visibilityConfig}
                   onToggleLevelVisibility={handleToggleLevelVisibility}
+                  timeEstimates={showReversalTime ? timeEstimates : undefined}
                 />
               </CardContent>
             )}
@@ -886,6 +991,8 @@ export default function ChartProPage() {
                 <StatusItem label="Pivot Editor" status="done" />
                 <StatusItem label="Per-TF Settings" status="done" />
                 <StatusItem label="Pivot Caching" status="done" />
+                <StatusItem label="Trend Lines" status="done" />
+                <StatusItem label="Time Estimates" status="done" />
                 <StatusItem label="Confluence Heatmap" status="pending" />
                 <StatusItem label="Monitor Zones" status="pending" />
               </div>

@@ -32,6 +32,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { Timeframe } from "@/lib/chart-constants";
+import type { LevelTimeEstimate } from "@/hooks/use-reversal-time";
 import {
   type StrategyLevel,
   type StrategySource,
@@ -52,6 +53,7 @@ type LevelsTableProps = {
   visibilityConfig: VisibilityConfig;
   onToggleLevelVisibility?: (level: StrategyLevel) => void;
   onLevelClick?: (level: StrategyLevel) => void;
+  timeEstimates?: LevelTimeEstimate[];
 };
 
 // Timeframe sort order (higher timeframes first)
@@ -217,11 +219,33 @@ function getCalculationDetails(level: StrategyLevel): {
   }
 }
 
+// Find time estimate for a level by matching price
+function findTimeEstimate(
+  level: StrategyLevel,
+  estimates: LevelTimeEstimate[] | undefined
+): LevelTimeEstimate | undefined {
+  if (!estimates || estimates.length === 0) return undefined;
+
+  // Find estimate with closest price match (within 0.01% tolerance)
+  return estimates.find((est) => {
+    const tolerance = Math.abs(level.price * 0.0001);
+    return Math.abs(est.target_price - level.price) <= tolerance;
+  });
+}
+
+// Format estimated bars for display
+function formatEstBars(estimate: LevelTimeEstimate | undefined): string {
+  if (!estimate) return "-";
+  if (estimate.estimated_bars >= 500) return "500+";
+  return `${estimate.estimated_bars}`;
+}
+
 export function LevelsTable({
   levels,
   visibilityConfig,
   onToggleLevelVisibility,
   onLevelClick,
+  timeEstimates,
 }: LevelsTableProps) {
   // Sorting state
   const [sortField, setSortField] = useState<SortField>("heat");
@@ -504,6 +528,22 @@ export function LevelsTable({
                   </TooltipContent>
                 </Tooltip>
               </TableHead>
+              {/* Est. Bars column - only shown when timeEstimates provided */}
+              {timeEstimates && timeEstimates.length > 0 && (
+                <TableHead className="w-14 text-center">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-xs font-medium flex items-center justify-center gap-1 cursor-help">
+                        Est.
+                        <Info className="h-3 w-3 opacity-50" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs text-xs">
+                      Estimated bars to reach this level based on current price velocity
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
+              )}
               {onToggleLevelVisibility && <TableHead className="w-10" />}
               {/* Expand column */}
               <TableHead className="w-8" />
@@ -512,7 +552,9 @@ export function LevelsTable({
           <TableBody>
             {filteredAndSortedLevels.map((level) => {
               const isExpanded = expandedRows.has(level.id);
-              const colSpan = 6 + (onToggleLevelVisibility ? 1 : 0) + 1; // +1 for expand column
+              const hasTimeEstimates = timeEstimates && timeEstimates.length > 0;
+              const colSpan = 6 + (hasTimeEstimates ? 1 : 0) + (onToggleLevelVisibility ? 1 : 0) + 1; // +1 for expand column
+              const levelTimeEstimate = findTimeEstimate(level, timeEstimates);
 
               return (
                 <React.Fragment key={level.id}>
@@ -579,6 +621,19 @@ export function LevelsTable({
                         {level.heat}
                       </Badge>
                     </TableCell>
+
+                    {/* Est. Bars - only shown when timeEstimates provided */}
+                    {hasTimeEstimates && (
+                      <TableCell className="py-2 text-center">
+                        <span className={`text-xs font-mono ${
+                          levelTimeEstimate && levelTimeEstimate.confidence >= 50
+                            ? "text-foreground"
+                            : "text-muted-foreground"
+                        }`}>
+                          {formatEstBars(levelTimeEstimate)}
+                        </span>
+                      </TableCell>
+                    )}
 
                     {/* Toggle visibility */}
                     {onToggleLevelVisibility && (
