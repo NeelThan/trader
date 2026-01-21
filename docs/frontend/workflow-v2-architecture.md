@@ -140,7 +140,7 @@ stateDiagram-v2
 | Phase | Description | Entry Condition | Exit Condition |
 |-------|-------------|-----------------|----------------|
 | **DISCOVER** | Scan all timeframes for opportunities | Initial state | User selects opportunity |
-| **VALIDATE** | Check trade criteria (5 checks) | Opportunity selected | 60%+ checks pass |
+| **VALIDATE** | Check trade criteria (7 checks) | Opportunity selected | 60%+ checks pass (5+ of 7) |
 | **SIZE** | Calculate position size and R:R | Validation passed | Entry & stop set |
 | **EXECUTE** | Confirm and execute trade | Sizing valid | Trade executed |
 | **MANAGE** | Track P&L, manage stops/targets | Trade active | Trade closed |
@@ -283,7 +283,7 @@ graph TD
 | `page.tsx` | ~150 | Phase state management, hook coordination |
 | `WorkflowV2Layout` | ~800 | Chart rendering, toolbar, feature toggles |
 | `DiscoveryPanel` | ~290 | Display opportunities, test trade buttons |
-| `ValidationPanel` | ~185 | Show 5 validation checks, suggested levels |
+| `ValidationPanel` | ~185 | Show 7 validation checks, suggested levels |
 | `SizingPanel` | ~400 | Account settings, trade params, calculations |
 | `ExecutionPanel` | ~210 | Trade summary, execute button |
 | `ManagePanel` | ~330 | P&L tracking, breakeven, trailing stop |
@@ -510,36 +510,45 @@ flowchart TB
 flowchart TD
     START[Opportunity Selected] --> C1
 
-    subgraph Checks["5 Validation Checks"]
-        C1{Trend Alignment}
-        C2{Entry Zone}
-        C3{Target Zones}
-        C4{RSI Confirmation}
-        C5{MACD Confirmation}
+    subgraph Checks["7 Validation Checks"]
+        C1{1. Trend Alignment}
+        C2{2. Entry Zone}
+        C3{3. Target Zones}
+        C4{4. RSI Confirmation}
+        C5{5. MACD Confirmation}
+        C6{6. Volume Confirmation}
+        C7{7. Confluence Score}
     end
 
-    C1 -->|isActive && confidence >= 60| P1[PASS]
+    C1 -->|should_trade && direction matches && confidence >= 60%| P1[PASS]
     C1 -->|otherwise| F1[FAIL]
 
-    C2 -->|entryLevels.length > 0| P2[PASS]
+    C2 -->|entry_zones.length > 0| P2[PASS]
     C2 -->|no levels| F2[FAIL]
 
-    C3 -->|targetLevels.length > 0| P3[PASS]
+    C3 -->|target_zones.length > 0| P3[PASS]
     C3 -->|no levels| F3[FAIL]
 
     C4 -->|pullback: counter-trend OK| P4[PASS]
     C4 -->|non-pullback: must align| P4
     C4 -->|conflicts| F4[FAIL]
 
-    C5 -->|higher TF confirms trend| P5[PASS]
+    C5 -->|higher TF MACD aligns with direction| P5[PASS]
     C5 -->|momentum weak| F5[FAIL]
 
-    P1 & P2 & P3 & P4 & P5 --> CALC[Calculate Pass %]
-    F1 & F2 & F3 & F4 & F5 --> CALC
+    C6 -->|RVOL >= 1.0| P6[PASS]
+    C6 -->|below average volume| F6[FAIL]
 
-    CALC --> CHECK{passedCount / 5 >= 60%?}
-    CHECK -->|Yes| VALID[isValid = true]
-    CHECK -->|No| INVALID[isValid = false]
+    C7 -->|with-trend: score >= 3| P7[PASS]
+    C7 -->|counter-trend: score >= 5| P7
+    C7 -->|insufficient confluence| F7[FAIL]
+
+    P1 & P2 & P3 & P4 & P5 & P6 & P7 --> CALC[Calculate Pass %]
+    F1 & F2 & F3 & F4 & F5 & F6 & F7 --> CALC
+
+    CALC --> CHECK{passedCount / 7 >= 60%?}
+    CHECK -->|Yes: 5+ checks pass| VALID[isValid = true]
+    CHECK -->|No: < 5 checks pass| INVALID[isValid = false]
 ```
 
 ### RSI Confirmation Logic (Pullback vs Non-Pullback)
@@ -762,10 +771,10 @@ type TradeOpportunity = {
 
 // Validation Result
 type ValidationResult = {
-  checks: ValidationCheck[];
+  checks: ValidationCheck[];     // 7 checks: Trend, Entry, Target, RSI, MACD, Volume, Confluence
   passedCount: number;
-  totalCount: number;
-  isValid: boolean;              // passedCount/totalCount >= 60%
+  totalCount: number;            // Always 7 in current implementation
+  isValid: boolean;              // passedCount/totalCount >= 60% (5+ of 7 must pass)
   passPercentage: number;
   entryLevels: StrategyLevel[];  // Lower TF retracement
   targetLevels: StrategyLevel[]; // Higher TF extension
@@ -840,6 +849,7 @@ const AUTO_REFRESH_INTERVALS: Record<Timeframe, number> = {
 | `/workflow/align` | GET | Multi-TF alignment | Discovery |
 | `/workflow/levels` | GET | Fibonacci levels | Validation |
 | `/workflow/confirm` | GET | Indicator confirmation | Validation |
+| `/workflow/validate` | GET | 7-check validation (Trend, Entry, Target, RSI, MACD, Volume, Confluence) | Validation |
 | `/position/size` | POST | Position sizing | Sizing |
 | `/position/risk-reward` | POST | R:R calculation | Sizing |
 | `/journal/entries` | POST | Create journal entry | Execution |

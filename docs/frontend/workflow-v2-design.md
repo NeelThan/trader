@@ -446,16 +446,21 @@ Alert when:
 - AND direction matches our trade setup
 ```
 
-### Rule 7: Validation Checks (User-Configurable)
-Each check can be: **Required** | **Warning** | **Ignored**
+### Rule 7: Validation Checks (7-Check System)
 
-| Check | Description | Default |
-|-------|-------------|---------|
-| Trend Alignment | HTF + LTF directions match trade | Required |
-| Entry Zone | Fib level exists for entry | Required |
-| Target Zone | Extension levels for targets | Warning |
-| RSI Confirmation | Not overbought/oversold against trade | Warning |
-| MACD Confirmation | Momentum matches direction | Warning |
+The backend `/workflow/validate` endpoint performs 7 validation checks. Trade is valid when 60%+ pass (5+ of 7).
+
+| # | Check | Pass Criteria | Description |
+|---|-------|---------------|-------------|
+| 1 | Trend Alignment | `should_trade && direction matches && confidence >= 60%` | Higher/lower TF trend alignment |
+| 2 | Entry Zone | `entry_zones.length > 0` | Fibonacci retracement levels exist |
+| 3 | Target Zones | `target_zones.length > 0` | Fibonacci extension levels exist |
+| 4 | RSI Confirmation | Pullback: counter-trend RSI OK; Standard: must align | Momentum confirmation |
+| 5 | MACD Confirmation | Higher TF MACD signal aligns with direction | Higher TF trend momentum |
+| 6 | Volume Confirmation | `RVOL >= 1.0` | Above-average volume present |
+| 7 | Confluence Score | With-trend: `>= 3`; Counter-trend: `>= 5` | Weighted level confluence |
+
+**Validity Threshold**: `pass_percentage >= 60%` (5+ checks out of 7 must pass)
 
 Overridden checks are logged in journal for learning.
 
