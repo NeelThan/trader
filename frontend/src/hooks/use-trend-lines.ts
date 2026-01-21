@@ -13,7 +13,7 @@ import {
   generateTrendLineOverlays,
 } from "@/lib/chart-pro/swing-overlays";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = "/api/trader";
 
 type OHLCData = {
   time: Time;
