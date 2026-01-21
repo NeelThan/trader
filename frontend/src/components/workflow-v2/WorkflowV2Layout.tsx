@@ -387,11 +387,11 @@ export function WorkflowV2Layout({
     return overlays;
   }, [swingLineOverlays, trendLineOverlays, showTrendLines]);
 
-  // Multi-TF Fibonacci levels
+  // Multi-TF Fibonacci levels (fetch if Fib display OR reversal time is enabled)
   const { allLevels, byTimeframe, isLoading: isLoadingLevels } = useMultiTFLevels({
     symbol,
     visibilityConfig,
-    enabled: showFibLevels,
+    enabled: showFibLevels || showReversalTime,
     dataMode: "live",
   });
 
@@ -1180,11 +1180,23 @@ export function WorkflowV2Layout({
                         ? "bg-green-500/20 text-green-400"
                         : "text-muted-foreground hover:bg-muted"
                     )}
-                    title={trendLinesError ? `Error: ${trendLinesError}` : "Toggle HH/LL trend lines"}
+                    title={
+                      trendLinesError
+                        ? `Error: ${trendLinesError}`
+                        : showTrendLines && trendLines && !trendLines.upper_line && !trendLines.lower_line
+                        ? "No HH/LL patterns found (need strong trend)"
+                        : "Toggle HH/LL trend lines"
+                    }
                   >
                     Trend
-                    {showTrendLines && trendLines && (
-                      <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                    {showTrendLines && !isLoadingTrendLines && trendLines && (
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          "h-4 px-1 text-[10px]",
+                          (trendLines.upper_line || trendLines.lower_line) ? "" : "opacity-50"
+                        )}
+                      >
                         {(trendLines.upper_line ? 1 : 0) + (trendLines.lower_line ? 1 : 0)}
                       </Badge>
                     )}
