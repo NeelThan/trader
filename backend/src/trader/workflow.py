@@ -26,6 +26,7 @@ from trader.fibonacci import (
 )
 from trader.indicators import calculate_macd, calculate_rsi
 from trader.market_data import MarketDataService
+from trader.market_data.models import OHLCBar as MarketOHLCBar
 from trader.pivots import OHLCBar as PivotOHLCBar
 from trader.pivots import PivotPoint, detect_pivots
 from trader.volume_indicators import analyze_volume
@@ -1980,4 +1981,1055 @@ async def detect_cascade(
         progression=progression,
         actionable_insight=insight,
         reversal_probability=probability,
+    )
+
+
+# --- Trend Alignment Models and Function ---
+
+
+class IndicatorSignalDetail(BaseModel):
+    """Individual indicator signal with value.
+
+    Attributes:
+        signal: Signal direction (bullish/bearish/neutral).
+        value: Numeric value (e.g., RSI value, MACD histogram).
+    """
+
+    signal: Literal["bullish", "bearish", "neutral"]
+    value: float | None = None
+
+
+class PivotPointDetail(BaseModel):
+    """Pivot point data for chart display.
+
+    Attributes:
+        index: Bar index of the pivot.
+        price: Price level of the pivot.
+        type: Whether this is a high or low pivot.
+        time: Timestamp of the pivot bar.
+    """
+
+    index: int
+    price: float
+    type: Literal["high", "low"]
+    time: str | int
+
+
+class SwingMarkerDetail(BaseModel):
+    """Swing marker data for chart display.
+
+    Attributes:
+        index: Bar index of the marker.
+        price: Price level of the marker.
+        time: Timestamp of the marker bar.
+        swing_type: Type of swing (HH/HL/LH/LL).
+    """
+
+    index: int
+    price: float
+    time: str | int
+    swing_type: SwingType
+
+
+class TimeframeTrendDetail(BaseModel):
+    """Full trend information for a single timeframe.
+
+    Attributes:
+        timeframe: The timeframe identifier.
+        trend: Overall trend direction.
+        confidence: Confidence score 0-100.
+        swing: Swing pattern indicator signal.
+        rsi: RSI indicator signal.
+        macd: MACD indicator signal.
+        current_price: Latest price for this timeframe.
+        is_ranging: True if price is moving sideways.
+        ranging_warning: Warning message if ranging.
+        pivots: Pivot points for chart display.
+        markers: Swing markers for chart display.
+    """
+
+    timeframe: str
+    trend: TrendDirection
+    confidence: int = Field(ge=0, le=100)
+    swing: IndicatorSignalDetail
+    rsi: IndicatorSignalDetail
+    macd: IndicatorSignalDetail
+    current_price: float | None = None
+    is_ranging: bool = False
+    ranging_warning: str | None = None
+    pivots: list[PivotPointDetail] = []
+    markers: list[SwingMarkerDetail] = []
+
+
+class OverallAlignmentResult(BaseModel):
+    """Overall alignment summary across all timeframes.
+
+    Attributes:
+        direction: Dominant trend direction.
+        strength: Alignment strength.
+        bullish_count: Number of bullish timeframes.
+        bearish_count: Number of bearish timeframes.
+        ranging_count: Number of ranging timeframes.
+        description: Human-readable description.
+    """
+
+    direction: TrendDirection
+    strength: StrengthLevel
+    bullish_count: int
+    bearish_count: int
+    ranging_count: int
+    description: str
+
+
+class TrendAlignmentResult(BaseModel):
+    """Complete trend alignment result across all timeframes.
+
+    Attributes:
+        trends: Trend data for each timeframe.
+        overall: Overall alignment summary.
+    """
+
+    trends: list[TimeframeTrendDetail]
+    overall: OverallAlignmentResult
+
+
+async def analyze_trend_alignment(
+    symbol: str,
+    timeframes: list[str],
+    market_service: MarketDataService,
+    lookback: int = 5,
+) -> TrendAlignmentResult:
+    """Analyze trend alignment across multiple timeframes.
+
+    This function provides a complete trend analysis for each timeframe,
+    including swing patterns, RSI, MACD, and an overall alignment summary.
+
+    Args:
+        symbol: Market symbol (e.g., "DJI", "SPX").
+        timeframes: List of timeframes to analyze.
+        market_service: Service for fetching market data.
+        lookback: Lookback period for pivot detection.
+
+    Returns:
+        TrendAlignmentResult with per-timeframe trends and overall alignment.
+    """
+    trend_details: list[TimeframeTrendDetail] = []
+
+    for tf in timeframes:
+        detail = await _analyze_single_timeframe(symbol, tf, market_service, lookback)
+        trend_details.append(detail)
+
+    overall = _calculate_overall_alignment_from_details(trend_details)
+
+    return TrendAlignmentResult(trends=trend_details, overall=overall)
+
+
+async def _analyze_single_timeframe(
+    symbol: str,
+    timeframe: str,
+    market_service: MarketDataService,
+    lookback: int,
+) -> TimeframeTrendDetail:
+    """Analyze a single timeframe for trend data."""
+    # Get market data
+    market_result = await market_service.get_ohlc(symbol, timeframe, periods=100)
+
+    if (
+        not market_result.success
+        or not market_result.data
+        or len(market_result.data) < 26
+    ):
+        return _create_empty_trend_detail(timeframe)
+
+    bars = market_result.data
+    closes = [bar.close for bar in bars]
+    current_price = closes[-1] if closes else None
+
+    # Convert to pivot bars for swing detection
+    pivot_bars = [
+        PivotOHLCBar(
+            time=bar.time, open=bar.open, high=bar.high, low=bar.low, close=bar.close
+        )
+        for bar in bars
+    ]
+
+    # Detect pivots and swings
+    pivot_result = detect_pivots(data=pivot_bars, lookback=lookback, count=20)
+
+    # Build pivot and marker lists for frontend
+    pivots: list[PivotPointDetail] = []
+    markers: list[SwingMarkerDetail] = []
+
+    for i, pivot in enumerate(pivot_result.pivots):
+        pivots.append(
+            PivotPointDetail(
+                index=i,
+                price=pivot.price,
+                type=pivot.type,
+                time=str(pivot.time) if pivot.time else "",
+            )
+        )
+
+    # Generate swing markers from pivots
+    markers = _generate_swing_markers(pivot_result.pivots)
+
+    # Analyze swing pattern
+    swing_signal = _analyze_swing_pattern(markers)
+
+    # Calculate RSI
+    rsi_result = calculate_rsi(closes, period=14)
+    rsi_value = _get_latest_valid_value(rsi_result.rsi)
+    rsi_signal = _interpret_rsi_signal(rsi_value)
+
+    # Calculate MACD
+    macd_result = calculate_macd(closes)
+    macd_value = _get_latest_valid_value(macd_result.histogram)
+    macd_signal = _interpret_macd_signal(macd_value)
+
+    # Combine indicators for overall trend
+    trend, confidence = _combine_indicator_signals(
+        swing_signal, rsi_signal, macd_signal
+    )
+
+    # Check for ranging condition
+    is_ranging, ranging_warning = _check_ranging_condition(pivot_result.pivots, closes)
+
+    return TimeframeTrendDetail(
+        timeframe=timeframe,
+        trend=trend,
+        confidence=confidence,
+        swing=swing_signal,
+        rsi=rsi_signal,
+        macd=macd_signal,
+        current_price=current_price,
+        is_ranging=is_ranging,
+        ranging_warning=ranging_warning,
+        pivots=pivots,
+        markers=markers,
+    )
+
+
+def _create_empty_trend_detail(timeframe: str) -> TimeframeTrendDetail:
+    """Create an empty trend detail for when data is unavailable."""
+    return TimeframeTrendDetail(
+        timeframe=timeframe,
+        trend="neutral",
+        confidence=0,
+        swing=IndicatorSignalDetail(signal="neutral"),
+        rsi=IndicatorSignalDetail(signal="neutral"),
+        macd=IndicatorSignalDetail(signal="neutral"),
+    )
+
+
+def _generate_swing_markers(pivots: list[PivotPoint]) -> list[SwingMarkerDetail]:
+    """Generate swing markers (HH/HL/LH/LL) from pivot points."""
+    markers: list[SwingMarkerDetail] = []
+    last_high: PivotPoint | None = None
+    last_low: PivotPoint | None = None
+
+    for i, pivot in enumerate(pivots):
+        if pivot.type == "high":
+            if last_high is not None:
+                swing_type: SwingType = "HH" if pivot.price > last_high.price else "LH"
+                markers.append(
+                    SwingMarkerDetail(
+                        index=i,
+                        price=pivot.price,
+                        time=str(pivot.time) if pivot.time else "",
+                        swing_type=swing_type,
+                    )
+                )
+            last_high = pivot
+        else:  # low
+            if last_low is not None:
+                swing_type = "HL" if pivot.price > last_low.price else "LL"
+                markers.append(
+                    SwingMarkerDetail(
+                        index=i,
+                        price=pivot.price,
+                        time=str(pivot.time) if pivot.time else "",
+                        swing_type=swing_type,
+                    )
+                )
+            last_low = pivot
+
+    return markers
+
+
+def _analyze_swing_pattern(markers: list[SwingMarkerDetail]) -> IndicatorSignalDetail:
+    """Analyze swing markers to determine swing-based trend signal."""
+    if len(markers) < 2:
+        return IndicatorSignalDetail(signal="neutral")
+
+    bullish = 0
+    bearish = 0
+
+    for marker in markers:
+        if marker.swing_type in ("HH", "HL"):
+            bullish += 1
+        elif marker.swing_type in ("LH", "LL"):
+            bearish += 1
+
+    total = bullish + bearish
+    if total == 0:
+        return IndicatorSignalDetail(signal="neutral", value=50)
+
+    bullish_ratio = bullish / total
+    if bullish_ratio >= 0.6:
+        return IndicatorSignalDetail(
+            signal="bullish", value=round(bullish_ratio * 100)
+        )
+    if bullish_ratio <= 0.4:
+        bearish_value = round((1 - bullish_ratio) * 100)
+        return IndicatorSignalDetail(signal="bearish", value=bearish_value)
+    return IndicatorSignalDetail(signal="neutral", value=50)
+
+
+def _get_latest_valid_value(values: list[float | None]) -> float | None:
+    """Get the latest non-None value from a list."""
+    for v in reversed(values):
+        if v is not None:
+            return v
+    return None
+
+
+def _interpret_rsi_signal(rsi: float | None) -> IndicatorSignalDetail:
+    """Interpret RSI value as a trend signal."""
+    if rsi is None:
+        return IndicatorSignalDetail(signal="neutral")
+
+    if rsi >= 60:
+        return IndicatorSignalDetail(signal="bullish", value=rsi)
+    if rsi <= 40:
+        return IndicatorSignalDetail(signal="bearish", value=rsi)
+    if rsi > 50:
+        return IndicatorSignalDetail(signal="bullish", value=rsi)
+    if rsi < 50:
+        return IndicatorSignalDetail(signal="bearish", value=rsi)
+    return IndicatorSignalDetail(signal="neutral", value=rsi)
+
+
+def _interpret_macd_signal(histogram: float | None) -> IndicatorSignalDetail:
+    """Interpret MACD histogram as a trend signal."""
+    if histogram is None:
+        return IndicatorSignalDetail(signal="neutral")
+
+    if histogram > 0:
+        return IndicatorSignalDetail(signal="bullish", value=histogram)
+    if histogram < 0:
+        return IndicatorSignalDetail(signal="bearish", value=histogram)
+    return IndicatorSignalDetail(signal="neutral", value=0)
+
+
+def _combine_indicator_signals(
+    swing: IndicatorSignalDetail,
+    rsi: IndicatorSignalDetail,
+    macd: IndicatorSignalDetail,
+) -> tuple[TrendDirection, int]:
+    """Combine indicator signals into overall trend with confidence.
+
+    Weights: Swing 40%, RSI 30%, MACD 30%
+    """
+    weights = {"swing": 0.4, "rsi": 0.3, "macd": 0.3}
+
+    bullish_score = 0.0
+    bearish_score = 0.0
+    total_weight = 0.0
+
+    for name, indicator in [("swing", swing), ("rsi", rsi), ("macd", macd)]:
+        if indicator.signal != "neutral":
+            if indicator.signal == "bullish":
+                bullish_score += weights[name]
+            else:
+                bearish_score += weights[name]
+            total_weight += weights[name]
+
+    if total_weight == 0:
+        return "neutral", 0
+
+    norm_bullish = bullish_score / total_weight
+    norm_bearish = bearish_score / total_weight
+
+    if norm_bullish >= 0.65:
+        return "bullish", round(norm_bullish * 100)
+    if norm_bearish >= 0.65:
+        return "bearish", round(norm_bearish * 100)
+    if norm_bullish > norm_bearish and norm_bullish >= 0.5:
+        return "bullish", round(norm_bullish * 100)
+    if norm_bearish > norm_bullish and norm_bearish >= 0.5:
+        return "bearish", round(norm_bearish * 100)
+
+    return "neutral", 50
+
+
+def _check_ranging_condition(
+    pivots: list[PivotPoint], closes: list[float]
+) -> tuple[bool, str | None]:
+    """Check if price is in a ranging condition."""
+    if len(pivots) < 4 or len(closes) < 10:
+        return False, None
+
+    # Get recent highs and lows
+    recent_highs = [p.price for p in pivots if p.type == "high"][-3:]
+    recent_lows = [p.price for p in pivots if p.type == "low"][-3:]
+
+    if len(recent_highs) < 2 or len(recent_lows) < 2:
+        return False, None
+
+    # Check if highs and lows are converging (range tightening)
+    high_range = max(recent_highs) - min(recent_highs)
+    low_range = max(recent_lows) - min(recent_lows)
+    price_range = max(closes[-10:]) - min(closes[-10:])
+
+    if price_range == 0:
+        return False, None
+
+    # If recent pivots are within 2% of each other, market is ranging
+    high_variation = high_range / max(recent_highs) if max(recent_highs) > 0 else 0
+    low_variation = low_range / max(recent_lows) if max(recent_lows) > 0 else 0
+
+    if high_variation < 0.02 and low_variation < 0.02:
+        return True, "Market is ranging - Fibonacci levels may be less reliable"
+
+    return False, None
+
+
+def _calculate_overall_alignment_from_details(
+    trends: list[TimeframeTrendDetail],
+) -> OverallAlignmentResult:
+    """Calculate overall alignment from individual timeframe trends."""
+    if not trends:
+        return OverallAlignmentResult(
+            direction="neutral",
+            strength="weak",
+            bullish_count=0,
+            bearish_count=0,
+            ranging_count=0,
+            description="No data",
+        )
+
+    bullish_count = sum(1 for t in trends if t.trend == "bullish")
+    bearish_count = sum(1 for t in trends if t.trend == "bearish")
+    ranging_count = sum(1 for t in trends if t.trend == "neutral")
+    total = len(trends)
+
+    bullish_ratio = bullish_count / total
+    bearish_ratio = bearish_count / total
+
+    if bullish_ratio >= 0.7:
+        direction: TrendDirection = "bullish"
+        strength: StrengthLevel = "strong"
+        description = f"Strong bullish alignment ({bullish_count}/{total} timeframes)"
+    elif bullish_ratio >= 0.5:
+        direction = "bullish"
+        strength = "moderate"
+        description = f"Moderate bullish bias ({bullish_count}/{total} timeframes)"
+    elif bearish_ratio >= 0.7:
+        direction = "bearish"
+        strength = "strong"
+        description = f"Strong bearish alignment ({bearish_count}/{total} timeframes)"
+    elif bearish_ratio >= 0.5:
+        direction = "bearish"
+        strength = "moderate"
+        description = f"Moderate bearish bias ({bearish_count}/{total} timeframes)"
+    else:
+        direction = "neutral"
+        strength = "moderate" if ranging_count >= total / 2 else "weak"
+        description = (
+            f"Mixed signals ({bullish_count} bullish, "
+            f"{bearish_count} bearish, {ranging_count} ranging)"
+        )
+
+    return OverallAlignmentResult(
+        direction=direction,
+        strength=strength,
+        bullish_count=bullish_count,
+        bearish_count=bearish_count,
+        ranging_count=ranging_count,
+        description=description,
+    )
+
+
+# --- Signal Suggestions Models and Function ---
+
+
+SuggestionSignalType = Literal["LONG", "SHORT", "WAIT"]
+
+
+class SignalSuggestion(BaseModel):
+    """A trade signal suggestion based on trend alignment.
+
+    Attributes:
+        id: Unique identifier for the signal.
+        type: Signal type (LONG/SHORT/WAIT).
+        higher_tf: Higher timeframe for trend context.
+        lower_tf: Lower timeframe for entry timing.
+        pair_name: Human-readable name of the timeframe pair.
+        trading_style: Trading style (position/swing/intraday).
+        description: Brief description of the signal.
+        reasoning: Detailed reasoning for the signal.
+        confidence: Confidence score 0-100.
+        entry_zone: Type of entry zone (support/resistance/range).
+        is_active: Whether the signal is currently actionable.
+    """
+
+    id: str
+    type: SuggestionSignalType
+    higher_tf: str
+    lower_tf: str
+    pair_name: str
+    trading_style: str
+    description: str
+    reasoning: str
+    confidence: int = Field(ge=0, le=100)
+    entry_zone: Literal["support", "resistance", "range"]
+    is_active: bool
+
+
+class SignalSuggestionsResult(BaseModel):
+    """Result of signal suggestion generation.
+
+    Attributes:
+        signals: List of all generated signals.
+        long_count: Number of LONG signals.
+        short_count: Number of SHORT signals.
+        wait_count: Number of WAIT signals.
+    """
+
+    signals: list[SignalSuggestion]
+    long_count: int
+    short_count: int
+    wait_count: int
+
+
+# Standard timeframe pairs for signal analysis
+TIMEFRAME_PAIRS = [
+    {
+        "id": "monthly-weekly",
+        "name": "Monthly/Weekly",
+        "higher_tf": "1M",
+        "lower_tf": "1W",
+        "trading_style": "position",
+    },
+    {
+        "id": "weekly-daily",
+        "name": "Weekly/Daily",
+        "higher_tf": "1W",
+        "lower_tf": "1D",
+        "trading_style": "position",
+    },
+    {
+        "id": "daily-4h",
+        "name": "Daily/4H",
+        "higher_tf": "1D",
+        "lower_tf": "4H",
+        "trading_style": "swing",
+    },
+    {
+        "id": "4h-1h",
+        "name": "4H/1H",
+        "higher_tf": "4H",
+        "lower_tf": "1H",
+        "trading_style": "swing",
+    },
+    {
+        "id": "1h-15m",
+        "name": "1H/15m",
+        "higher_tf": "1H",
+        "lower_tf": "15m",
+        "trading_style": "intraday",
+    },
+    {
+        "id": "15m-5m",
+        "name": "15m/5m",
+        "higher_tf": "15m",
+        "lower_tf": "5m",
+        "trading_style": "intraday",
+    },
+    {
+        "id": "5m-3m",
+        "name": "5m/3m",
+        "higher_tf": "5m",
+        "lower_tf": "3m",
+        "trading_style": "intraday",
+    },
+    {
+        "id": "3m-1m",
+        "name": "3m/1m",
+        "higher_tf": "3m",
+        "lower_tf": "1m",
+        "trading_style": "intraday",
+    },
+]
+
+
+async def generate_signal_suggestions(
+    symbol: str,
+    market_service: MarketDataService,
+    lookback: int = 5,
+) -> SignalSuggestionsResult:
+    """Generate signal suggestions based on trend alignment.
+
+    Analyzes trend alignment across timeframe pairs and generates
+    trading signals based on the SignalPro methodology:
+    - Higher TF UP + Lower TF DOWN = GO LONG (buy the dip)
+    - Higher TF DOWN + Lower TF UP = GO SHORT (sell the rally)
+    - Same direction = WAIT for pullback
+
+    Args:
+        symbol: Market symbol (e.g., "DJI", "SPX").
+        market_service: Service for fetching market data.
+        lookback: Lookback period for pivot detection.
+
+    Returns:
+        SignalSuggestionsResult with generated signals.
+    """
+    # Get all unique timeframes from pairs
+    all_timeframes = set()
+    for pair in TIMEFRAME_PAIRS:
+        all_timeframes.add(pair["higher_tf"])
+        all_timeframes.add(pair["lower_tf"])
+
+    # Fetch trend alignment for all timeframes
+    alignment = await analyze_trend_alignment(
+        symbol=symbol,
+        timeframes=list(all_timeframes),
+        market_service=market_service,
+        lookback=lookback,
+    )
+
+    # Build trend lookup by timeframe
+    trend_by_tf = {t.timeframe: t for t in alignment.trends}
+
+    signals: list[SignalSuggestion] = []
+
+    for pair in TIMEFRAME_PAIRS:
+        higher_trend = trend_by_tf.get(pair["higher_tf"])
+        lower_trend = trend_by_tf.get(pair["lower_tf"])
+
+        if not higher_trend or not lower_trend:
+            continue
+
+        signal = _generate_signal_for_pair(
+            pair=pair,
+            higher_trend=higher_trend,
+            lower_trend=lower_trend,
+        )
+        signals.append(signal)
+
+    # Count by type
+    long_count = sum(1 for s in signals if s.type == "LONG")
+    short_count = sum(1 for s in signals if s.type == "SHORT")
+    wait_count = sum(1 for s in signals if s.type == "WAIT")
+
+    return SignalSuggestionsResult(
+        signals=signals,
+        long_count=long_count,
+        short_count=short_count,
+        wait_count=wait_count,
+    )
+
+
+def _generate_signal_for_pair(
+    pair: dict[str, str],
+    higher_trend: TimeframeTrendDetail,
+    lower_trend: TimeframeTrendDetail,
+) -> SignalSuggestion:
+    """Generate a signal for a single timeframe pair."""
+    higher_direction = higher_trend.trend
+    lower_direction = lower_trend.trend
+
+    # Determine signal type based on alignment
+    signal_type: SuggestionSignalType
+    entry_zone: Literal["support", "resistance", "range"]
+    is_active = False
+
+    if higher_direction == "bullish" and lower_direction == "bearish":
+        signal_type = "LONG"
+        entry_zone = "support"
+        is_active = True
+    elif higher_direction == "bearish" and lower_direction == "bullish":
+        signal_type = "SHORT"
+        entry_zone = "resistance"
+        is_active = True
+    elif higher_direction == "bullish" and lower_direction == "bullish":
+        signal_type = "WAIT"
+        entry_zone = "support"
+    elif higher_direction == "bearish" and lower_direction == "bearish":
+        signal_type = "WAIT"
+        entry_zone = "resistance"
+    else:
+        signal_type = "WAIT"
+        entry_zone = "range"
+
+    # Generate description
+    description, reasoning = _generate_signal_description(
+        signal_type=signal_type,
+        higher_tf=pair["higher_tf"],
+        lower_tf=pair["lower_tf"],
+        higher_direction=higher_direction,
+        lower_direction=lower_direction,
+    )
+
+    # Calculate confidence (weighted average: 60% higher TF, 40% lower TF)
+    confidence = round(higher_trend.confidence * 0.6 + lower_trend.confidence * 0.4)
+
+    return SignalSuggestion(
+        id=pair["id"],
+        type=signal_type,
+        higher_tf=pair["higher_tf"],
+        lower_tf=pair["lower_tf"],
+        pair_name=pair["name"],
+        trading_style=pair["trading_style"],
+        description=description,
+        reasoning=reasoning,
+        confidence=confidence,
+        entry_zone=entry_zone,
+        is_active=is_active,
+    )
+
+
+def _generate_signal_description(
+    signal_type: SuggestionSignalType,
+    higher_tf: str,
+    lower_tf: str,
+    higher_direction: TrendDirection,
+    lower_direction: TrendDirection,
+) -> tuple[str, str]:
+    """Generate signal description and reasoning."""
+    if signal_type == "LONG":
+        return (
+            f"Buy pullback on {lower_tf}",
+            f"{higher_tf} is {higher_direction}, {lower_tf} showing "
+            f"{lower_direction} pullback. Look for support levels.",
+        )
+    elif signal_type == "SHORT":
+        return (
+            f"Sell rally on {lower_tf}",
+            f"{higher_tf} is {higher_direction}, {lower_tf} showing "
+            f"{lower_direction} rally. Look for resistance levels.",
+        )
+    else:  # WAIT
+        return (
+            f"Wait for pullback on {lower_tf}",
+            f"Both {higher_tf} and {lower_tf} are {higher_direction}. "
+            "Wait for counter-trend move.",
+        )
+
+
+# --- Signal Aggregation Models and Function ---
+
+
+AggregatedSignalType = Literal["trend_alignment", "fib_rejection", "confluence"]
+
+
+class AggregatedSignal(BaseModel):
+    """An aggregated signal from any source.
+
+    Attributes:
+        id: Unique identifier.
+        timeframe: Timeframe where signal was detected.
+        direction: Trade direction (long/short).
+        type: Signal source type.
+        confidence: Confidence score 0-100.
+        price: Price level of the signal.
+        description: Description of the signal.
+        is_active: Whether this signal is currently actionable.
+        timestamp: When the signal was detected.
+        fib_level: Fibonacci level ratio (for fib_rejection).
+        fib_strategy: Fibonacci strategy (for fib_rejection).
+        confluence_count: Number of confluent levels (for confluence).
+    """
+
+    id: str
+    timeframe: str
+    direction: Literal["long", "short"]
+    type: AggregatedSignalType
+    confidence: int = Field(ge=0, le=100)
+    price: float
+    description: str
+    is_active: bool
+    timestamp: str
+    fib_level: float | None = None
+    fib_strategy: str | None = None
+    confluence_count: int | None = None
+
+
+class SignalCounts(BaseModel):
+    """Signal counts by type and direction.
+
+    Attributes:
+        long: Number of long signals.
+        short: Number of short signals.
+        total: Total number of signals.
+        by_timeframe: Count per timeframe.
+        by_type: Count per signal type.
+    """
+
+    long: int
+    short: int
+    total: int
+    by_timeframe: dict[str, int]
+    by_type: dict[str, int]
+
+
+class SignalAggregationResult(BaseModel):
+    """Result of signal aggregation across timeframes.
+
+    Attributes:
+        signals: All aggregated signals.
+        counts: Signal counts.
+    """
+
+    signals: list[AggregatedSignal]
+    counts: SignalCounts
+
+
+# Fibonacci retracement levels for signal detection
+RETRACEMENT_LEVELS: list[dict[str, float | str]] = [
+    {"ratio": 0.382, "label": "38.2%"},
+    {"ratio": 0.5, "label": "50%"},
+    {"ratio": 0.618, "label": "61.8%"},
+    {"ratio": 0.786, "label": "78.6%"},
+]
+
+
+async def aggregate_signals(
+    symbol: str,
+    timeframes: list[str],
+    market_service: MarketDataService,
+) -> SignalAggregationResult:
+    """Aggregate trading signals from multiple timeframes.
+
+    Detects signals from:
+    - Trend alignment (higher TF vs lower TF)
+    - Fibonacci level rejections
+    - Confluence zones
+
+    Args:
+        symbol: Market symbol (e.g., "DJI", "SPX").
+        timeframes: List of timeframes to analyze.
+        market_service: Service for fetching market data.
+
+    Returns:
+        SignalAggregationResult with aggregated signals and counts.
+    """
+    from datetime import datetime
+
+    now = datetime.now().isoformat()
+    all_signals: list[AggregatedSignal] = []
+
+    for tf in timeframes:
+        tf_signals = await _detect_timeframe_signals(symbol, tf, market_service, now)
+        all_signals.extend(tf_signals)
+
+    # Detect confluence zones
+    confluence_signals = _detect_confluence_zones(all_signals, now)
+    all_signals.extend(confluence_signals)
+
+    # Calculate counts
+    counts = _calculate_signal_counts(all_signals)
+
+    return SignalAggregationResult(signals=all_signals, counts=counts)
+
+
+async def _detect_timeframe_signals(
+    symbol: str,
+    timeframe: str,
+    market_service: MarketDataService,
+    now: str,
+) -> list[AggregatedSignal]:
+    """Detect signals for a single timeframe."""
+    signals: list[AggregatedSignal] = []
+
+    # Get market data
+    market_result = await market_service.get_ohlc(symbol, timeframe, periods=50)
+    if (
+        not market_result.success
+        or not market_result.data
+        or len(market_result.data) < 10
+    ):
+        return signals
+
+    bars = market_result.data
+    closes = [bar.close for bar in bars]
+
+    # Get trend assessment
+    assessment = await assess_trend(symbol, timeframe, market_service)
+
+    # Calculate swing points
+    pivot_bars = [
+        PivotOHLCBar(
+            time=bar.time,
+            open=bar.open,
+            high=bar.high,
+            low=bar.low,
+            close=bar.close,
+        )
+        for bar in bars
+    ]
+    pivot_result = detect_pivots(data=pivot_bars, lookback=5, count=10)
+
+    default_high = max(bar.high for bar in bars[-20:])
+    default_low = min(bar.low for bar in bars[-20:])
+    swing_high = (
+        pivot_result.swing_high.price if pivot_result.swing_high else default_high
+    )
+    swing_low = (
+        pivot_result.swing_low.price if pivot_result.swing_low else default_low
+    )
+    range_val = swing_high - swing_low
+
+    if range_val <= 0:
+        return signals
+
+    # Determine direction
+    direction: Literal["long", "short"] = (
+        "long" if assessment.trend == "bullish" else "short"
+    )
+
+    # Check recent bars for Fibonacci rejections
+    recent_bars = bars[-5:]
+    for level in RETRACEMENT_LEVELS:
+        ratio = float(level["ratio"])
+        label = str(level["label"])
+        fib_price = swing_high - range_val * ratio
+
+        for bar in recent_bars:
+            if _detect_fib_rejection(bar, fib_price, direction):
+                conf_adj = 1 - abs(ratio - 0.618) * 0.5
+                confidence = round(assessment.confidence * conf_adj)
+                action = "Bounce" if direction == "long" else "Rejection"
+                desc = f"{action} at {label} retracement"
+                signals.append(
+                    AggregatedSignal(
+                        id=f"{timeframe}-fib-{ratio}-{now}",
+                        timeframe=timeframe,
+                        direction=direction,
+                        type="fib_rejection",
+                        confidence=min(100, max(0, confidence)),
+                        price=fib_price,
+                        description=desc,
+                        is_active=True,
+                        timestamp=now,
+                        fib_level=ratio,
+                        fib_strategy="retracement",
+                    )
+                )
+                break  # Only one signal per level
+
+    # Add trend alignment signal if trend is clear
+    if assessment.confidence >= 60:
+        trend_desc = (
+            f"{timeframe} trend is {assessment.trend} "
+            f"with {assessment.confidence}% confidence"
+        )
+        signals.append(
+            AggregatedSignal(
+                id=f"{timeframe}-trend-{now}",
+                timeframe=timeframe,
+                direction=direction,
+                type="trend_alignment",
+                confidence=assessment.confidence,
+                price=closes[-1],
+                description=trend_desc,
+                is_active=assessment.confidence >= 70,
+                timestamp=now,
+            )
+        )
+
+    return signals
+
+
+def _detect_fib_rejection(
+    bar: MarketOHLCBar,
+    level: float,
+    direction: Literal["long", "short"],
+) -> bool:
+    """Detect if a bar shows rejection at a Fibonacci level."""
+    tolerance = level * 0.005  # 0.5% tolerance
+
+    if direction == "long":
+        tested_level = bar.low <= level + tolerance
+        closed_above = bar.close > level
+        is_bullish = bar.close > bar.open
+        return tested_level and closed_above and is_bullish
+    else:
+        tested_level = bar.high >= level - tolerance
+        closed_below = bar.close < level
+        is_bearish = bar.close < bar.open
+        return tested_level and closed_below and is_bearish
+
+
+def _detect_confluence_zones(
+    signals: list[AggregatedSignal],
+    now: str,
+) -> list[AggregatedSignal]:
+    """Detect confluence zones from signals at similar prices."""
+    confluence_signals: list[AggregatedSignal] = []
+    tolerance = 0.005  # 0.5%
+
+    # Group signals by similar price
+    price_groups: dict[float, list[AggregatedSignal]] = {}
+
+    for signal in signals:
+        found_group = False
+        for group_price in price_groups:
+            if abs(signal.price - group_price) / group_price < tolerance:
+                price_groups[group_price].append(signal)
+                found_group = True
+                break
+        if not found_group:
+            price_groups[signal.price] = [signal]
+
+    # Create confluence signals for groups with 2+ signals
+    for price, group in price_groups.items():
+        if len(group) >= 2:
+            avg_confidence = sum(s.confidence for s in group) // len(group)
+            long_count = sum(1 for s in group if s.direction == "long")
+            is_bullish = long_count >= len(group) / 2
+            dominant_direction: Literal["long", "short"] = (
+                "long" if is_bullish else "short"
+            )
+
+            confluence_signals.append(
+                AggregatedSignal(
+                    id=f"confluence-{price}-{now}",
+                    timeframe=group[0].timeframe,
+                    direction=dominant_direction,
+                    type="confluence",
+                    confidence=min(95, avg_confidence + len(group) * 5),
+                    price=price,
+                    description=f"{len(group)} levels converge near {price:.0f}",
+                    is_active=True,
+                    timestamp=now,
+                    confluence_count=len(group),
+                )
+            )
+
+    return confluence_signals
+
+
+def _calculate_signal_counts(signals: list[AggregatedSignal]) -> SignalCounts:
+    """Calculate signal counts by direction, timeframe, and type."""
+    by_timeframe: dict[str, int] = {}
+    by_type: dict[str, int] = {}
+    long_count = 0
+    short_count = 0
+
+    for signal in signals:
+        if signal.direction == "long":
+            long_count += 1
+        else:
+            short_count += 1
+
+        by_timeframe[signal.timeframe] = by_timeframe.get(signal.timeframe, 0) + 1
+        by_type[signal.type] = by_type.get(signal.type, 0) + 1
+
+    return SignalCounts(
+        long=long_count,
+        short=short_count,
+        total=len(signals),
+        by_timeframe=by_timeframe,
+        by_type=by_type,
     )

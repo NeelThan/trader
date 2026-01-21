@@ -3,9 +3,12 @@
  *
  * Fetches and aggregates trade opportunities across ALL timeframes.
  * Not locked to a trading style - shows everything available.
+ *
+ * ADR Compliant: Trade categorization is done server-side via /workflow/categorize.
+ * Phase detection will be server-side once trend-alignment endpoint is added.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useTrendAlignment, type TimeframeTrend, type TrendDirection } from "./use-trend-alignment";
 import { useSignalSuggestions, type SignalSuggestion } from "./use-signal-suggestions";
 import type { MarketSymbol, Timeframe } from "@/lib/chart-constants";
@@ -71,36 +74,36 @@ export type UseTradeDiscoveryResult = {
 };
 
 /**
- * Categorize a trade based on trend alignment.
- *
- * - WITH_TREND: Trading with the higher TF trend
- * - COUNTER_TREND: Trading against higher TF at major confluence (high confidence)
- * - REVERSAL_ATTEMPT: Trading against higher TF with low confluence/confidence
+ * Fetch trade category from backend API
+ * ADR Compliant: Categorization logic is server-side
  */
-export function categorizeTradeFromTrends(
+async function fetchTradeCategory(
   higherTfTrend: TrendDirection,
   lowerTfTrend: TrendDirection,
   direction: "long" | "short",
   confidence: number
-): TradeCategory {
-  // Determine if trade aligns with higher TF trend
-  const isWithTrend =
-    (higherTfTrend === "bullish" && direction === "long") ||
-    (higherTfTrend === "bearish" && direction === "short") ||
-    higherTfTrend === "ranging"; // Ranging higher TF = no strong bias
+): Promise<TradeCategory> {
+  try {
+    const params = new URLSearchParams({
+      higher_tf_trend: higherTfTrend,
+      lower_tf_trend: lowerTfTrend,
+      trade_direction: direction,
+      confluence_score: String(confidence),
+    });
 
-  if (isWithTrend) {
+    const response = await fetch(`/api/trader/workflow/categorize?${params}`);
+
+    if (!response.ok) {
+      console.warn("Category API unavailable, using default");
+      return "with_trend";
+    }
+
+    const data = await response.json();
+    return data.category;
+  } catch (error) {
+    console.warn("Category API error:", error);
     return "with_trend";
   }
-
-  // Trading against the higher TF trend
-  // High confidence (>= 70) suggests strong confluence = counter_trend
-  // Low confidence (< 70) = reversal_attempt
-  if (confidence >= 70) {
-    return "counter_trend";
-  }
-
-  return "reversal_attempt";
 }
 
 /**
@@ -171,12 +174,13 @@ export function detectTrendPhaseFromTrend(trend: TimeframeTrend): TrendPhase {
 
 /**
  * Convert signal suggestion to trade opportunity
+ * Category is fetched from backend; phase detection will be moved to backend in Phase 2.1
  */
-function signalToOpportunity(
+async function signalToOpportunityAsync(
   signal: SignalSuggestion,
   symbol: MarketSymbol,
   trends: TimeframeTrend[]
-): TradeOpportunity | null {
+): Promise<TradeOpportunity | null> {
   // Skip wait signals - they're not opportunities
   if (signal.type === "WAIT") return null;
 
@@ -185,8 +189,8 @@ function signalToOpportunity(
 
   const direction = signal.type === "LONG" ? "long" : "short";
 
-  // Calculate category from trends
-  const category = categorizeTradeFromTrends(
+  // Fetch category from backend API (ADR compliant)
+  const category = await fetchTradeCategory(
     higherTrend?.trend ?? "ranging",
     lowerTrend?.trend ?? "ranging",
     direction,
@@ -194,6 +198,7 @@ function signalToOpportunity(
   );
 
   // Detect trend phase from the lower TF (entry timeframe)
+  // TODO: Move to backend in Phase 2.1 (trend-alignment endpoint)
   const trendPhase = lowerTrend
     ? detectTrendPhaseFromTrend(lowerTrend)
     : "continuation";
@@ -239,16 +244,48 @@ export function useTradeDiscovery({
     filters: { showLong: true, showShort: true, showWait: false },
   });
 
-  // Convert signals to opportunities
-  const opportunities = useMemo(() => {
-    return signals
-      .map((signal) => signalToOpportunity(signal, symbol, trends))
-      .filter((opp): opp is TradeOpportunity => opp !== null)
-      .sort((a, b) => {
-        // Active first, then by confidence
-        if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
-        return b.confidence - a.confidence;
+  // State for async-fetched opportunities
+  const [opportunities, setOpportunities] = useState<TradeOpportunity[]>([]);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(false);
+
+  // Fetch categories from backend and build opportunities
+  useEffect(() => {
+    if (signals.length === 0 || trends.length === 0) {
+      setOpportunities([]);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingCategories(true);
+
+    // Convert all signals to opportunities (fetches categories from backend)
+    Promise.all(
+      signals.map((signal) => signalToOpportunityAsync(signal, symbol, trends))
+    )
+      .then((results) => {
+        if (cancelled) return;
+
+        const validOpportunities = results
+          .filter((opp): opp is TradeOpportunity => opp !== null)
+          .sort((a, b) => {
+            // Active first, then by confidence
+            if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+            return b.confidence - a.confidence;
+          });
+
+        setOpportunities(validOpportunities);
+        setIsLoadingCategories(false);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn("Error fetching categories:", error);
+          setIsLoadingCategories(false);
+        }
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [signals, symbol, trends]);
 
   // Filter to active opportunities only
@@ -268,7 +305,7 @@ export function useTradeDiscovery({
   return {
     opportunities,
     activeOpportunities,
-    isLoading: isLoadingTrends,
+    isLoading: isLoadingTrends || isLoadingCategories,
     hasError,
     errors,
     trends,

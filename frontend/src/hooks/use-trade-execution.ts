@@ -1,8 +1,11 @@
 /**
  * Trade Execution Hook
  *
- * Handles position sizing calculation and trade execution.
+ * Handles position sizing and trade execution via backend APIs.
  * Connects to journal for auto-logging trades.
+ *
+ * ADR Compliant: Position sizing and R:R calculations are server-side.
+ * Frontend is a pure presentation layer.
  */
 
 import { useState, useCallback, useMemo, useEffect } from "react";
@@ -113,101 +116,104 @@ export type UseTradeExecutionResult = {
   execute: () => Promise<boolean>;
   /** Is currently executing */
   isExecuting: boolean;
+  /** Is loading sizing calculations from backend */
+  isLoadingSizing: boolean;
   /** Execution error */
   error: string | null;
 };
 
 /**
- * Position sizing guardrails
+ * Backend API response types
  */
-const GUARDRAILS = {
-  /** Maximum allowed risk percentage per trade */
-  maxRiskPercentage: 5,
-  /** Minimum risk percentage (avoid dust trades) */
-  minRiskPercentage: 0.1,
-  /** Maximum position value as percentage of account */
-  maxPositionPercentage: 50,
-};
+interface PositionSizeResult {
+  position_size: number;
+  distance_to_stop: number;
+  risk_amount: number;
+  account_risk_percentage: number;
+  is_valid: boolean;
+  trade_category: string | null;
+  risk_multiplier: number;
+  original_risk_amount: number | null;
+  category_explanation: string | null;
+}
 
-/**
- * Calculate position size from risk parameters
- */
-function calculatePositionSize(
-  accountBalance: number,
-  riskPercentage: number,
-  entryPrice: number,
-  stopLoss: number
-): { positionSize: number; riskAmount: number; stopDistance: number; guardrailWarnings: string[] } {
-  const guardrailWarnings: string[] = [];
-
-  // Apply risk percentage guardrails
-  const clampedRiskPercentage = Math.min(
-    Math.max(riskPercentage, GUARDRAILS.minRiskPercentage),
-    GUARDRAILS.maxRiskPercentage
-  );
-
-  if (riskPercentage > GUARDRAILS.maxRiskPercentage) {
-    guardrailWarnings.push(`Risk capped at ${GUARDRAILS.maxRiskPercentage}% (was ${riskPercentage}%)`);
-  }
-
-  const riskAmount = accountBalance * (clampedRiskPercentage / 100);
-  const stopDistance = Math.abs(entryPrice - stopLoss);
-
-  if (stopDistance === 0) {
-    return { positionSize: 0, riskAmount, stopDistance: 0, guardrailWarnings };
-  }
-
-  let positionSize = riskAmount / stopDistance;
-
-  // Check if position value exceeds maximum percentage of account
-  const positionValue = positionSize * entryPrice;
-  const maxPositionValue = accountBalance * (GUARDRAILS.maxPositionPercentage / 100);
-
-  if (positionValue > maxPositionValue) {
-    positionSize = maxPositionValue / entryPrice;
-    guardrailWarnings.push(
-      `Position size reduced to stay under ${GUARDRAILS.maxPositionPercentage}% of account`
-    );
-  }
-
-  return { positionSize, riskAmount, stopDistance, guardrailWarnings };
+interface RiskRewardResult {
+  risk_reward_ratio: number;
+  target_ratios: number[];
+  potential_profit: number;
+  potential_loss: number;
+  recommendation: string;
+  is_valid: boolean;
 }
 
 /**
- * Calculate risk/reward ratio
+ * Fetch position size from backend API
  */
-function calculateRiskReward(
+async function fetchPositionSize(
+  entryPrice: number,
+  stopLoss: number,
+  riskCapital: number,
+  accountBalance: number,
+  tradeCategory?: string
+): Promise<PositionSizeResult | null> {
+  try {
+    const response = await fetch("/api/trader/position/size", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_price: entryPrice,
+        stop_loss: stopLoss,
+        risk_capital: riskCapital,
+        account_balance: accountBalance,
+        trade_category: tradeCategory,
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn("Position size API unavailable:", response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    return data.result;
+  } catch (error) {
+    console.warn("Position size API error:", error);
+    return null;
+  }
+}
+
+/**
+ * Fetch risk/reward from backend API
+ */
+async function fetchRiskReward(
   entryPrice: number,
   stopLoss: number,
   targets: number[],
-  direction: "long" | "short"
-): number {
-  if (targets.length === 0) return 0;
+  positionSize: number
+): Promise<RiskRewardResult | null> {
+  try {
+    const response = await fetch("/api/trader/position/risk-reward", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_price: entryPrice,
+        stop_loss: stopLoss,
+        targets,
+        position_size: positionSize,
+      }),
+    });
 
-  const stopDistance = Math.abs(entryPrice - stopLoss);
-  if (stopDistance === 0) return 0;
+    if (!response.ok) {
+      console.warn("Risk/reward API unavailable:", response.status);
+      return null;
+    }
 
-  // Use first target for R:R calculation
-  // Use Math.abs to handle edge cases where target might be on wrong side
-  const targetDistance = Math.abs(
-    direction === "long"
-      ? targets[0] - entryPrice
-      : entryPrice - targets[0]
-  );
-
-  return targetDistance / stopDistance;
-}
-
-/**
- * Get recommendation based on R:R ratio
- */
-function getRecommendation(
-  riskRewardRatio: number
-): "excellent" | "good" | "marginal" | "poor" {
-  if (riskRewardRatio >= 3) return "excellent";
-  if (riskRewardRatio >= 2) return "good";
-  if (riskRewardRatio >= 1.5) return "marginal";
-  return "poor";
+    const data = await response.json();
+    return data.result;
+  } catch (error) {
+    console.warn("Risk/reward API error:", error);
+    return null;
+  }
 }
 
 /**
@@ -230,6 +236,11 @@ export function useTradeExecution({
     accountBalance: initialAccountSettings?.accountBalance ?? 10000,
     riskPercentage: initialAccountSettings?.riskPercentage ?? 2,
   });
+
+  // Backend API results state
+  const [positionSizeResult, setPositionSizeResult] = useState<PositionSizeResult | null>(null);
+  const [riskRewardResult, setRiskRewardResult] = useState<RiskRewardResult | null>(null);
+  const [isLoadingBackend, setIsLoadingBackend] = useState(false);
 
   // Captured validation values - stored when validation provides non-null values
   // This persists even when validation hook becomes disabled (phase changes)
@@ -268,7 +279,80 @@ export function useTradeExecution({
     setCapturedValidation({ entry: null, stop: null, targets: [] });
     setTradeOverrides({});
     setJournalEntryId(null);
+    setPositionSizeResult(null);
+    setRiskRewardResult(null);
   }, [opportunity?.id]);
+
+  // Calculate derived inputs for API calls
+  const derivedInputs = useMemo(() => {
+    const { accountBalance, riskPercentage } = accountSettings;
+    const category = opportunity?.category ?? "with_trend";
+    const direction = opportunity?.direction ?? "long";
+
+    // Priority: User overrides > Captured validation values > Current validation > Fallback
+    const entryPrice =
+      tradeOverrides.entryPrice ??
+      capturedValidation.entry ??
+      validation.suggestedEntry ??
+      0;
+    const stopLoss =
+      tradeOverrides.stopLoss ??
+      capturedValidation.stop ??
+      validation.suggestedStop ??
+      0;
+    const targets =
+      tradeOverrides.targets ??
+      (capturedValidation.targets.length > 0 ? capturedValidation.targets : null) ??
+      validation.suggestedTargets ??
+      [];
+
+    // Calculate risk capital (the amount willing to lose)
+    const riskCapital = accountBalance * (riskPercentage / 100);
+
+    return { accountBalance, riskPercentage, entryPrice, stopLoss, targets, category, direction, riskCapital };
+  }, [accountSettings, tradeOverrides, capturedValidation, validation, opportunity?.category, opportunity?.direction]);
+
+  // Fetch position size and risk/reward from backend APIs
+  useEffect(() => {
+    const { entryPrice, stopLoss, targets, category, riskCapital, accountBalance } = derivedInputs;
+
+    // Skip if we don't have valid inputs
+    if (!enabled || entryPrice === 0 || stopLoss === 0) {
+      setPositionSizeResult(null);
+      setRiskRewardResult(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingBackend(true);
+
+    // Fetch position size first, then risk/reward with the position size
+    fetchPositionSize(entryPrice, stopLoss, riskCapital, accountBalance, category)
+      .then((posResult) => {
+        if (cancelled) return;
+        setPositionSizeResult(posResult);
+
+        // Now fetch risk/reward if we have position size and targets
+        if (posResult && targets.length > 0) {
+          return fetchRiskReward(entryPrice, stopLoss, targets, posResult.position_size);
+        }
+        return null;
+      })
+      .then((rrResult) => {
+        if (cancelled) return;
+        setRiskRewardResult(rrResult);
+        setIsLoadingBackend(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIsLoadingBackend(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, derivedInputs]);
 
   // Calculate category info
   const categoryInfo = useMemo((): CategoryInfo => {
@@ -287,43 +371,22 @@ export function useTradeExecution({
     };
   }, [opportunity?.category, accountSettings.riskPercentage]);
 
-  // Calculate full sizing data
+  // Build sizing data from backend results and UI inputs
   const sizing = useMemo((): SizingData => {
-    const { accountBalance, riskPercentage } = accountSettings;
+    const { accountBalance, riskPercentage, entryPrice, stopLoss, targets, direction } = derivedInputs;
 
-    // Apply category-based risk adjustment
-    const category = opportunity?.category ?? "with_trend";
-    const categoryMultiplier = TRADE_CATEGORY_RISK[category];
-    const adjustedRiskPercentage = riskPercentage * categoryMultiplier;
+    // Use backend results if available
+    const positionSize = positionSizeResult?.position_size ?? 0;
+    const riskAmount = positionSizeResult?.risk_amount ?? 0;
+    const stopDistance = positionSizeResult?.distance_to_stop ?? Math.abs(entryPrice - stopLoss);
+    const riskRewardRatio = riskRewardResult?.risk_reward_ratio ?? 0;
+    const recommendation = (riskRewardResult?.recommendation ?? "poor") as "excellent" | "good" | "marginal" | "poor";
 
-    // Priority: User overrides > Captured validation values > Current validation > Fallback
-    const entryPrice =
-      tradeOverrides.entryPrice ??
-      capturedValidation.entry ??
-      validation.suggestedEntry ??
-      0;
-    const stopLoss =
-      tradeOverrides.stopLoss ??
-      capturedValidation.stop ??
-      validation.suggestedStop ??
-      0;
-    const targets =
-      tradeOverrides.targets ??
-      (capturedValidation.targets.length > 0 ? capturedValidation.targets : null) ??
-      validation.suggestedTargets ??
-      [];
-    const direction = opportunity?.direction ?? "long";
-
-    // Use category-adjusted risk percentage for position sizing
-    const { positionSize, riskAmount, stopDistance, guardrailWarnings } = calculatePositionSize(
-      accountBalance,
-      adjustedRiskPercentage,
-      entryPrice,
-      stopLoss
-    );
-
-    const riskRewardRatio = calculateRiskReward(entryPrice, stopLoss, targets, direction);
-    const recommendation = getRecommendation(riskRewardRatio);
+    // Build guardrail warnings from backend
+    const guardrailWarnings: string[] = [];
+    if (positionSizeResult?.original_risk_amount && positionSizeResult.original_risk_amount > positionSizeResult.risk_amount) {
+      guardrailWarnings.push(`Risk adjusted by category: ${positionSizeResult.category_explanation}`);
+    }
 
     // Direction validation: stop must be on correct side of entry
     const isStopOnCorrectSide =
@@ -331,8 +394,9 @@ export function useTradeExecution({
       stopLoss === 0 ||
       (direction === "long" ? stopLoss < entryPrice : stopLoss > entryPrice);
 
-    // isValid = basic requirements met (entry/stop set, position size calculated, stop on correct side)
-    const isValid = entryPrice > 0 && stopLoss > 0 && positionSize > 0 && isStopOnCorrectSide;
+    // isValid = basic requirements met + backend returned valid result
+    const isValid = entryPrice > 0 && stopLoss > 0 && positionSize > 0 && isStopOnCorrectSide &&
+                   (positionSizeResult?.is_valid ?? false);
 
     return {
       accountBalance,
@@ -348,7 +412,7 @@ export function useTradeExecution({
       isValid,
       guardrailWarnings,
     };
-  }, [accountSettings, tradeOverrides, capturedValidation, validation, opportunity?.direction, opportunity?.category]);
+  }, [derivedInputs, positionSizeResult, riskRewardResult]);
 
   // Update sizing - route to appropriate state based on field
   const updateSizing = useCallback((updates: Partial<SizingData>) => {
@@ -443,6 +507,7 @@ export function useTradeExecution({
     restoreSuggested,
     execute,
     isExecuting,
+    isLoadingSizing: isLoadingBackend,
     error,
   };
 }

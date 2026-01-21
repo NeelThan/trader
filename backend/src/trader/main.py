@@ -48,13 +48,19 @@ from trader.workflow import (
     IndicatorConfirmation,
     LevelsResult,
     OpportunityScanResult,
+    SignalAggregationResult,
+    SignalSuggestionsResult,
     TradeCategory,
+    TrendAlignmentResult,
     TrendAssessment,
+    aggregate_signals,
+    analyze_trend_alignment,
     assess_trend,
     categorize_trade,
     check_timeframe_alignment,
     confirm_with_indicators,
     detect_cascade,
+    generate_signal_suggestions,
     identify_fibonacci_levels,
     scan_opportunities,
     validate_trade,
@@ -1588,4 +1594,95 @@ async def workflow_cascade(
         progression=result.progression,
         actionable_insight=result.actionable_insight,
         reversal_probability=result.reversal_probability,
+    )
+
+
+@app.get("/workflow/trend-alignment", response_model=TrendAlignmentResult)
+async def workflow_trend_alignment(
+    symbol: str,
+    timeframes: str = "1M,1W,1D,4H,1H,15m,5m,3m,1m",
+    lookback: int = 5,
+) -> TrendAlignmentResult:
+    """Analyze trend alignment across multiple timeframes.
+
+    Returns complete trend data for each timeframe including:
+    - Swing pattern analysis (HH/HL/LH/LL)
+    - RSI indicator signal
+    - MACD histogram signal
+    - Overall trend and confidence
+
+    Also provides overall alignment summary across all timeframes.
+
+    Args:
+        symbol: Market symbol to analyze (e.g., "DJI", "SPX").
+        timeframes: Comma-separated list of timeframes to analyze.
+                   Defaults to all timeframes: "1M,1W,1D,4H,1H,15m,5m,3m,1m".
+        lookback: Lookback period for pivot detection. Defaults to 5.
+
+    Returns:
+        TrendAlignmentResult with per-timeframe trends and overall alignment.
+    """
+    timeframe_list = [tf.strip() for tf in timeframes.split(",")]
+
+    return await analyze_trend_alignment(
+        symbol=symbol,
+        timeframes=timeframe_list,
+        market_service=_market_data_service,
+        lookback=lookback,
+    )
+
+
+@app.get("/workflow/signal-suggestions", response_model=SignalSuggestionsResult)
+async def workflow_signal_suggestions(
+    symbol: str,
+    lookback: int = 5,
+) -> SignalSuggestionsResult:
+    """Generate signal suggestions based on trend alignment.
+
+    Analyzes trend alignment across standard timeframe pairs and generates
+    trading signals based on the SignalPro methodology:
+    - Higher TF UP + Lower TF DOWN = GO LONG (buy the dip)
+    - Higher TF DOWN + Lower TF UP = GO SHORT (sell the rally)
+    - Same direction = WAIT for pullback
+
+    Args:
+        symbol: Market symbol to analyze (e.g., "DJI", "SPX").
+        lookback: Lookback period for pivot detection. Defaults to 5.
+
+    Returns:
+        SignalSuggestionsResult with generated signals and counts.
+    """
+    return await generate_signal_suggestions(
+        symbol=symbol,
+        market_service=_market_data_service,
+        lookback=lookback,
+    )
+
+
+@app.get("/workflow/signal-aggregation", response_model=SignalAggregationResult)
+async def workflow_signal_aggregation(
+    symbol: str,
+    timeframes: str = "1W,1D,4H,1H",
+) -> SignalAggregationResult:
+    """Aggregate trading signals from multiple timeframes.
+
+    Detects signals from:
+    - Trend alignment (higher TF vs lower TF)
+    - Fibonacci level rejections
+    - Confluence zones (multiple signals at similar prices)
+
+    Args:
+        symbol: Market symbol to analyze (e.g., "DJI", "SPX").
+        timeframes: Comma-separated list of timeframes to analyze.
+                   Defaults to "1W,1D,4H,1H".
+
+    Returns:
+        SignalAggregationResult with aggregated signals and counts.
+    """
+    timeframe_list = [tf.strip() for tf in timeframes.split(",")]
+
+    return await aggregate_signals(
+        symbol=symbol,
+        timeframes=timeframe_list,
+        market_service=_market_data_service,
     )
