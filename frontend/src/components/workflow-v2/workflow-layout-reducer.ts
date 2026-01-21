@@ -331,7 +331,8 @@ export const layoutSelectors = {
       panels.cascadePanel ||
       panels.confluenceZones ||
       panels.levelsTable ||
-      panels.reversalTime
+      panels.reversalTime ||
+      panels.trendLines
     );
   },
 
@@ -346,6 +347,7 @@ export const layoutSelectors = {
       panels.confluenceZones,
       panels.levelsTable,
       panels.reversalTime,
+      panels.trendLines,
     ].filter(Boolean).length;
   },
 };

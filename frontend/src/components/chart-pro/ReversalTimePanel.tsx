@@ -206,17 +206,85 @@ export function ReversalTimePanel({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="w-24">Level</TableHead>
-                <TableHead className="w-24 text-right">Price</TableHead>
-                <TableHead className="w-20 text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Bars
-                  </div>
+                <TableHead className="w-24">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help flex items-center gap-1">
+                        Level
+                        <Info className="h-3 w-3 opacity-50" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[200px]">
+                      <p>Fibonacci level name. R = Retracement (pullback levels), E = Extension (target levels beyond the move).</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TableHead>
-                <TableHead className="w-20 text-center">Est. Time</TableHead>
-                <TableHead className="w-16 text-center">Conf.</TableHead>
-                <TableHead className="w-16 text-right">ATR</TableHead>
+                <TableHead className="w-24 text-right">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help flex items-center justify-end gap-1">
+                        Price
+                        <Info className="h-3 w-3 opacity-50" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[200px]">
+                      <p>The exact price where this Fibonacci level sits. Green = above current price, Red = below.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
+                <TableHead className="w-20 text-center">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help flex items-center justify-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Bars
+                        <Info className="h-3 w-3 opacity-50" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[220px]">
+                      <p>Estimated number of price bars to reach this level based on current velocity. Lower = faster to reach.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
+                <TableHead className="w-20 text-center">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help flex items-center justify-center gap-1">
+                        Est. Time
+                        <Info className="h-3 w-3 opacity-50" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[220px]">
+                      <p>Approximate calendar time to reach this level. Based on your timeframe and bar estimates. ~d = days, ~h = hours, ~m = minutes.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
+                <TableHead className="w-16 text-center">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help flex items-center justify-center gap-1">
+                        Conf.
+                        <Info className="h-3 w-3 opacity-50" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[220px]">
+                      <p>Confidence score (0-100%). Higher = more reliable estimate. Based on price consistency and distance. Green = high, Yellow = medium, Gray = low.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
+                <TableHead className="w-16 text-right">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help flex items-center justify-end gap-1">
+                        ATR
+                        <Info className="h-3 w-3 opacity-50" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[220px]">
+                      <p>Distance to level measured in ATR units (Average True Range). 1 ATR = typical daily/bar price range. Lower = closer target.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

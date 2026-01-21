@@ -1439,6 +1439,87 @@ export function WorkflowV2Layout({
                 />
               )}
 
+              {/* Trend Lines Info Panel - shows when enabled but no lines found */}
+              {showTrendLines && !isLoadingTrendLines && trendLines && !trendLines.upper_line && !trendLines.lower_line && (
+                <Card className="shrink-0">
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm flex items-center justify-between">
+                      <span>Trend Lines</span>
+                      <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-400/50">
+                        No Pattern
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 pt-0">
+                    <div className="text-sm text-muted-foreground space-y-2">
+                      <p>No trend lines can be drawn for this chart.</p>
+                      <div className="text-xs space-y-1.5 bg-muted/30 p-2 rounded">
+                        <p className="font-medium text-foreground">Requirements:</p>
+                        <ul className="list-disc list-inside space-y-0.5 opacity-80">
+                          <li><span className="text-green-400">Upper line</span>: 2+ consecutive Higher Highs (HH)</li>
+                          <li><span className="text-red-400">Lower line</span>: 2+ consecutive Lower Lows (LL)</li>
+                        </ul>
+                        <p className="mt-2 opacity-70">
+                          Current chart may be ranging/choppy without a clear trend direction.
+                          Try a higher timeframe or different symbol.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Trend Lines Status - shows when lines ARE found */}
+              {showTrendLines && !isLoadingTrendLines && trendLines && (trendLines.upper_line || trendLines.lower_line) && (
+                <Card className="shrink-0">
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-sm flex items-center justify-between">
+                      <span>Trend Lines</span>
+                      <div className="flex gap-1">
+                        {trendLines.upper_line && (
+                          <Badge variant="outline" className="text-[10px] text-green-400 border-green-400/50">
+                            HH ({trendLines.upper_line.points.length} pts)
+                          </Badge>
+                        )}
+                        {trendLines.lower_line && (
+                          <Badge variant="outline" className="text-[10px] text-red-400 border-red-400/50">
+                            LL ({trendLines.lower_line.points.length} pts)
+                          </Badge>
+                        )}
+                      </div>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 pt-0">
+                    <div className="text-xs space-y-2">
+                      {trendLines.upper_line && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-green-400">Upper (HH) slope:</span>
+                          <span className="font-mono">
+                            {trendLines.upper_line.slope > 0 ? "+" : ""}
+                            {trendLines.upper_line.slope.toFixed(2)}/bar
+                          </span>
+                        </div>
+                      )}
+                      {trendLines.lower_line && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-red-400">Lower (LL) slope:</span>
+                          <span className="font-mono">
+                            {trendLines.lower_line.slope > 0 ? "+" : ""}
+                            {trendLines.lower_line.slope.toFixed(2)}/bar
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                        <span className="text-muted-foreground">Position:</span>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {trendLines.current_position.replace(/_/g, " ")}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Reversal Time Panel - time to reach Fib levels */}
               {showReversalTime && (
                 <Card className="shrink-0">
