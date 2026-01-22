@@ -6,16 +6,15 @@ Tests cover:
 - Handle various market conditions (uptrend, downtrend, sideways)
 """
 
+from datetime import datetime
+
 import pytest
-from datetime import datetime, timedelta
 
 from trader.velocity import (
     VelocityMetrics,
-    LevelTimeEstimate,
-    ReversalTimeResult,
     calculate_velocity,
-    estimate_time_to_level,
     estimate_reversal_times,
+    estimate_time_to_level,
 )
 
 
@@ -301,13 +300,17 @@ class TestEstimateReversalTimes:
         )
 
         # Same bars estimate, different time estimate
-        assert result_daily.estimates[0].estimated_bars == result_hourly.estimates[0].estimated_bars
+        daily_bars = result_daily.estimates[0].estimated_bars
+        hourly_bars = result_hourly.estimates[0].estimated_bars
+        assert daily_bars == hourly_bars
         # Hourly should have shorter time span
-        if result_daily.estimates[0].estimated_time and result_hourly.estimates[0].estimated_time:
+        daily_time_str = result_daily.estimates[0].estimated_time
+        hourly_time_str = result_hourly.estimates[0].estimated_time
+        if daily_time_str and hourly_time_str:
             daily_time = datetime.fromisoformat(
-                result_daily.estimates[0].estimated_time.replace("Z", "+00:00")
+                daily_time_str.replace("Z", "+00:00")
             )
             hourly_time = datetime.fromisoformat(
-                result_hourly.estimates[0].estimated_time.replace("Z", "+00:00")
+                hourly_time_str.replace("Z", "+00:00")
             )
             assert hourly_time < daily_time

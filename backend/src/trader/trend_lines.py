@@ -19,6 +19,26 @@ These separate lines help identify:
 from dataclasses import dataclass
 from typing import Any, Literal
 
+PatternType = Literal[
+    "rising_wedge",
+    "falling_wedge",
+    "expanding",
+    "parallel_channel",
+    "no_pattern",
+]
+
+ReversalBias = Literal["bullish", "bearish", "neutral"]
+
+SignalType = Literal[
+    "wedge_squeeze",
+    "channel_break",
+    "slope_divergence",
+    "apex_reached",
+    "failed_test",
+]
+
+SignalDirection = Literal["bullish", "bearish"]
+
 
 @dataclass(frozen=True)
 class TrendLinePoint:
@@ -88,6 +108,55 @@ class TrendLinesResult:
     lower_line: TrendLine | None
     breaks: list[TrendLineBreak]
     current_position: Literal["above_upper", "in_channel", "below_lower", "no_channel"]
+
+
+@dataclass(frozen=True)
+class ChannelPattern:
+    """Pattern classification based on trend line shape.
+
+    Detects wedges, channels, and expanding patterns based on
+    the relationship between upper (HH) and lower (LL) trend lines.
+
+    Attributes:
+        pattern_type: Type of pattern detected.
+        reversal_bias: Expected reversal direction based on pattern.
+        confidence: Confidence score 0-100.
+        bars_to_apex: Bars until lines intersect (for wedges).
+        channel_width: Current width between lines.
+        width_change_rate: Rate of width change per bar (+ expanding, - contracting).
+        upper_slope: Slope of upper (HH) trend line.
+        lower_slope: Slope of lower (LL) trend line.
+    """
+
+    pattern_type: PatternType
+    reversal_bias: ReversalBias
+    confidence: float
+    bars_to_apex: int | None
+    channel_width: float
+    width_change_rate: float
+    upper_slope: float | None
+    lower_slope: float | None
+
+
+@dataclass(frozen=True)
+class ReversalSignal:
+    """A detected reversal signal from pattern analysis.
+
+    Attributes:
+        signal_type: Type of reversal signal.
+        direction: Expected reversal direction.
+        strength: Signal strength 0-100.
+        trigger_price: Price level that triggered the signal.
+        bar_index: Bar index where signal occurred.
+        explanation: Human-readable explanation of the signal.
+    """
+
+    signal_type: SignalType
+    direction: SignalDirection
+    strength: float
+    trigger_price: float | None
+    bar_index: int
+    explanation: str
 
 
 def extract_trend_line_points(
@@ -403,3 +472,279 @@ def _determine_current_position(
         return "in_channel"
 
     return "no_channel"
+
+
+def classify_channel_pattern(
+    upper_line: TrendLine | None,
+    lower_line: TrendLine | None,
+    current_index: int,
+) -> ChannelPattern:
+    """Classify the pattern formed by upper and lower trend lines.
+
+    Detects:
+    - Rising Wedge: Both lines going up, converging (bearish bias)
+    - Falling Wedge: Both lines going down, converging (bullish bias)
+    - Parallel Channel: Similar slopes (neutral)
+    - Expanding: Lines diverging (neutral)
+
+    Args:
+        upper_line: HH trend line (or None).
+        lower_line: LL trend line (or None).
+        current_index: Current bar index for calculations.
+
+    Returns:
+        ChannelPattern with classification and metrics.
+    """
+    # No pattern if either line is missing or invalid
+    if (
+        upper_line is None
+        or lower_line is None
+        or not upper_line.is_valid
+        or not lower_line.is_valid
+    ):
+        return ChannelPattern(
+            pattern_type="no_pattern",
+            reversal_bias="neutral",
+            confidence=0.0,
+            bars_to_apex=None,
+            channel_width=0.0,
+            width_change_rate=0.0,
+            upper_slope=(
+                upper_line.slope if upper_line and upper_line.is_valid else None
+            ),
+            lower_slope=(
+                lower_line.slope if lower_line and lower_line.is_valid else None
+            ),
+        )
+
+    upper_slope = upper_line.slope
+    lower_slope = lower_line.slope
+
+    # Calculate width change rate: upper_slope - lower_slope
+    # Positive = expanding (upper rising faster or falling slower)
+    # Negative = contracting (lower rising faster or falling slower)
+    width_change_rate = upper_slope - lower_slope
+
+    # Calculate current channel width
+    upper_value = upper_line.intercept + upper_slope * current_index
+    lower_value = lower_line.intercept + lower_slope * current_index
+    channel_width = upper_value - lower_value
+
+    # Calculate bars to apex (where lines intersect)
+    # upper_line.intercept + upper_slope * x = lower_line.intercept + lower_slope * x
+    # (upper_slope - lower_slope) * x = lower_line.intercept - upper_line.intercept
+    # x = (lower_line.intercept - upper_line.intercept) / (upper_slope - lower_slope)
+    bars_to_apex: int | None = None
+    slope_diff = upper_slope - lower_slope
+
+    if abs(slope_diff) > 1e-10:  # Not parallel
+        apex_index = (lower_line.intercept - upper_line.intercept) / slope_diff
+        bars_from_current = apex_index - current_index
+        if bars_from_current > 0:  # Apex is in the future
+            bars_to_apex = int(bars_from_current)
+
+    # Determine if slopes are similar (parallel channel)
+    # Use 10% tolerance relative to the larger slope magnitude
+    # Use 0.01 minimum to avoid division by zero
+    max_slope_mag = max(abs(upper_slope), abs(lower_slope), 0.01)
+    slope_similarity = abs(width_change_rate) / max_slope_mag
+
+    # Classification logic
+    pattern_type: PatternType
+    reversal_bias: ReversalBias
+    confidence: float
+
+    if slope_similarity < 0.1:  # Within 10% = parallel
+        pattern_type = "parallel_channel"
+        reversal_bias = "neutral"
+        confidence = 60.0
+    elif width_change_rate > 0:  # Expanding (diverging)
+        pattern_type = "expanding"
+        reversal_bias = "neutral"
+        confidence = 50.0
+    elif upper_slope > 0 and lower_slope > 0:  # Both positive, converging
+        pattern_type = "rising_wedge"
+        reversal_bias = "bearish"
+        # Higher confidence when closer to apex
+        confidence = min(85.0, 60.0 + (30.0 / max(bars_to_apex or 30, 1)))
+    elif upper_slope < 0 and lower_slope < 0:  # Both negative, converging
+        pattern_type = "falling_wedge"
+        reversal_bias = "bullish"
+        # Higher confidence when closer to apex
+        confidence = min(85.0, 60.0 + (30.0 / max(bars_to_apex or 30, 1)))
+    else:
+        # Mixed slopes but converging - classify as expanding or no clear pattern
+        pattern_type = "expanding"
+        reversal_bias = "neutral"
+        confidence = 40.0
+
+    return ChannelPattern(
+        pattern_type=pattern_type,
+        reversal_bias=reversal_bias,
+        confidence=confidence,
+        bars_to_apex=bars_to_apex,
+        channel_width=channel_width,
+        width_change_rate=width_change_rate,
+        upper_slope=upper_slope,
+        lower_slope=lower_slope,
+    )
+
+
+def detect_reversal_signals(  # noqa: C901
+    pattern: ChannelPattern,
+    closes: list[float],
+    highs: list[float],
+    lows: list[float],
+    upper_line: TrendLine | None,
+    lower_line: TrendLine | None,
+    current_index: int,
+) -> list[ReversalSignal]:
+    """Detect reversal signals based on pattern and price action.
+
+    Detects:
+    - Wedge Squeeze: Price approaching apex (<= 10 bars)
+    - Apex Reached: Lines converged (<= 2 bars)
+    - Channel Break: Price closes outside channel
+    - Failed Test: Price touches line, reverses next bar
+
+    Args:
+        pattern: Classified channel pattern.
+        closes: List of closing prices.
+        highs: List of high prices.
+        lows: List of low prices.
+        upper_line: HH trend line (or None).
+        lower_line: LL trend line (or None).
+        current_index: Current bar index.
+
+    Returns:
+        List of detected ReversalSignal objects.
+    """
+    signals: list[ReversalSignal] = []
+
+    # No signals for no_pattern
+    if pattern.pattern_type == "no_pattern":
+        return signals
+
+    # Wedge signals based on bars_to_apex
+    if pattern.bars_to_apex is not None:
+        is_wedge = pattern.pattern_type in ("rising_wedge", "falling_wedge")
+        direction: SignalDirection = (
+            "bullish" if pattern.reversal_bias == "bullish" else "bearish"
+        )
+
+        # Apex reached (very imminent)
+        if pattern.bars_to_apex <= 2:
+            trigger = (
+                closes[current_index] if current_index < len(closes) else None
+            )
+            signals.append(
+                ReversalSignal(
+                    signal_type="apex_reached",
+                    direction=direction,
+                    strength=90.0,
+                    trigger_price=trigger,
+                    bar_index=current_index,
+                    explanation=f"Apex reached - {pattern.bars_to_apex} bars",
+                )
+            )
+        # Wedge squeeze (approaching apex)
+        elif is_wedge and pattern.bars_to_apex <= 10:
+            trigger = (
+                closes[current_index] if current_index < len(closes) else None
+            )
+            # Higher strength as apex nears
+            strength = 70.0 + (10 - pattern.bars_to_apex) * 2
+            signals.append(
+                ReversalSignal(
+                    signal_type="wedge_squeeze",
+                    direction=direction,
+                    strength=strength,
+                    trigger_price=trigger,
+                    bar_index=current_index,
+                    explanation=f"Wedge squeeze - {pattern.bars_to_apex} bars to apex",
+                )
+            )
+
+    # Channel break detection
+    if current_index < len(closes):
+        current_close = closes[current_index]
+
+        if upper_line and upper_line.is_valid:
+            upper_value = upper_line.intercept + upper_line.slope * current_index
+            if current_close > upper_value:
+                signals.append(
+                    ReversalSignal(
+                        signal_type="channel_break",
+                        direction="bullish",
+                        strength=75.0,
+                        trigger_price=current_close,
+                        bar_index=current_index,
+                        explanation=f"Break above upper line at {upper_value:.2f}",
+                    )
+                )
+
+        if lower_line and lower_line.is_valid:
+            lower_value = lower_line.intercept + lower_line.slope * current_index
+            if current_close < lower_value:
+                signals.append(
+                    ReversalSignal(
+                        signal_type="channel_break",
+                        direction="bearish",
+                        strength=75.0,
+                        trigger_price=current_close,
+                        bar_index=current_index,
+                        explanation=f"Break below lower line at {lower_value:.2f}",
+                    )
+                )
+
+    # Failed test detection (requires at least 2 bars)
+    if current_index >= 1 and current_index < len(closes):
+        prev_index = current_index - 1
+
+        if prev_index < len(highs) and prev_index < len(lows):
+            prev_high = highs[prev_index]
+            prev_low = lows[prev_index]
+            prev_close = closes[prev_index]
+            current_close = closes[current_index]
+
+            # Check failed test at upper line
+            if upper_line and upper_line.is_valid:
+                upper_val = upper_line.intercept + upper_line.slope * prev_index
+                touch_tolerance = abs(upper_val) * 0.002  # 0.2% tolerance
+
+                # Prev bar high touched upper line
+                if abs(prev_high - upper_val) <= touch_tolerance:
+                    # Current close is lower than prev close (reversal down)
+                    if current_close < prev_close:
+                        signals.append(
+                            ReversalSignal(
+                                signal_type="failed_test",
+                                direction="bearish",
+                                strength=65.0,
+                                trigger_price=prev_high,
+                                bar_index=current_index,
+                                explanation=f"Failed test at upper {upper_val:.2f}",
+                            )
+                        )
+
+            # Check failed test at lower line
+            if lower_line and lower_line.is_valid:
+                lower_val = lower_line.intercept + lower_line.slope * prev_index
+                touch_tolerance = abs(lower_val) * 0.002  # 0.2% tolerance
+
+                # Prev bar low touched lower line
+                if abs(prev_low - lower_val) <= touch_tolerance:
+                    # Current close is higher than prev close (reversal up)
+                    if current_close > prev_close:
+                        signals.append(
+                            ReversalSignal(
+                                signal_type="failed_test",
+                                direction="bullish",
+                                strength=65.0,
+                                trigger_price=prev_low,
+                                bar_index=current_index,
+                                explanation=f"Failed test at lower {lower_val:.2f}",
+                            )
+                        )
+
+    return signals

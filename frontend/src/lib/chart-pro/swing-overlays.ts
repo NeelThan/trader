@@ -188,6 +188,64 @@ export type TrendLineBreak = {
   break_direction: "above" | "below";
 };
 
+// --- Pattern Classification Types ---
+
+/**
+ * Pattern type classification
+ */
+export type PatternType =
+  | "rising_wedge"
+  | "falling_wedge"
+  | "expanding"
+  | "parallel_channel"
+  | "no_pattern";
+
+/**
+ * Reversal bias based on pattern
+ */
+export type ReversalBias = "bullish" | "bearish" | "neutral";
+
+/**
+ * Reversal signal type
+ */
+export type SignalType =
+  | "wedge_squeeze"
+  | "channel_break"
+  | "slope_divergence"
+  | "apex_reached"
+  | "failed_test";
+
+/**
+ * Signal direction
+ */
+export type SignalDirection = "bullish" | "bearish";
+
+/**
+ * Channel pattern classification data
+ */
+export type ChannelPatternData = {
+  pattern_type: PatternType;
+  reversal_bias: ReversalBias;
+  confidence: number;
+  bars_to_apex: number | null;
+  channel_width: number;
+  width_change_rate: number;
+  upper_slope: number | null;
+  lower_slope: number | null;
+};
+
+/**
+ * Reversal signal data
+ */
+export type ReversalSignalData = {
+  signal_type: SignalType;
+  direction: SignalDirection;
+  strength: number;
+  trigger_price: number | null;
+  bar_index: number;
+  explanation: string;
+};
+
 /**
  * Full trend lines result from backend
  */
@@ -196,6 +254,8 @@ export type TrendLinesResult = {
   lower_line: TrendLineData | null;
   breaks: TrendLineBreak[];
   current_position: "above_upper" | "in_channel" | "below_lower" | "no_channel";
+  pattern: ChannelPatternData | null;
+  signals: ReversalSignalData[];
 };
 
 /**

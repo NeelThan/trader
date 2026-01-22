@@ -1476,14 +1476,37 @@ export function WorkflowV2Layout({
                     <CardTitle className="text-sm flex items-center justify-between">
                       <span>Trend Lines</span>
                       <div className="flex gap-1">
+                        {/* Pattern badge with color based on reversal bias */}
+                        {trendLines.pattern && (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px]",
+                              trendLines.pattern.reversal_bias === "bullish"
+                                ? "text-green-400 border-green-400/50"
+                                : trendLines.pattern.reversal_bias === "bearish"
+                                  ? "text-red-400 border-red-400/50"
+                                  : trendLines.pattern.pattern_type === "expanding"
+                                    ? "text-amber-400 border-amber-400/50"
+                                    : "text-blue-400 border-blue-400/50"
+                            )}
+                          >
+                            {trendLines.pattern.pattern_type.replace(/_/g, " ")}{" "}
+                            {trendLines.pattern.reversal_bias === "bullish"
+                              ? "▲"
+                              : trendLines.pattern.reversal_bias === "bearish"
+                                ? "▼"
+                                : ""}
+                          </Badge>
+                        )}
                         {trendLines.upper_line && (
                           <Badge variant="outline" className="text-[10px] text-green-400 border-green-400/50">
-                            HH ({trendLines.upper_line.points.length} pts)
+                            HH
                           </Badge>
                         )}
                         {trendLines.lower_line && (
                           <Badge variant="outline" className="text-[10px] text-red-400 border-red-400/50">
-                            LL ({trendLines.lower_line.points.length} pts)
+                            LL
                           </Badge>
                         )}
                       </div>
@@ -1491,9 +1514,86 @@ export function WorkflowV2Layout({
                   </CardHeader>
                   <CardContent className="px-3 pb-3 pt-0">
                     <div className="text-xs space-y-2">
+                      {/* Pattern metrics */}
+                      {trendLines.pattern && (
+                        <div className="rounded-md bg-muted/30 p-2 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Reversal Bias:</span>
+                            <span
+                              className={cn(
+                                "font-medium capitalize",
+                                trendLines.pattern.reversal_bias === "bullish"
+                                  ? "text-green-400"
+                                  : trendLines.pattern.reversal_bias === "bearish"
+                                    ? "text-red-400"
+                                    : "text-muted-foreground"
+                              )}
+                            >
+                              {trendLines.pattern.reversal_bias}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Confidence:</span>
+                            <span className="font-mono">{trendLines.pattern.confidence.toFixed(0)}%</span>
+                          </div>
+                          {trendLines.pattern.bars_to_apex !== null && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Bars to Apex:</span>
+                              <span
+                                className={cn(
+                                  "font-mono",
+                                  trendLines.pattern.bars_to_apex <= 5
+                                    ? "text-amber-400"
+                                    : ""
+                                )}
+                              >
+                                {trendLines.pattern.bars_to_apex}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Reversal Signals */}
+                      {trendLines.signals.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground font-medium">Signals:</span>
+                          {trendLines.signals.map((signal, idx) => (
+                            <div
+                              key={idx}
+                              className={cn(
+                                "rounded-md p-2 text-[10px]",
+                                signal.direction === "bullish"
+                                  ? "bg-green-950/30 border border-green-500/30"
+                                  : "bg-red-950/30 border border-red-500/30"
+                              )}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-medium capitalize">
+                                  {signal.signal_type.replace(/_/g, " ")}
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[9px]",
+                                    signal.direction === "bullish"
+                                      ? "text-green-400 border-green-400/50"
+                                      : "text-red-400 border-red-400/50"
+                                  )}
+                                >
+                                  {signal.direction} {signal.direction === "bullish" ? "▲" : "▼"}
+                                </Badge>
+                              </div>
+                              <p className="text-muted-foreground">{signal.explanation}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Slope info */}
                       {trendLines.upper_line && (
                         <div className="flex items-center justify-between">
-                          <span className="text-green-400">Upper (HH) slope:</span>
+                          <span className="text-green-400">Upper slope:</span>
                           <span className="font-mono">
                             {trendLines.upper_line.slope > 0 ? "+" : ""}
                             {trendLines.upper_line.slope.toFixed(2)}/bar
@@ -1502,7 +1602,7 @@ export function WorkflowV2Layout({
                       )}
                       {trendLines.lower_line && (
                         <div className="flex items-center justify-between">
-                          <span className="text-red-400">Lower (LL) slope:</span>
+                          <span className="text-red-400">Lower slope:</span>
                           <span className="font-mono">
                             {trendLines.lower_line.slope > 0 ? "+" : ""}
                             {trendLines.lower_line.slope.toFixed(2)}/bar

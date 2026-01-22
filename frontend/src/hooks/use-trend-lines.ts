@@ -10,8 +10,25 @@ import type { Time } from "lightweight-charts";
 import type { LineOverlay } from "@/components/trading";
 import {
   type TrendLinesResult,
+  type ChannelPatternData,
+  type ReversalSignalData,
+  type PatternType,
+  type ReversalBias,
+  type SignalType,
+  type SignalDirection,
   generateTrendLineOverlays,
 } from "@/lib/chart-pro/swing-overlays";
+
+// Re-export types for consumers
+export type {
+  TrendLinesResult,
+  ChannelPatternData,
+  ReversalSignalData,
+  PatternType,
+  ReversalBias,
+  SignalType,
+  SignalDirection,
+};
 
 const API_BASE = "/api/trader";
 

@@ -44,15 +44,11 @@ from trader.position_sizing import (
 from trader.signals import Bar, detect_signal
 from trader.trend_lines import (
     TrendLine,
-    TrendLineBreak,
-    TrendLinePoint,
-    TrendLinesResult,
     analyze_trend_lines,
+    classify_channel_pattern,
+    detect_reversal_signals,
 )
 from trader.velocity import (
-    LevelTimeEstimate,
-    ReversalTimeResult,
-    VelocityMetrics,
     estimate_reversal_times,
 )
 from trader.volume_indicators import analyze_volume
@@ -1777,6 +1773,32 @@ class TrendLinesRequest(BaseModel):
     lookback: int = 5
 
 
+class ChannelPatternData(BaseModel):
+    """Channel pattern classification data in response."""
+
+    # rising_wedge, falling_wedge, expanding, parallel_channel, no_pattern
+    pattern_type: str
+    reversal_bias: str  # bullish, bearish, neutral
+    confidence: float
+    bars_to_apex: int | None
+    channel_width: float
+    width_change_rate: float
+    upper_slope: float | None
+    lower_slope: float | None
+
+
+class ReversalSignalData(BaseModel):
+    """Reversal signal data in response."""
+
+    # wedge_squeeze, channel_break, slope_divergence, apex_reached, failed_test
+    signal_type: str
+    direction: str  # bullish, bearish
+    strength: float
+    trigger_price: float | None
+    bar_index: int
+    explanation: str
+
+
 class TrendLinesResponseData(BaseModel):
     """Response model for trend line analysis."""
 
@@ -1784,6 +1806,8 @@ class TrendLinesResponseData(BaseModel):
     lower_line: TrendLineData | None
     breaks: list[TrendLineBreakData]
     current_position: str  # "above_upper", "in_channel", "below_lower", "no_channel"
+    pattern: ChannelPatternData | None = None
+    signals: list[ReversalSignalData] = []
 
 
 @app.post("/pivot/trend-lines", response_model=TrendLinesResponseData)
@@ -1810,6 +1834,8 @@ async def pivot_trend_lines(request: TrendLinesRequest) -> TrendLinesResponseDat
             lower_line=None,
             breaks=[],
             current_position="no_channel",
+            pattern=None,
+            signals=[],
         )
 
     # Convert to OHLCBar dataclasses
@@ -1851,6 +1877,52 @@ async def pivot_trend_lines(request: TrendLinesRequest) -> TrendLinesResponseDat
             is_valid=line.is_valid,
         )
 
+    # Classify channel pattern
+    current_index = len(closes) - 1
+    pattern = classify_channel_pattern(
+        result.upper_line,
+        result.lower_line,
+        current_index,
+    )
+
+    # Detect reversal signals
+    signals = detect_reversal_signals(
+        pattern=pattern,
+        closes=closes,
+        highs=highs,
+        lows=lows,
+        upper_line=result.upper_line,
+        lower_line=result.lower_line,
+        current_index=current_index,
+    )
+
+    # Convert pattern to response format
+    pattern_data: ChannelPatternData | None = None
+    if pattern.pattern_type != "no_pattern":
+        pattern_data = ChannelPatternData(
+            pattern_type=pattern.pattern_type,
+            reversal_bias=pattern.reversal_bias,
+            confidence=pattern.confidence,
+            bars_to_apex=pattern.bars_to_apex,
+            channel_width=pattern.channel_width,
+            width_change_rate=pattern.width_change_rate,
+            upper_slope=pattern.upper_slope,
+            lower_slope=pattern.lower_slope,
+        )
+
+    # Convert signals to response format
+    signals_data = [
+        ReversalSignalData(
+            signal_type=s.signal_type,
+            direction=s.direction,
+            strength=s.strength,
+            trigger_price=s.trigger_price,
+            bar_index=s.bar_index,
+            explanation=s.explanation,
+        )
+        for s in signals
+    ]
+
     return TrendLinesResponseData(
         upper_line=convert_line(result.upper_line),
         lower_line=convert_line(result.lower_line),
@@ -1865,6 +1937,8 @@ async def pivot_trend_lines(request: TrendLinesRequest) -> TrendLinesResponseDat
             for b in result.breaks
         ],
         current_position=result.current_position,
+        pattern=pattern_data,
+        signals=signals_data,
     )
 
 
@@ -1958,7 +2032,9 @@ async def workflow_reversal_time(
     lows = [bar.low for bar in request.data]
 
     # Convert fib levels to dict format
-    fib_levels = [{"label": lvl.label, "price": lvl.price} for lvl in request.fib_levels]
+    fib_levels: list[dict[str, str | float]] = [
+        {"label": lvl.label, "price": lvl.price} for lvl in request.fib_levels
+    ]
 
     # Calculate reversal times
     result = estimate_reversal_times(

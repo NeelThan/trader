@@ -1440,7 +1440,7 @@ async def scan_opportunities(
     )
 
 
-async def _analyze_symbol_pair(
+async def _analyze_symbol_pair(  # noqa: C901
     symbol: str,
     higher_tf: str,
     lower_tf: str,
@@ -1615,7 +1615,7 @@ async def _analyze_symbol_pair(
     )
 
 
-async def validate_trade(
+async def validate_trade(  # noqa: C901
     symbol: str,
     higher_timeframe: str,
     lower_timeframe: str,

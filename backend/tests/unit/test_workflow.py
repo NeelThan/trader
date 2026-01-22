@@ -3354,7 +3354,9 @@ class TestOpportunityScanningWithFibAndSignal:
             for i in range(1, 51)
         ]
 
-        def get_ohlc_side_effect(symbol: str, timeframe: str, periods: int = 50) -> MarketDataResult:
+        def get_ohlc_side_effect(
+            symbol: str, timeframe: str, periods: int = 50
+        ) -> MarketDataResult:
             if timeframe == "1D":
                 bars = mock_higher_bars[:periods]
             else:
@@ -3666,7 +3668,7 @@ class TestLevelsResultWithStrategy:
 
     def test_levels_result_includes_selected_strategy(self) -> None:
         """LevelsResult should have selected_strategy field."""
-        from trader.workflow import LevelsResult, LevelZone
+        from trader.workflow import LevelsResult
 
         result = LevelsResult(
             entry_zones=[],
@@ -3678,7 +3680,7 @@ class TestLevelsResultWithStrategy:
 
     def test_levels_result_includes_abc_pivots(self) -> None:
         """LevelsResult should have abc_pivots field."""
-        from trader.workflow import LevelsResult, LevelZone
+        from trader.workflow import LevelsResult
 
         result = LevelsResult(
             entry_zones=[],
@@ -3693,7 +3695,7 @@ class TestLevelsResultWithStrategy:
 
     def test_levels_result_includes_strategy_reason(self) -> None:
         """LevelsResult should have strategy_reason field."""
-        from trader.workflow import LevelsResult, LevelZone
+        from trader.workflow import LevelsResult
 
         result = LevelsResult(
             entry_zones=[],
@@ -3705,7 +3707,7 @@ class TestLevelsResultWithStrategy:
 
     def test_levels_result_optional_fields_default_none(self) -> None:
         """New optional fields should default to None."""
-        from trader.workflow import LevelsResult, LevelZone
+        from trader.workflow import LevelsResult
 
         result = LevelsResult(
             entry_zones=[],
