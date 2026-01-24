@@ -1,0 +1,27 @@
+# Virtual environment
+.venv/
+venv/
+__pycache__/
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/

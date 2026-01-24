@@ -1,0 +1,26 @@
+# Development mode: Database only
+# Usage: docker compose -f docker-compose.dev.yml up
+#
+# Then run backend and frontend locally with hot reload:
+#   Terminal 1: cd backend && .venv/Scripts/uvicorn trader.main:app --reload
+#   Terminal 2: cd frontend && npm run dev
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: trader
+      POSTGRES_PASSWORD: trader_dev
+      POSTGRES_DB: trader
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trader -d trader"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

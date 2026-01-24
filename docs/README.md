@@ -17,6 +17,12 @@ pinescript/         # TradingView Pine Script indicators (separate folder)
 
 ## Quick Links
 
+### Getting Started
+
+| Guide | Description |
+|-------|-------------|
+| [Development Setup](development-setup.md) | Docker and local development environment |
+
 ### Technical Documentation
 
 | Component | Description | Link |

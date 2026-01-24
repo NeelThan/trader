@@ -17,7 +17,7 @@ A Fibonacci Trading Analysis Platform implementing the SignalPro strategy for al
 | Charting | TradingView Lightweight Charts | Active |
 | UI Components | shadcn/ui | Active |
 | Market Data | Yahoo Finance (yahoo-finance2) | Active |
-| Database | PostgreSQL + Redis | Planned |
+| Database | PostgreSQL | Active |
 
 ## Features
 
@@ -134,25 +134,32 @@ trader/
 
 ## Quick Start
 
-### Backend
+### Option 1: Docker (Recommended)
 
 ```bash
+docker compose up --build
+```
+
+This starts PostgreSQL, backend, and frontend. Access the app at **http://localhost:3000**
+
+See [Development Setup Guide](docs/development-setup.md) for full documentation.
+
+### Option 2: Local Development
+
+```bash
+# Terminal 1: Database
+docker compose -f docker-compose.dev.yml up
+
+# Terminal 2: Backend
 cd backend
 python -m venv .venv
 .venv\Scripts\activate      # Windows
-source .venv/bin/activate   # Unix
+# source .venv/bin/activate # Unix
 pip install -e ".[dev]"
-
-# Run tests
-pytest --cov
-
-# Start server
+alembic upgrade head
 uvicorn trader.main:app --reload
-```
 
-### Frontend
-
-```bash
+# Terminal 3: Frontend
 cd frontend
 npm install
 npm run dev
