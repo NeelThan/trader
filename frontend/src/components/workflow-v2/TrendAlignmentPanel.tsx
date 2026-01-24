@@ -267,7 +267,7 @@ function TimeframeBreakdown({
       <div className="p-2 bg-muted/50 rounded text-[10px] text-muted-foreground">
         <div className="flex items-center gap-1 mb-1">
           <Info size={10} />
-          <span className="font-medium">How it's calculated:</span>
+          <span className="font-medium">How it&apos;s calculated:</span>
           <InfoTooltip
             title={TREND_ALIGNMENT.weights.title}
             content={TREND_ALIGNMENT.weights.content}

@@ -239,8 +239,7 @@ export function useTradeDiscovery({
 
   // Get signal suggestions based on trends
   const { signals } = useSignalSuggestions({
-    trends,
-    overall,
+    symbol,
     filters: { showLong: true, showShort: true, showWait: false },
   });
 

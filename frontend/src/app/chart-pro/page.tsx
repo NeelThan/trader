@@ -151,8 +151,7 @@ export default function ChartProPage() {
     shortCount,
     waitCount,
   } = useSignalSuggestions({
-    trends: trendData,
-    overall: overallTrend,
+    symbol,
     filters: signalFilters,
   });
 

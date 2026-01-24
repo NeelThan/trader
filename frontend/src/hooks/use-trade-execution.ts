@@ -340,7 +340,7 @@ export function useTradeExecution({
       })
       .then((rrResult) => {
         if (cancelled) return;
-        setRiskRewardResult(rrResult);
+        setRiskRewardResult(rrResult ?? null);
         setIsLoadingBackend(false);
       })
       .catch(() => {
