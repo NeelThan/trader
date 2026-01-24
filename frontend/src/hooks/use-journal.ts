@@ -9,12 +9,14 @@ import {
   getJournalEntries,
   getJournalEntry,
   getJournalAnalytics,
+  getDetailedAnalytics,
   deleteJournalEntry,
   updateJournalEntry,
   type JournalEntryRequest,
   type JournalEntryUpdateRequest,
   type JournalEntryData,
   type JournalAnalyticsData,
+  type DetailedAnalyticsData,
   type TradeDirection,
 } from "@/lib/api";
 import type { StoredWorkflow } from "./use-workflow-manager";
@@ -373,4 +375,77 @@ export function isWorkflowImported(
   journalEntries: JournalEntryData[]
 ): boolean {
   return journalEntries.some((entry) => entry.workflow_id === workflowId);
+}
+
+// ============================================================================
+// Detailed Analytics Hook
+// ============================================================================
+
+export type UseDetailedAnalyticsState = {
+  detailedAnalytics: DetailedAnalyticsData | null;
+  isLoading: boolean;
+  error: string | null;
+};
+
+const EMPTY_DETAILED_ANALYTICS: DetailedAnalyticsData = {
+  by_symbol: [],
+  by_timeframe: [],
+  by_month: [],
+  streaks: { current: 0, best_win_streak: 0, worst_loss_streak: 0 },
+  equity_curve: [],
+  recent_trades: [],
+};
+
+/**
+ * Hook for fetching detailed journal analytics.
+ * Includes performance breakdowns by symbol, timeframe, month,
+ * streak information, and equity curve data.
+ */
+export function useDetailedJournalAnalytics(recentCount: number = 5) {
+  const [state, setState] = useState<UseDetailedAnalyticsState>({
+    detailedAnalytics: null,
+    isLoading: false,
+    error: null,
+  });
+
+  const refresh = useCallback(async () => {
+    setState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const response = await getDetailedAnalytics(recentCount);
+      setState({
+        detailedAnalytics: response.analytics,
+        isLoading: false,
+        error: null,
+      });
+    } catch (error) {
+      console.error("Failed to fetch detailed analytics:", error);
+
+      const isUnavailable =
+        error instanceof Error &&
+        (error.message.includes("Backend unavailable") ||
+          error.message.includes("fetch") ||
+          error.message.includes("Failed to fetch"));
+
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        error: isUnavailable
+          ? "Backend unavailable"
+          : "Failed to load detailed analytics",
+      }));
+    }
+  }, [recentCount]);
+
+  useEffect(() => {
+    void (async () => {
+      await refresh();
+    })();
+  }, [refresh]);
+
+  return {
+    ...state,
+    detailedAnalytics: state.detailedAnalytics ?? EMPTY_DETAILED_ANALYTICS,
+    refresh,
+  };
 }

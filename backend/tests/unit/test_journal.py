@@ -10,6 +10,7 @@ from trader.journal import (
     JournalEntry,
     TradeOutcome,
     calculate_analytics,
+    calculate_detailed_analytics,
     create_journal_entry,
 )
 
@@ -402,6 +403,48 @@ class TestEdgeCases:
 
         assert entry.pnl == 0.0
 
+    def test_average_r_excludes_infinite_values(self) -> None:
+        """Average R-multiple excludes infinite values from zero-risk trades."""
+        entries = [
+            # Normal trade with 2R
+            create_journal_entry(
+                symbol="DJI",
+                direction="long",
+                entry_price=48000.0,
+                exit_price=49000.0,
+                stop_loss=47500.0,
+                position_size=10,
+                entry_time="2024-12-01T10:00:00Z",
+                exit_time="2024-12-01T14:00:00Z",
+            ),
+            # Zero risk trade (infinite R)
+            create_journal_entry(
+                symbol="DJI",
+                direction="long",
+                entry_price=48000.0,
+                exit_price=48500.0,
+                stop_loss=48000.0,  # Stop at entry = infinite R
+                position_size=10,
+                entry_time="2024-12-02T10:00:00Z",
+                exit_time="2024-12-02T14:00:00Z",
+            ),
+            # Normal trade with 1R
+            create_journal_entry(
+                symbol="DJI",
+                direction="long",
+                entry_price=48000.0,
+                exit_price=48500.0,
+                stop_loss=47500.0,
+                position_size=10,
+                entry_time="2024-12-03T10:00:00Z",
+                exit_time="2024-12-03T14:00:00Z",
+            ),
+        ]
+        analytics = calculate_analytics(entries)
+        # Should be (2 + 1) / 2 = 1.5, not infinity
+        assert analytics.average_r != float("inf")
+        assert 1.0 <= analytics.average_r <= 2.0
+
 
 class TestUpdateJournalEntry:
     """Tests for updating existing journal entries."""
@@ -503,3 +546,247 @@ class TestUpdateJournalEntry:
         # Now R = 1000 profit / 1000 risk = 1R
         assert updated.r_multiple == 1.0
         assert updated.stop_loss == 47000.0
+
+
+class TestDetailedAnalytics:
+    """Tests for detailed analytics calculations."""
+
+    @pytest.fixture
+    def varied_entries(self) -> list[JournalEntry]:
+        """Create varied journal entries for testing detailed analytics."""
+        return [
+            # DJI Win (December 2024)
+            create_journal_entry(
+                symbol="DJI",
+                direction="long",
+                entry_price=48000.0,
+                exit_price=49000.0,
+                stop_loss=47500.0,
+                position_size=10,
+                entry_time="2024-12-01T10:00:00Z",
+                exit_time="2024-12-01T14:00:00Z",
+                timeframe="1D",
+            ),
+            # DJI Loss (December 2024)
+            create_journal_entry(
+                symbol="DJI",
+                direction="long",
+                entry_price=48000.0,
+                exit_price=47500.0,
+                stop_loss=47500.0,
+                position_size=10,
+                entry_time="2024-12-05T10:00:00Z",
+                exit_time="2024-12-05T14:00:00Z",
+                timeframe="1D",
+            ),
+            # SPX Win (December 2024)
+            create_journal_entry(
+                symbol="SPX",
+                direction="short",
+                entry_price=6000.0,
+                exit_price=5900.0,
+                stop_loss=6100.0,
+                position_size=5,
+                entry_time="2024-12-10T10:00:00Z",
+                exit_time="2024-12-10T14:00:00Z",
+                timeframe="4H",
+            ),
+            # DJI Win (January 2025)
+            create_journal_entry(
+                symbol="DJI",
+                direction="long",
+                entry_price=49000.0,
+                exit_price=50000.0,
+                stop_loss=48500.0,
+                position_size=10,
+                entry_time="2025-01-02T10:00:00Z",
+                exit_time="2025-01-02T14:00:00Z",
+                timeframe="1D",
+            ),
+            # SPX Win (January 2025)
+            create_journal_entry(
+                symbol="SPX",
+                direction="long",
+                entry_price=5800.0,
+                exit_price=5900.0,
+                stop_loss=5700.0,
+                position_size=5,
+                entry_time="2025-01-05T10:00:00Z",
+                exit_time="2025-01-05T14:00:00Z",
+                timeframe="1H",
+            ),
+        ]
+
+    def test_calculates_performance_by_symbol(
+        self, varied_entries: list[JournalEntry]
+    ) -> None:
+        """Performance is broken down by trading symbol."""
+        detailed = calculate_detailed_analytics(varied_entries)
+
+        # Should have DJI and SPX
+        assert len(detailed.by_symbol) == 2
+
+        # Find DJI performance
+        dji_perf = next(s for s in detailed.by_symbol if s.symbol == "DJI")
+        assert dji_perf.trades == 3
+        assert dji_perf.wins == 2
+        assert dji_perf.losses == 1
+
+        # Find SPX performance
+        spx_perf = next(s for s in detailed.by_symbol if s.symbol == "SPX")
+        assert spx_perf.trades == 2
+        assert spx_perf.wins == 2
+        assert spx_perf.losses == 0
+
+    def test_calculates_performance_by_timeframe(
+        self, varied_entries: list[JournalEntry]
+    ) -> None:
+        """Performance is broken down by timeframe."""
+        detailed = calculate_detailed_analytics(varied_entries)
+
+        # Should have 1D, 4H, 1H
+        timeframes = {t.timeframe for t in detailed.by_timeframe}
+        assert timeframes == {"1D", "4H", "1H"}
+
+        # Find 1D performance
+        daily_perf = next(t for t in detailed.by_timeframe if t.timeframe == "1D")
+        assert daily_perf.trades == 3
+        assert daily_perf.wins == 2
+        assert daily_perf.losses == 1
+
+    def test_calculates_performance_by_month(
+        self, varied_entries: list[JournalEntry]
+    ) -> None:
+        """Performance is broken down by month."""
+        detailed = calculate_detailed_analytics(varied_entries)
+
+        # Should have 2024-12 and 2025-01
+        months = {m.month for m in detailed.by_month}
+        assert months == {"2024-12", "2025-01"}
+
+        # Find December 2024 performance
+        dec_perf = next(m for m in detailed.by_month if m.month == "2024-12")
+        assert dec_perf.trades == 3
+        assert dec_perf.wins == 2
+        assert dec_perf.losses == 1
+
+        # Find January 2025 performance
+        jan_perf = next(m for m in detailed.by_month if m.month == "2025-01")
+        assert jan_perf.trades == 2
+        assert jan_perf.wins == 2
+        assert jan_perf.losses == 0
+
+    def test_calculates_streaks(self, varied_entries: list[JournalEntry]) -> None:
+        """Streak information is calculated correctly."""
+        detailed = calculate_detailed_analytics(varied_entries)
+
+        # Sorted by exit_time: Win, Loss, Win, Win, Win
+        # Current streak = 3 (last three wins: Dec 10, Jan 2, Jan 5)
+        assert detailed.streaks.current == 3
+        assert detailed.streaks.best_win_streak == 3  # The last 3 wins
+        assert detailed.streaks.worst_loss_streak == 1  # Only 1 loss
+
+    def test_builds_equity_curve(self, varied_entries: list[JournalEntry]) -> None:
+        """Equity curve shows cumulative P&L progression."""
+        detailed = calculate_detailed_analytics(varied_entries)
+
+        # Should have points for each unique date
+        assert len(detailed.equity_curve) == 5
+
+        # First point
+        assert detailed.equity_curve[0].date == "2024-12-01"
+        assert detailed.equity_curve[0].cumulative_pnl == 10000.0  # First trade
+        assert detailed.equity_curve[0].trade_count == 1
+
+        # Last point should have all trades summed
+        last_point = detailed.equity_curve[-1]
+        assert last_point.trade_count == 5
+
+    def test_returns_recent_trades(self, varied_entries: list[JournalEntry]) -> None:
+        """Recent trades are returned in reverse chronological order."""
+        detailed = calculate_detailed_analytics(varied_entries, recent_count=3)
+
+        assert len(detailed.recent_trades) == 3
+
+        # Most recent first
+        assert detailed.recent_trades[0].exit_time == "2025-01-05T14:00:00Z"
+        assert detailed.recent_trades[1].exit_time == "2025-01-02T14:00:00Z"
+        assert detailed.recent_trades[2].exit_time == "2024-12-10T14:00:00Z"
+
+    def test_handles_empty_entries(self) -> None:
+        """Detailed analytics handles empty list gracefully."""
+        detailed = calculate_detailed_analytics([])
+
+        assert detailed.by_symbol == []
+        assert detailed.by_timeframe == []
+        assert detailed.by_month == []
+        assert detailed.streaks.current == 0
+        assert detailed.streaks.best_win_streak == 0
+        assert detailed.streaks.worst_loss_streak == 0
+        assert detailed.equity_curve == []
+        assert detailed.recent_trades == []
+
+    def test_handles_missing_timeframe(self) -> None:
+        """Entries without timeframe are grouped as 'Unknown'."""
+        entries = [
+            create_journal_entry(
+                symbol="DJI",
+                direction="long",
+                entry_price=48000.0,
+                exit_price=49000.0,
+                stop_loss=47500.0,
+                position_size=10,
+                entry_time="2024-12-01T10:00:00Z",
+                exit_time="2024-12-01T14:00:00Z",
+                timeframe=None,  # No timeframe
+            ),
+        ]
+
+        detailed = calculate_detailed_analytics(entries)
+
+        assert len(detailed.by_timeframe) == 1
+        assert detailed.by_timeframe[0].timeframe == "Unknown"
+
+    def test_calculates_streak_with_all_wins(self) -> None:
+        """Streak is positive when all trades are wins."""
+        entries = [
+            create_journal_entry(
+                symbol="DJI",
+                direction="long",
+                entry_price=48000.0,
+                exit_price=48500.0,
+                stop_loss=47500.0,
+                position_size=10,
+                entry_time=f"2024-12-{i:02d}T10:00:00Z",
+                exit_time=f"2024-12-{i:02d}T14:00:00Z",
+            )
+            for i in range(1, 6)
+        ]
+
+        detailed = calculate_detailed_analytics(entries)
+
+        assert detailed.streaks.current == 5
+        assert detailed.streaks.best_win_streak == 5
+        assert detailed.streaks.worst_loss_streak == 0
+
+    def test_calculates_streak_with_all_losses(self) -> None:
+        """Streak is negative when all trades are losses."""
+        entries = [
+            create_journal_entry(
+                symbol="DJI",
+                direction="long",
+                entry_price=48000.0,
+                exit_price=47500.0,  # Loss
+                stop_loss=47500.0,
+                position_size=10,
+                entry_time=f"2024-12-{i:02d}T10:00:00Z",
+                exit_time=f"2024-12-{i:02d}T14:00:00Z",
+            )
+            for i in range(1, 4)
+        ]
+
+        detailed = calculate_detailed_analytics(entries)
+
+        assert detailed.streaks.current == -3
+        assert detailed.streaks.best_win_streak == 0
+        assert detailed.streaks.worst_loss_streak == 3

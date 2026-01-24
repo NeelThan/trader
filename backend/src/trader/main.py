@@ -27,6 +27,7 @@ from trader.indicators import calculate_macd, calculate_rsi
 from trader.journal import (
     JournalEntry,
     calculate_analytics,
+    calculate_detailed_analytics,
     create_journal_entry,
     update_journal_entry,
 )
@@ -464,6 +465,75 @@ class JournalAnalyticsResponse(BaseModel):
     """Response model for journal analytics."""
 
     analytics: JournalAnalyticsData
+
+
+class SymbolPerformanceData(BaseModel):
+    """Performance metrics for a specific symbol."""
+
+    symbol: str
+    trades: int
+    wins: int
+    losses: int
+    win_rate: float
+    total_pnl: float
+    average_r: float
+
+
+class TimeframePerformanceData(BaseModel):
+    """Performance metrics for a specific timeframe."""
+
+    timeframe: str
+    trades: int
+    wins: int
+    losses: int
+    win_rate: float
+    total_pnl: float
+    average_r: float
+
+
+class MonthlyPerformanceData(BaseModel):
+    """Performance metrics for a specific month."""
+
+    month: str
+    trades: int
+    wins: int
+    losses: int
+    win_rate: float
+    total_pnl: float
+    average_r: float
+
+
+class StreakInfoData(BaseModel):
+    """Win/loss streak information."""
+
+    current: int
+    best_win_streak: int
+    worst_loss_streak: int
+
+
+class EquityCurvePointData(BaseModel):
+    """Point on the equity curve."""
+
+    date: str
+    cumulative_pnl: float
+    trade_count: int
+
+
+class DetailedAnalyticsData(BaseModel):
+    """Comprehensive analytics with breakdowns."""
+
+    by_symbol: list[SymbolPerformanceData]
+    by_timeframe: list[TimeframePerformanceData]
+    by_month: list[MonthlyPerformanceData]
+    streaks: StreakInfoData
+    equity_curve: list[EquityCurvePointData]
+    recent_trades: list[JournalEntryData]
+
+
+class DetailedAnalyticsResponse(BaseModel):
+    """Response model for detailed journal analytics."""
+
+    analytics: DetailedAnalyticsData
 
 
 class JournalEntryUpdateRequest(BaseModel):
@@ -1079,6 +1149,84 @@ async def get_analytics() -> JournalAnalyticsResponse:
             largest_win=analytics.largest_win,
             largest_loss=analytics.largest_loss,
             profit_factor=profit_factor,
+        )
+    )
+
+
+@app.get("/journal/analytics/detailed", response_model=DetailedAnalyticsResponse)
+async def get_detailed_analytics(
+    recent_count: int = 5,
+) -> DetailedAnalyticsResponse:
+    """Get detailed analytics with breakdowns by symbol, timeframe, and month.
+
+    Includes:
+    - Performance by symbol
+    - Performance by timeframe
+    - Performance by month
+    - Win/loss streak information
+    - Equity curve (cumulative P&L)
+    - Recent trades
+
+    Args:
+        recent_count: Number of recent trades to include (default: 5).
+
+    Returns:
+        DetailedAnalyticsResponse with comprehensive analytics.
+    """
+    detailed = calculate_detailed_analytics(_journal_entries, recent_count)
+
+    return DetailedAnalyticsResponse(
+        analytics=DetailedAnalyticsData(
+            by_symbol=[
+                SymbolPerformanceData(
+                    symbol=s.symbol,
+                    trades=s.trades,
+                    wins=s.wins,
+                    losses=s.losses,
+                    win_rate=s.win_rate,
+                    total_pnl=s.total_pnl,
+                    average_r=s.average_r,
+                )
+                for s in detailed.by_symbol
+            ],
+            by_timeframe=[
+                TimeframePerformanceData(
+                    timeframe=t.timeframe,
+                    trades=t.trades,
+                    wins=t.wins,
+                    losses=t.losses,
+                    win_rate=t.win_rate,
+                    total_pnl=t.total_pnl,
+                    average_r=t.average_r,
+                )
+                for t in detailed.by_timeframe
+            ],
+            by_month=[
+                MonthlyPerformanceData(
+                    month=m.month,
+                    trades=m.trades,
+                    wins=m.wins,
+                    losses=m.losses,
+                    win_rate=m.win_rate,
+                    total_pnl=m.total_pnl,
+                    average_r=m.average_r,
+                )
+                for m in detailed.by_month
+            ],
+            streaks=StreakInfoData(
+                current=detailed.streaks.current,
+                best_win_streak=detailed.streaks.best_win_streak,
+                worst_loss_streak=detailed.streaks.worst_loss_streak,
+            ),
+            equity_curve=[
+                EquityCurvePointData(
+                    date=e.date,
+                    cumulative_pnl=e.cumulative_pnl,
+                    trade_count=e.trade_count,
+                )
+                for e in detailed.equity_curve
+            ],
+            recent_trades=[_entry_to_data(e) for e in detailed.recent_trades],
         )
     )
 

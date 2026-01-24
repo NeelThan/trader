@@ -295,6 +295,84 @@ def update_journal_entry(
     )
 
 
+@dataclass
+class SymbolPerformance:
+    """Performance metrics for a specific symbol."""
+
+    symbol: str
+    trades: int
+    wins: int
+    losses: int
+    win_rate: float
+    total_pnl: float
+    average_r: float
+
+
+@dataclass
+class TimeframePerformance:
+    """Performance metrics for a specific timeframe."""
+
+    timeframe: str
+    trades: int
+    wins: int
+    losses: int
+    win_rate: float
+    total_pnl: float
+    average_r: float
+
+
+@dataclass
+class MonthlyPerformance:
+    """Performance metrics for a specific month."""
+
+    month: str  # YYYY-MM format
+    trades: int
+    wins: int
+    losses: int
+    win_rate: float
+    total_pnl: float
+    average_r: float
+
+
+@dataclass
+class StreakInfo:
+    """Win/loss streak information."""
+
+    current: int  # Positive = wins, negative = losses
+    best_win_streak: int
+    worst_loss_streak: int
+
+
+@dataclass
+class EquityCurvePoint:
+    """Point on the equity curve."""
+
+    date: str
+    cumulative_pnl: float
+    trade_count: int
+
+
+@dataclass
+class DetailedAnalytics:
+    """Comprehensive analytics with breakdowns.
+
+    Attributes:
+        by_symbol: Performance breakdown by trading symbol.
+        by_timeframe: Performance breakdown by timeframe.
+        by_month: Performance breakdown by month.
+        streaks: Win/loss streak information.
+        equity_curve: Cumulative P&L over time.
+        recent_trades: Last N trades for quick view.
+    """
+
+    by_symbol: list[SymbolPerformance]
+    by_timeframe: list[TimeframePerformance]
+    by_month: list[MonthlyPerformance]
+    streaks: StreakInfo
+    equity_curve: list[EquityCurvePoint]
+    recent_trades: list[JournalEntry]
+
+
 def calculate_analytics(entries: list[JournalEntry]) -> JournalAnalytics:
     """Calculate analytics from journal entries.
 
@@ -326,7 +404,13 @@ def calculate_analytics(entries: list[JournalEntry]) -> JournalAnalytics:
 
     # Calculate P&L metrics
     total_pnl = sum(e.pnl for e in entries)
-    average_r = sum(e.r_multiple for e in entries) / total
+    # Filter out infinite R-multiples from average (can occur with zero risk trades)
+    finite_r_multiples = [e.r_multiple for e in entries if e.r_multiple != float("inf")]
+    average_r = (
+        sum(finite_r_multiples) / len(finite_r_multiples)
+        if finite_r_multiples
+        else 0.0
+    )
 
     # Find extremes
     pnl_values = [e.pnl for e in entries]
@@ -353,4 +437,203 @@ def calculate_analytics(entries: list[JournalEntry]) -> JournalAnalytics:
         largest_win=largest_win,
         largest_loss=largest_loss,
         profit_factor=profit_factor,
+    )
+
+
+def _calculate_group_performance(
+    entries: list[JournalEntry],
+) -> tuple[int, int, int, float, float, float]:
+    """Calculate performance metrics for a group of entries.
+
+    Returns:
+        Tuple of (trades, wins, losses, win_rate, total_pnl, average_r).
+    """
+    if not entries:
+        return (0, 0, 0, 0.0, 0.0, 0.0)
+
+    trades = len(entries)
+    wins = sum(1 for e in entries if e.outcome == TradeOutcome.WIN)
+    losses = sum(1 for e in entries if e.outcome == TradeOutcome.LOSS)
+    win_rate = (wins / trades) * 100 if trades > 0 else 0.0
+    total_pnl = sum(e.pnl for e in entries)
+    average_r = sum(e.r_multiple for e in entries) / trades if trades > 0 else 0.0
+
+    return (trades, wins, losses, win_rate, total_pnl, average_r)
+
+
+def _calculate_streaks(entries: list[JournalEntry]) -> StreakInfo:
+    """Calculate win/loss streak information from sorted entries.
+
+    Args:
+        entries: Journal entries sorted by exit_time.
+
+    Returns:
+        StreakInfo with current, best win, and worst loss streaks.
+    """
+    if not entries:
+        return StreakInfo(current=0, best_win_streak=0, worst_loss_streak=0)
+
+    current_streak = 0
+    best_win_streak = 0
+    worst_loss_streak = 0
+    temp_win_streak = 0
+    temp_loss_streak = 0
+
+    for entry in entries:
+        if entry.outcome == TradeOutcome.WIN:
+            temp_win_streak += 1
+            temp_loss_streak = 0
+            best_win_streak = max(best_win_streak, temp_win_streak)
+        elif entry.outcome == TradeOutcome.LOSS:
+            temp_loss_streak += 1
+            temp_win_streak = 0
+            worst_loss_streak = max(worst_loss_streak, temp_loss_streak)
+        else:  # Breakeven - resets both streaks
+            temp_win_streak = 0
+            temp_loss_streak = 0
+
+    # Current streak: positive for wins, negative for losses
+    if temp_win_streak > 0:
+        current_streak = temp_win_streak
+    elif temp_loss_streak > 0:
+        current_streak = -temp_loss_streak
+
+    return StreakInfo(
+        current=current_streak,
+        best_win_streak=best_win_streak,
+        worst_loss_streak=worst_loss_streak,
+    )
+
+
+def calculate_detailed_analytics(
+    entries: list[JournalEntry],
+    recent_count: int = 5,
+) -> DetailedAnalytics:
+    """Calculate detailed analytics with multiple breakdowns.
+
+    Args:
+        entries: List of journal entries.
+        recent_count: Number of recent trades to include.
+
+    Returns:
+        Comprehensive analytics with by-symbol, by-timeframe, by-month breakdowns,
+        streak information, and equity curve.
+    """
+    if not entries:
+        return DetailedAnalytics(
+            by_symbol=[],
+            by_timeframe=[],
+            by_month=[],
+            streaks=StreakInfo(current=0, best_win_streak=0, worst_loss_streak=0),
+            equity_curve=[],
+            recent_trades=[],
+        )
+
+    # Sort entries by exit_time for proper sequencing
+    sorted_entries = sorted(entries, key=lambda e: e.exit_time)
+
+    # Performance by symbol
+    symbols: dict[str, list[JournalEntry]] = {}
+    for entry in sorted_entries:
+        symbols.setdefault(entry.symbol, []).append(entry)
+
+    by_symbol = []
+    for symbol, symbol_entries in sorted(symbols.items()):
+        perf = _calculate_group_performance(symbol_entries)
+        trades, wins, losses, win_rate, total_pnl, average_r = perf
+        by_symbol.append(
+            SymbolPerformance(
+                symbol=symbol,
+                trades=trades,
+                wins=wins,
+                losses=losses,
+                win_rate=win_rate,
+                total_pnl=total_pnl,
+                average_r=average_r,
+            )
+        )
+
+    # Performance by timeframe
+    timeframes: dict[str, list[JournalEntry]] = {}
+    for entry in sorted_entries:
+        tf = entry.timeframe or "Unknown"
+        timeframes.setdefault(tf, []).append(entry)
+
+    by_timeframe = []
+    for timeframe, tf_entries in sorted(timeframes.items()):
+        perf = _calculate_group_performance(tf_entries)
+        trades, wins, losses, win_rate, total_pnl, average_r = perf
+        by_timeframe.append(
+            TimeframePerformance(
+                timeframe=timeframe,
+                trades=trades,
+                wins=wins,
+                losses=losses,
+                win_rate=win_rate,
+                total_pnl=total_pnl,
+                average_r=average_r,
+            )
+        )
+
+    # Performance by month
+    months: dict[str, list[JournalEntry]] = {}
+    for entry in sorted_entries:
+        # Extract YYYY-MM from exit_time
+        month = entry.exit_time[:7] if len(entry.exit_time) >= 7 else "Unknown"
+        months.setdefault(month, []).append(entry)
+
+    by_month = []
+    for month, month_entries in sorted(months.items()):
+        perf = _calculate_group_performance(month_entries)
+        trades, wins, losses, win_rate, total_pnl, average_r = perf
+        by_month.append(
+            MonthlyPerformance(
+                month=month,
+                trades=trades,
+                wins=wins,
+                losses=losses,
+                win_rate=win_rate,
+                total_pnl=total_pnl,
+                average_r=average_r,
+            )
+        )
+
+    # Streak calculation
+    streaks = _calculate_streaks(sorted_entries)
+
+    # Equity curve (cumulative P&L by date)
+    equity_curve: list[EquityCurvePoint] = []
+    cumulative_pnl = 0.0
+    trade_count = 0
+
+    # Group by date for equity curve
+    dates: dict[str, float] = {}
+    date_counts: dict[str, int] = {}
+    for entry in sorted_entries:
+        date = entry.exit_time[:10] if len(entry.exit_time) >= 10 else entry.exit_time
+        dates[date] = dates.get(date, 0.0) + entry.pnl
+        date_counts[date] = date_counts.get(date, 0) + 1
+
+    # Build cumulative curve
+    for date in sorted(dates.keys()):
+        cumulative_pnl += dates[date]
+        trade_count += date_counts[date]
+        equity_curve.append(
+            EquityCurvePoint(
+                date=date,
+                cumulative_pnl=cumulative_pnl,
+                trade_count=trade_count,
+            )
+        )
+
+    # Recent trades (most recent first)
+    recent_trades = list(reversed(sorted_entries[-recent_count:]))
+
+    return DetailedAnalytics(
+        by_symbol=by_symbol,
+        by_timeframe=by_timeframe,
+        by_month=by_month,
+        streaks=streaks,
+        equity_curve=equity_curve,
+        recent_trades=recent_trades,
     )

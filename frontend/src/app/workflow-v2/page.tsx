@@ -18,6 +18,8 @@ import { ValidationPanel } from "@/components/workflow-v2/ValidationPanel";
 import { SizingPanel } from "@/components/workflow-v2/SizingPanel";
 import { ExecutionPanel } from "@/components/workflow-v2/ExecutionPanel";
 import { ManagePanel } from "@/components/workflow-v2/ManagePanel";
+import { JournalSummaryWidget } from "@/components/workflow-v2/JournalSummaryWidget";
+import { JournalDrawer } from "@/components/workflow-v2/JournalDrawer";
 import { useTradeDiscovery } from "@/hooks/use-trade-discovery";
 import { useTradeValidation } from "@/hooks/use-trade-validation";
 import { useTradeExecution } from "@/hooks/use-trade-execution";
@@ -31,6 +33,9 @@ export default function WorkflowV2Page() {
 
   // ATR period state (default 14)
   const [atrPeriod, setAtrPeriod] = useState(14);
+
+  // Journal drawer state
+  const [isJournalDrawerOpen, setIsJournalDrawerOpen] = useState(false);
 
   // Trade discovery - finds opportunities across all timeframes
   const discovery = useTradeDiscovery({ symbol: workflow.symbol });
@@ -163,16 +168,31 @@ export default function WorkflowV2Page() {
   };
 
   return (
-    <WorkflowV2Layout
-      symbol={workflow.symbol}
-      onSymbolChange={workflow.setSymbol}
-      timeframe={workflow.timeframe}
-      onTimeframeChange={workflow.setTimeframe}
-      phase={workflow.phase}
-      opportunity={workflow.opportunity}
-      discovery={discovery}
-    >
-      {renderSidePanel()}
-    </WorkflowV2Layout>
+    <>
+      <WorkflowV2Layout
+        symbol={workflow.symbol}
+        onSymbolChange={workflow.setSymbol}
+        timeframe={workflow.timeframe}
+        onTimeframeChange={workflow.setTimeframe}
+        phase={workflow.phase}
+        opportunity={workflow.opportunity}
+        discovery={discovery}
+      >
+        <div className="space-y-4">
+          {renderSidePanel()}
+
+          {/* Journal Summary Widget - always visible in sidebar */}
+          <JournalSummaryWidget
+            onOpenDrawer={() => setIsJournalDrawerOpen(true)}
+          />
+        </div>
+      </WorkflowV2Layout>
+
+      {/* Full Journal Drawer */}
+      <JournalDrawer
+        isOpen={isJournalDrawerOpen}
+        onClose={() => setIsJournalDrawerOpen(false)}
+      />
+    </>
   );
 }

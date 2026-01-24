@@ -72,6 +72,35 @@ Each module in `backend/src/trader/` has docstrings explaining:
 
 Read the module docstrings before modifying.
 
+### Multi-Agent Orchestration Workflow
+
+This project uses a structured multi-agent workflow for all development:
+
+**Agent Types:**
+| Agent | Purpose |
+|-------|---------|
+| Research | Explore codebase, gather context, understand patterns |
+| Plan | Design implementation approach, identify critical files |
+| Implementation | Write code following TDD (RED-GREEN-REFACTOR) |
+| Testing | Run pytest/ruff/mypy (backend) and lint/build (frontend) |
+| Review | Full code review for bugs, security, patterns, conventions |
+| Amendment | Fix issues identified in review |
+| Documentation | Update docs after feature completion |
+
+**Execution Rules:**
+1. Always create a plan before implementation
+2. Run independent agents in parallel (max 3+)
+3. Sequential dependencies: Research → Plan → Implement → Test → Review → Amend
+4. Every implementation must have a dedicated Review agent
+5. Every code change must have a Testing agent verify it
+6. Orchestrator tracks progress and coordinates handoffs
+
+**Quality Gates:**
+- Tests must pass with 100% coverage on new code
+- No linting or type errors
+- Code review must pass before commit
+- Conventional commits required
+
 ## Key References
 
 | Document | Location | Purpose |

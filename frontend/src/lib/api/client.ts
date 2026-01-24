@@ -28,6 +28,7 @@ import type {
   JournalEntryResponse,
   JournalEntriesResponse,
   JournalAnalyticsResponse,
+  DetailedAnalyticsResponse,
   TrendAssessmentResponse,
   AlignmentResultResponse,
   LevelsResultResponse,
@@ -221,6 +222,15 @@ export async function getJournalAnalytics(): Promise<JournalAnalyticsResponse> {
   return fetchAPI<JournalAnalyticsResponse>("/journal/analytics");
 }
 
+export async function getDetailedAnalytics(
+  recentCount: number = 5
+): Promise<DetailedAnalyticsResponse> {
+  const params = new URLSearchParams({ recent_count: recentCount.toString() });
+  return fetchAPI<DetailedAnalyticsResponse>(
+    `/journal/analytics/detailed?${params}`
+  );
+}
+
 export async function deleteJournalEntry(
   entryId: string
 ): Promise<{ status: string; id: string }> {
@@ -323,6 +333,13 @@ export type {
   JournalEntriesResponse,
   JournalAnalyticsData,
   JournalAnalyticsResponse,
+  SymbolPerformanceData,
+  TimeframePerformanceData,
+  MonthlyPerformanceData,
+  StreakInfoData,
+  EquityCurvePointData,
+  DetailedAnalyticsData,
+  DetailedAnalyticsResponse,
   TrendDirection,
   SwingType,
   StrengthLevel,

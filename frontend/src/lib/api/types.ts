@@ -267,6 +267,63 @@ export type JournalAnalyticsResponse = {
   analytics: JournalAnalyticsData;
 };
 
+// Detailed Journal Analytics Types
+
+export type SymbolPerformanceData = {
+  symbol: string;
+  trades: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  total_pnl: number;
+  average_r: number;
+};
+
+export type TimeframePerformanceData = {
+  timeframe: string;
+  trades: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  total_pnl: number;
+  average_r: number;
+};
+
+export type MonthlyPerformanceData = {
+  month: string;
+  trades: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  total_pnl: number;
+  average_r: number;
+};
+
+export type StreakInfoData = {
+  current: number;
+  best_win_streak: number;
+  worst_loss_streak: number;
+};
+
+export type EquityCurvePointData = {
+  date: string;
+  cumulative_pnl: number;
+  trade_count: number;
+};
+
+export type DetailedAnalyticsData = {
+  by_symbol: SymbolPerformanceData[];
+  by_timeframe: TimeframePerformanceData[];
+  by_month: MonthlyPerformanceData[];
+  streaks: StreakInfoData;
+  equity_curve: EquityCurvePointData[];
+  recent_trades: JournalEntryData[];
+};
+
+export type DetailedAnalyticsResponse = {
+  analytics: DetailedAnalyticsData;
+};
+
 // Workflow Request/Response Types
 
 export type TrendDirection = "bullish" | "bearish" | "neutral";
