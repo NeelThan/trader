@@ -3717,3 +3717,752 @@ class TestLevelsResultWithStrategy:
         assert result.selected_strategy is None
         assert result.abc_pivots is None
         assert result.strategy_reason is None
+
+
+class TestAnalyzeSingleTimeframe:
+    """Tests for _analyze_single_timeframe function."""
+
+    @pytest.fixture
+    def sufficient_bars(self) -> list[OHLCBar]:
+        """Create 30+ bars for proper analysis (need >= 26)."""
+        bars = []
+        base_price = 100.0
+        for i in range(35):
+            # Create alternating up/down pattern for swing detection
+            if i % 4 == 0:
+                close = base_price + (i * 0.5)
+            elif i % 4 == 1:
+                close = base_price + (i * 0.5) + 2
+            elif i % 4 == 2:
+                close = base_price + (i * 0.5) + 1
+            else:
+                close = base_price + (i * 0.5) + 3
+            bars.append(
+                OHLCBar(
+                    time=f"2024-01-{i+1:02d}",
+                    open=close - 1,
+                    high=close + 2,
+                    low=close - 2,
+                    close=close,
+                )
+            )
+        return bars
+
+    @pytest.fixture
+    def insufficient_bars(self) -> list[OHLCBar]:
+        """Create < 26 bars to trigger empty result."""
+        return [
+            OHLCBar(time="2024-01-01", open=100.0, high=105.0, low=98.0, close=103.0),
+            OHLCBar(time="2024-01-02", open=103.0, high=110.0, low=101.0, close=108.0),
+        ]
+
+    @pytest.fixture
+    def mock_market_service_success(self, sufficient_bars: list[OHLCBar]) -> MagicMock:
+        """Create mock market service returning sufficient data."""
+        mock = MagicMock()
+        mock.get_ohlc = AsyncMock(
+            return_value=MarketDataResult.from_success(
+                data=sufficient_bars,
+                market_status=MarketStatus.unknown(),
+                provider="simulated",
+            )
+        )
+        return mock
+
+    @pytest.fixture
+    def mock_market_service_insufficient(
+        self, insufficient_bars: list[OHLCBar]
+    ) -> MagicMock:
+        """Create mock market service returning insufficient data."""
+        mock = MagicMock()
+        mock.get_ohlc = AsyncMock(
+            return_value=MarketDataResult.from_success(
+                data=insufficient_bars,
+                market_status=MarketStatus.unknown(),
+                provider="simulated",
+            )
+        )
+        return mock
+
+    @pytest.fixture
+    def mock_market_service_failure(self) -> MagicMock:
+        """Create mock market service returning failure."""
+        mock = MagicMock()
+        mock.get_ohlc = AsyncMock(
+            return_value=MarketDataResult.from_error("Connection failed")
+        )
+        return mock
+
+    async def test_returns_timeframe_trend_detail(
+        self, mock_market_service_success: MagicMock
+    ) -> None:
+        """Should return TimeframeTrendDetail with valid data."""
+        from trader.workflow import TimeframeTrendDetail, _analyze_single_timeframe
+
+        result = await _analyze_single_timeframe(
+            symbol="DJI",
+            timeframe="1D",
+            market_service=mock_market_service_success,
+            lookback=5,
+        )
+
+        assert isinstance(result, TimeframeTrendDetail)
+        assert result.timeframe == "1D"
+        assert result.trend in ["bullish", "bearish", "neutral"]
+        assert 0 <= result.confidence <= 100
+
+    async def test_returns_empty_detail_on_insufficient_data(
+        self, mock_market_service_insufficient: MagicMock
+    ) -> None:
+        """Should return empty trend detail when < 26 bars."""
+        from trader.workflow import _analyze_single_timeframe
+
+        result = await _analyze_single_timeframe(
+            symbol="DJI",
+            timeframe="1D",
+            market_service=mock_market_service_insufficient,
+            lookback=5,
+        )
+
+        assert result.timeframe == "1D"
+        assert result.trend == "neutral"
+        assert result.confidence == 0
+
+    async def test_returns_empty_detail_on_market_failure(
+        self, mock_market_service_failure: MagicMock
+    ) -> None:
+        """Should return empty trend detail when market data fetch fails."""
+        from trader.workflow import _analyze_single_timeframe
+
+        result = await _analyze_single_timeframe(
+            symbol="DJI",
+            timeframe="1D",
+            market_service=mock_market_service_failure,
+            lookback=5,
+        )
+
+        assert result.timeframe == "1D"
+        assert result.trend == "neutral"
+        assert result.confidence == 0
+
+    async def test_includes_indicator_signals(
+        self, mock_market_service_success: MagicMock
+    ) -> None:
+        """Should include RSI, MACD, and swing signals."""
+        from trader.workflow import _analyze_single_timeframe
+
+        result = await _analyze_single_timeframe(
+            symbol="DJI",
+            timeframe="1D",
+            market_service=mock_market_service_success,
+            lookback=5,
+        )
+
+        assert result.swing is not None
+        assert result.swing.signal in ["bullish", "bearish", "neutral"]
+        assert result.rsi is not None
+        assert result.rsi.signal in ["bullish", "bearish", "neutral"]
+        assert result.macd is not None
+        assert result.macd.signal in ["bullish", "bearish", "neutral"]
+
+    async def test_includes_current_price(
+        self, mock_market_service_success: MagicMock
+    ) -> None:
+        """Should include current price from latest bar."""
+        from trader.workflow import _analyze_single_timeframe
+
+        result = await _analyze_single_timeframe(
+            symbol="DJI",
+            timeframe="1D",
+            market_service=mock_market_service_success,
+            lookback=5,
+        )
+
+        assert result.current_price is not None
+        assert result.current_price > 0
+
+    async def test_includes_pivots_list(
+        self, mock_market_service_success: MagicMock
+    ) -> None:
+        """Should include pivots list for frontend."""
+        from trader.workflow import _analyze_single_timeframe
+
+        result = await _analyze_single_timeframe(
+            symbol="DJI",
+            timeframe="1D",
+            market_service=mock_market_service_success,
+            lookback=5,
+        )
+
+        # Pivots list should exist (may be empty if no pivots detected)
+        assert result.pivots is not None
+        assert isinstance(result.pivots, list)
+
+    async def test_includes_ranging_detection(
+        self, mock_market_service_success: MagicMock
+    ) -> None:
+        """Should include ranging condition detection."""
+        from trader.workflow import _analyze_single_timeframe
+
+        result = await _analyze_single_timeframe(
+            symbol="DJI",
+            timeframe="1D",
+            market_service=mock_market_service_success,
+            lookback=5,
+        )
+
+        assert isinstance(result.is_ranging, bool)
+        # ranging_warning can be None or a string
+        assert result.ranging_warning is None or isinstance(result.ranging_warning, str)
+
+
+class TestGenerateSignalForPair:
+    """Tests for _generate_signal_for_pair function."""
+
+    def _make_trend_detail(
+        self, timeframe: str, trend: str, confidence: int
+    ):
+        """Helper to create TimeframeTrendDetail with required fields."""
+        from trader.workflow import IndicatorSignalDetail, TimeframeTrendDetail
+
+        return TimeframeTrendDetail(
+            timeframe=timeframe,
+            trend=trend,
+            confidence=confidence,
+            swing=IndicatorSignalDetail(signal="neutral"),
+            rsi=IndicatorSignalDetail(signal="neutral"),
+            macd=IndicatorSignalDetail(signal="neutral"),
+        )
+
+    def _make_pair(
+        self, higher_tf: str = "1D", lower_tf: str = "1H", name: str = "Swing"
+    ) -> dict[str, str]:
+        """Helper to create pair dict for signal generation."""
+        return {
+            "id": f"{higher_tf}_{lower_tf}",
+            "higher_tf": higher_tf,
+            "lower_tf": lower_tf,
+            "name": name,
+            "trading_style": "swing",
+        }
+
+    def test_bullish_higher_bearish_lower_returns_long(self) -> None:
+        """Higher TF bullish + Lower TF bearish = LONG signal."""
+        from trader.workflow import _generate_signal_for_pair
+
+        higher = self._make_trend_detail("1D", "bullish", 80)
+        lower = self._make_trend_detail("1H", "bearish", 60)
+        pair = self._make_pair("1D", "1H")
+
+        signal = _generate_signal_for_pair(
+            pair=pair,
+            higher_trend=higher,
+            lower_trend=lower,
+        )
+
+        assert signal.type == "LONG"
+        assert signal.is_active is True
+        assert signal.entry_zone == "support"
+
+    def test_bearish_higher_bullish_lower_returns_short(self) -> None:
+        """Higher TF bearish + Lower TF bullish = SHORT signal."""
+        from trader.workflow import _generate_signal_for_pair
+
+        higher = self._make_trend_detail("1D", "bearish", 80)
+        lower = self._make_trend_detail("1H", "bullish", 60)
+        pair = self._make_pair("1D", "1H")
+
+        signal = _generate_signal_for_pair(
+            pair=pair,
+            higher_trend=higher,
+            lower_trend=lower,
+        )
+
+        assert signal.type == "SHORT"
+        assert signal.is_active is True
+        assert signal.entry_zone == "resistance"
+
+    def test_both_bullish_returns_wait(self) -> None:
+        """Same direction = WAIT for pullback."""
+        from trader.workflow import _generate_signal_for_pair
+
+        higher = self._make_trend_detail("1D", "bullish", 80)
+        lower = self._make_trend_detail("1H", "bullish", 70)
+        pair = self._make_pair("1D", "1H")
+
+        signal = _generate_signal_for_pair(
+            pair=pair,
+            higher_trend=higher,
+            lower_trend=lower,
+        )
+
+        assert signal.type == "WAIT"
+        assert signal.is_active is False
+
+    def test_both_bearish_returns_wait(self) -> None:
+        """Same direction = WAIT for pullback."""
+        from trader.workflow import _generate_signal_for_pair
+
+        higher = self._make_trend_detail("1D", "bearish", 80)
+        lower = self._make_trend_detail("1H", "bearish", 70)
+        pair = self._make_pair("1D", "1H")
+
+        signal = _generate_signal_for_pair(
+            pair=pair,
+            higher_trend=higher,
+            lower_trend=lower,
+        )
+
+        assert signal.type == "WAIT"
+        assert signal.is_active is False
+
+    def test_neutral_higher_returns_wait(self) -> None:
+        """Neutral in higher TF = WAIT."""
+        from trader.workflow import _generate_signal_for_pair
+
+        higher = self._make_trend_detail("1D", "neutral", 30)
+        lower = self._make_trend_detail("1H", "bullish", 70)
+        pair = self._make_pair("1D", "1H")
+
+        signal = _generate_signal_for_pair(
+            pair=pair,
+            higher_trend=higher,
+            lower_trend=lower,
+        )
+
+        assert signal.type == "WAIT"
+        assert signal.is_active is False
+        assert signal.entry_zone == "range"
+
+    def test_confidence_weighted_correctly(self) -> None:
+        """Confidence should be 60% higher TF + 40% lower TF."""
+        from trader.workflow import _generate_signal_for_pair
+
+        higher = self._make_trend_detail("1D", "bullish", 100)
+        lower = self._make_trend_detail("1H", "bearish", 50)
+        pair = self._make_pair("1D", "1H")
+
+        signal = _generate_signal_for_pair(
+            pair=pair,
+            higher_trend=higher,
+            lower_trend=lower,
+        )
+
+        # Expected: 100 * 0.6 + 50 * 0.4 = 60 + 20 = 80
+        assert signal.confidence == 80
+
+
+class TestDetectFibRejection:
+    """Tests for _detect_fib_rejection function."""
+
+    def test_long_rejection_at_level(self) -> None:
+        """Long rejection: bar tests level, closes above, is bullish."""
+        from trader.workflow import _detect_fib_rejection
+
+        bar = OHLCBar(
+            time="2024-01-01",
+            open=99.0,
+            high=102.0,
+            low=100.0,  # Tests the level
+            close=101.5,  # Closes above level, bullish
+        )
+        level = 100.0
+
+        assert _detect_fib_rejection(bar, level, "long") is True
+
+    def test_long_rejection_fails_if_not_bullish(self) -> None:
+        """Long rejection fails if bar is bearish."""
+        from trader.workflow import _detect_fib_rejection
+
+        bar = OHLCBar(
+            time="2024-01-01",
+            open=102.0,  # Opens higher
+            high=102.0,
+            low=100.0,  # Tests the level
+            close=101.0,  # Closes lower than open (bearish)
+        )
+        level = 100.0
+
+        assert _detect_fib_rejection(bar, level, "long") is False
+
+    def test_long_rejection_fails_if_closes_below(self) -> None:
+        """Long rejection fails if bar closes below level."""
+        from trader.workflow import _detect_fib_rejection
+
+        bar = OHLCBar(
+            time="2024-01-01",
+            open=98.0,
+            high=100.5,
+            low=97.0,
+            close=99.0,  # Closes below level
+        )
+        level = 100.0
+
+        assert _detect_fib_rejection(bar, level, "long") is False
+
+    def test_short_rejection_at_level(self) -> None:
+        """Short rejection: bar tests level, closes below, is bearish."""
+        from trader.workflow import _detect_fib_rejection
+
+        bar = OHLCBar(
+            time="2024-01-01",
+            open=101.0,
+            high=100.0,  # Tests the level
+            low=98.0,
+            close=98.5,  # Closes below level, bearish
+        )
+        level = 100.0
+
+        assert _detect_fib_rejection(bar, level, "short") is True
+
+    def test_short_rejection_fails_if_not_bearish(self) -> None:
+        """Short rejection fails if bar is bullish."""
+        from trader.workflow import _detect_fib_rejection
+
+        bar = OHLCBar(
+            time="2024-01-01",
+            open=98.0,  # Opens lower
+            high=100.0,  # Tests the level
+            low=97.0,
+            close=99.0,  # Closes higher than open (bullish)
+        )
+        level = 100.0
+
+        assert _detect_fib_rejection(bar, level, "short") is False
+
+    def test_rejection_uses_tolerance(self) -> None:
+        """Rejection detection uses 0.5% tolerance."""
+        from trader.workflow import _detect_fib_rejection
+
+        level = 100.0
+        # Tolerance is level * 0.005 = 0.5, so valid range is 100.0 +/- 0.5
+
+        # Bar low is within tolerance (100.4 <= 100.5)
+        bar = OHLCBar(
+            time="2024-01-01",
+            open=100.3,
+            high=102.0,
+            low=100.4,  # Just within tolerance
+            close=101.5,
+        )
+
+        assert _detect_fib_rejection(bar, level, "long") is True
+
+
+class TestDetectConfluenceZones:
+    """Tests for _detect_confluence_zones function."""
+
+    def test_no_confluence_with_single_signal(self) -> None:
+        """No confluence zone when only one signal."""
+        from trader.workflow import AggregatedSignal, _detect_confluence_zones
+
+        signals = [
+            AggregatedSignal(
+                id="sig1",
+                timeframe="1H",
+                direction="long",
+                type="fib_rejection",
+                confidence=70,
+                price=100.0,
+                description="Test",
+                is_active=True,
+                timestamp="2024-01-01",
+            )
+        ]
+
+        result = _detect_confluence_zones(signals, "2024-01-01")
+        assert len(result) == 0
+
+    def test_confluence_with_two_signals_at_same_price(self) -> None:
+        """Confluence detected when 2+ signals at similar price."""
+        from trader.workflow import AggregatedSignal, _detect_confluence_zones
+
+        signals = [
+            AggregatedSignal(
+                id="sig1",
+                timeframe="1H",
+                direction="long",
+                type="fib_rejection",
+                confidence=70,
+                price=100.0,
+                description="Test 1",
+                is_active=True,
+                timestamp="2024-01-01",
+            ),
+            AggregatedSignal(
+                id="sig2",
+                timeframe="1H",
+                direction="long",
+                type="trend_alignment",
+                confidence=80,
+                price=100.2,  # Within 0.5% tolerance
+                description="Test 2",
+                is_active=True,
+                timestamp="2024-01-01",
+            ),
+        ]
+
+        result = _detect_confluence_zones(signals, "2024-01-01")
+        assert len(result) == 1
+        assert result[0].type == "confluence"
+        assert result[0].confluence_count == 2
+
+    def test_confluence_determines_dominant_direction(self) -> None:
+        """Confluence uses dominant direction from grouped signals."""
+        from trader.workflow import AggregatedSignal, _detect_confluence_zones
+
+        signals = [
+            AggregatedSignal(
+                id="sig1",
+                timeframe="1H",
+                direction="long",
+                type="fib_rejection",
+                confidence=70,
+                price=100.0,
+                description="Test 1",
+                is_active=True,
+                timestamp="2024-01-01",
+            ),
+            AggregatedSignal(
+                id="sig2",
+                timeframe="1H",
+                direction="long",
+                type="trend_alignment",
+                confidence=70,
+                price=100.1,
+                description="Test 2",
+                is_active=True,
+                timestamp="2024-01-01",
+            ),
+            AggregatedSignal(
+                id="sig3",
+                timeframe="1H",
+                direction="short",
+                type="trend_alignment",
+                confidence=70,
+                price=100.2,
+                description="Test 3",
+                is_active=True,
+                timestamp="2024-01-01",
+            ),
+        ]
+
+        result = _detect_confluence_zones(signals, "2024-01-01")
+        assert len(result) == 1
+        # 2 long vs 1 short = long dominates
+        assert result[0].direction == "long"
+
+    def test_confluence_boosts_confidence(self) -> None:
+        """Confluence adds +5 per signal to confidence."""
+        from trader.workflow import AggregatedSignal, _detect_confluence_zones
+
+        signals = [
+            AggregatedSignal(
+                id="sig1",
+                timeframe="1H",
+                direction="long",
+                type="fib_rejection",
+                confidence=70,
+                price=100.0,
+                description="Test 1",
+                is_active=True,
+                timestamp="2024-01-01",
+            ),
+            AggregatedSignal(
+                id="sig2",
+                timeframe="1H",
+                direction="long",
+                type="trend_alignment",
+                confidence=70,
+                price=100.1,
+                description="Test 2",
+                is_active=True,
+                timestamp="2024-01-01",
+            ),
+        ]
+
+        result = _detect_confluence_zones(signals, "2024-01-01")
+        # Avg = 70, boost = 2 * 5 = 10, total = 80
+        assert result[0].confidence == 80
+
+
+class TestCalculateCascadeStage:
+    """Tests for _calculate_cascade_stage function."""
+
+    def test_stage_1_when_no_diverging_tfs(self) -> None:
+        """Stage 1: All aligned (no diverging TFs)."""
+        from trader.workflow import _calculate_cascade_stage
+
+        stage = _calculate_cascade_stage(
+            diverging_tfs=[],
+            all_tfs=["1M", "1W", "1D", "4H", "1H"],
+            dominant_trend="bullish",
+        )
+        assert stage == 1
+
+    def test_stage_1_when_neutral_trend(self) -> None:
+        """Stage 1: Neutral trend (no clear direction)."""
+        from trader.workflow import _calculate_cascade_stage
+
+        stage = _calculate_cascade_stage(
+            diverging_tfs=["1H"],
+            all_tfs=["1M", "1W", "1D", "4H", "1H"],
+            dominant_trend="neutral",
+        )
+        assert stage == 1
+
+    def test_stage_2_when_smallest_tfs_diverged(self) -> None:
+        """Stage 2: Only 1m/3m/5m/15m diverged."""
+        from trader.workflow import _calculate_cascade_stage
+
+        stage = _calculate_cascade_stage(
+            diverging_tfs=["1m", "5m", "15m"],
+            all_tfs=["1D", "4H", "1H", "15m", "5m", "1m"],
+            dominant_trend="bullish",
+        )
+        assert stage == 2
+
+    def test_stage_3_when_1h_diverged(self) -> None:
+        """Stage 3: 1H joined the reversal."""
+        from trader.workflow import _calculate_cascade_stage
+
+        stage = _calculate_cascade_stage(
+            diverging_tfs=["1m", "5m", "15m", "1H"],
+            all_tfs=["1D", "4H", "1H", "15m", "5m", "1m"],
+            dominant_trend="bullish",
+        )
+        assert stage == 3
+
+    def test_stage_4_when_4h_diverged(self) -> None:
+        """Stage 4: 4H joined the reversal."""
+        from trader.workflow import _calculate_cascade_stage
+
+        stage = _calculate_cascade_stage(
+            diverging_tfs=["1H", "4H"],
+            all_tfs=["1D", "4H", "1H", "15m"],
+            dominant_trend="bearish",
+        )
+        assert stage == 4
+
+    def test_stage_5_when_daily_diverged(self) -> None:
+        """Stage 5: Daily joined the reversal."""
+        from trader.workflow import _calculate_cascade_stage
+
+        stage = _calculate_cascade_stage(
+            diverging_tfs=["1H", "4H", "1D"],
+            all_tfs=["1W", "1D", "4H", "1H"],
+            dominant_trend="bullish",
+        )
+        assert stage == 5
+
+    def test_stage_6_when_weekly_diverged(self) -> None:
+        """Stage 6: Weekly/Monthly = full reversal."""
+        from trader.workflow import _calculate_cascade_stage
+
+        stage = _calculate_cascade_stage(
+            diverging_tfs=["1H", "4H", "1D", "1W"],
+            all_tfs=["1M", "1W", "1D", "4H", "1H"],
+            dominant_trend="bearish",
+        )
+        assert stage == 6
+
+    def test_stage_6_when_monthly_diverged(self) -> None:
+        """Stage 6: Monthly diverged."""
+        from trader.workflow import _calculate_cascade_stage
+
+        stage = _calculate_cascade_stage(
+            diverging_tfs=["1M"],
+            all_tfs=["1M", "1W", "1D"],
+            dominant_trend="bullish",
+        )
+        assert stage == 6
+
+
+class TestDetermineTradeActionBranches:
+    """Tests for all branches of determine_trade_action function."""
+
+    def test_neutral_higher_tf_no_trade(self) -> None:
+        """Neutral higher TF = don't trade."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="neutral",
+            lower_tf_trend="bullish",
+        )
+
+        assert result.should_trade is False
+        assert "no clear" in result.reason.lower() or "neutral" in result.reason.lower()
+
+    def test_neutral_lower_tf_no_trade(self) -> None:
+        """Neutral lower TF = don't trade."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bullish",
+            lower_tf_trend="neutral",
+        )
+
+        assert result.should_trade is False
+
+    def test_pullback_long_scenario(self) -> None:
+        """Higher bullish + Lower bearish = pullback LONG."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bearish",
+        )
+
+        assert result.should_trade is True
+        assert result.direction == "long"
+        assert result.is_pullback is True
+
+    def test_pullback_short_scenario(self) -> None:
+        """Higher bearish + Lower bullish = pullback SHORT."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bearish",
+            lower_tf_trend="bullish",
+        )
+
+        assert result.should_trade is True
+        assert result.direction == "short"
+        assert result.is_pullback is True
+
+    def test_with_trend_long_scenario(self) -> None:
+        """Both bullish = with-trend LONG."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bullish",
+            lower_tf_trend="bullish",
+        )
+
+        assert result.should_trade is True
+        assert result.direction == "long"
+        assert result.is_pullback is False
+
+    def test_with_trend_short_scenario(self) -> None:
+        """Both bearish = with-trend SHORT."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="bearish",
+            lower_tf_trend="bearish",
+        )
+
+        assert result.should_trade is True
+        assert result.direction == "short"
+        assert result.is_pullback is False
+
+    def test_both_neutral_no_trade(self) -> None:
+        """Both neutral = don't trade."""
+        from trader.workflow import determine_trade_action
+
+        result = determine_trade_action(
+            higher_tf_trend="neutral",
+            lower_tf_trend="neutral",
+        )
+
+        assert result.should_trade is False
