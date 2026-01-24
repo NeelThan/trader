@@ -1668,3 +1668,426 @@ class TestWorkflowCategorizeEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["category"] == "reversal_attempt"
+
+
+class TestWorkflowErrorHandling:
+    """Tests for workflow endpoint error handling."""
+
+    async def test_assess_missing_symbol_returns_422(self, client: AsyncClient) -> None:
+        """GET /workflow/assess without symbol returns 422."""
+        response = await client.get("/workflow/assess")
+        assert response.status_code == 422
+
+    async def test_align_missing_symbol_returns_422(self, client: AsyncClient) -> None:
+        """GET /workflow/align without symbol returns 422."""
+        response = await client.get(
+            "/workflow/align",
+            params={"timeframes": "1M,1W,1D"},
+        )
+        assert response.status_code == 422
+
+    async def test_levels_missing_direction_returns_422(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/levels without direction returns 422."""
+        response = await client.get(
+            "/workflow/levels",
+            params={"symbol": "DJI", "timeframe": "1D"},
+        )
+        assert response.status_code == 422
+
+    async def test_levels_invalid_direction_returns_422(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/levels with invalid direction returns 422."""
+        response = await client.get(
+            "/workflow/levels",
+            params={"symbol": "DJI", "timeframe": "1D", "direction": "invalid"},
+        )
+        assert response.status_code == 422
+
+    async def test_confirm_missing_symbol_returns_422(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/confirm without symbol returns 422."""
+        response = await client.get("/workflow/confirm")
+        assert response.status_code == 422
+
+    async def test_validate_missing_required_fields(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /workflow/validate with missing fields returns 422."""
+        response = await client.post(
+            "/workflow/validate",
+            json={"symbol": "DJI"},  # Missing required fields
+        )
+        assert response.status_code == 422
+
+    async def test_validate_invalid_direction(self, client: AsyncClient) -> None:
+        """POST /workflow/validate with invalid direction returns 422."""
+        response = await client.post(
+            "/workflow/validate",
+            json={
+                "symbol": "DJI",
+                "higher_timeframe": "1D",
+                "lower_timeframe": "4H",
+                "direction": "invalid",  # Invalid direction
+            },
+        )
+        assert response.status_code == 422
+
+    async def test_cascade_missing_symbol_returns_422(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/cascade without symbol returns 422."""
+        response = await client.get(
+            "/workflow/cascade",
+            params={"timeframes": "1D,4H,1H"},
+        )
+        assert response.status_code == 422
+
+    async def test_trend_alignment_missing_symbol_returns_422(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/trend-alignment without symbol returns 422."""
+        response = await client.get("/workflow/trend-alignment")
+        assert response.status_code == 422
+
+    async def test_signal_suggestions_missing_symbol_returns_422(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/signal-suggestions without symbol returns 422."""
+        response = await client.get("/workflow/signal-suggestions")
+        assert response.status_code == 422
+
+    async def test_signal_aggregation_missing_symbol_returns_422(
+        self, client: AsyncClient
+    ) -> None:
+        """GET /workflow/signal-aggregation without symbol returns 422."""
+        response = await client.get("/workflow/signal-aggregation")
+        assert response.status_code == 422
+
+
+class TestFibonacciErrorHandling:
+    """Tests for Fibonacci endpoint error handling."""
+
+    async def test_retracement_invalid_direction(self, client: AsyncClient) -> None:
+        """POST /fibonacci/retracement with invalid direction returns 422."""
+        response = await client.post(
+            "/fibonacci/retracement",
+            json={"high": 100.0, "low": 50.0, "direction": "invalid"},
+        )
+        assert response.status_code == 422
+
+    async def test_retracement_missing_high(self, client: AsyncClient) -> None:
+        """POST /fibonacci/retracement without high returns 422."""
+        response = await client.post(
+            "/fibonacci/retracement",
+            json={"low": 50.0, "direction": "buy"},
+        )
+        assert response.status_code == 422
+
+    async def test_retracement_missing_low(self, client: AsyncClient) -> None:
+        """POST /fibonacci/retracement without low returns 422."""
+        response = await client.post(
+            "/fibonacci/retracement",
+            json={"high": 100.0, "direction": "buy"},
+        )
+        assert response.status_code == 422
+
+    async def test_extension_invalid_direction(self, client: AsyncClient) -> None:
+        """POST /fibonacci/extension with invalid direction returns 422."""
+        response = await client.post(
+            "/fibonacci/extension",
+            json={"high": 100.0, "low": 50.0, "direction": "invalid"},
+        )
+        assert response.status_code == 422
+
+    async def test_projection_missing_point_c(self, client: AsyncClient) -> None:
+        """POST /fibonacci/projection without point_c returns 422."""
+        response = await client.post(
+            "/fibonacci/projection",
+            json={"point_a": 100.0, "point_b": 50.0, "direction": "buy"},
+        )
+        assert response.status_code == 422
+
+
+class TestIndicatorErrorHandling:
+    """Tests for indicator endpoint error handling."""
+
+    async def test_macd_empty_data_returns_400(self, client: AsyncClient) -> None:
+        """POST /indicators/macd with empty data returns 400."""
+        response = await client.post(
+            "/indicators/macd",
+            json={"data": []},
+        )
+        assert response.status_code == 400
+
+    async def test_macd_invalid_periods_returns_400(self, client: AsyncClient) -> None:
+        """POST /indicators/macd with fast > slow returns 400."""
+        data = [
+            {
+                "time": f"2024-01-{i+1:02d}",
+                "open": 100,
+                "high": 105,
+                "low": 95,
+                "close": 100 + i,
+            }
+            for i in range(30)
+        ]
+        response = await client.post(
+            "/indicators/macd",
+            json={
+                "data": data,
+                "fast_period": 26,  # Fast > Slow
+                "slow_period": 12,
+            },
+        )
+        assert response.status_code == 400
+
+    async def test_rsi_empty_data_returns_400(self, client: AsyncClient) -> None:
+        """POST /indicators/rsi with empty data returns 400."""
+        response = await client.post(
+            "/indicators/rsi",
+            json={"data": []},
+        )
+        assert response.status_code == 400
+
+    async def test_rsi_insufficient_data_returns_400(self, client: AsyncClient) -> None:
+        """POST /indicators/rsi with insufficient data returns 400."""
+        data = [
+            {
+                "time": f"2024-01-{i+1:02d}",
+                "open": 100,
+                "high": 105,
+                "low": 95,
+                "close": 100 + i,
+            }
+            for i in range(5)  # Need at least period+1 bars
+        ]
+        response = await client.post(
+            "/indicators/rsi",
+            json={"data": data},
+        )
+        assert response.status_code == 400
+
+
+class TestPositionSizingErrorHandling:
+    """Tests for position sizing endpoint error handling."""
+
+    async def test_position_size_missing_entry_price(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /position/size without entry_price returns 422."""
+        response = await client.post(
+            "/position/size",
+            json={"stop_loss": 95.0, "risk_capital": 500.0},
+        )
+        assert response.status_code == 422
+
+    async def test_position_size_missing_stop_loss(self, client: AsyncClient) -> None:
+        """POST /position/size without stop_loss returns 422."""
+        response = await client.post(
+            "/position/size",
+            json={"entry_price": 100.0, "risk_capital": 500.0},
+        )
+        assert response.status_code == 422
+
+    async def test_risk_reward_no_targets(self, client: AsyncClient) -> None:
+        """POST /position/risk-reward with no targets returns invalid."""
+        response = await client.post(
+            "/position/risk-reward",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+                "targets": [],
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"]["is_valid"] is False
+
+    async def test_risk_reward_missing_targets(self, client: AsyncClient) -> None:
+        """POST /position/risk-reward without targets returns 422."""
+        response = await client.post(
+            "/position/risk-reward",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+            },
+        )
+        assert response.status_code == 422
+
+
+class TestPivotErrorHandling:
+    """Tests for pivot endpoint error handling."""
+
+    async def test_pivot_detect_empty_data(self, client: AsyncClient) -> None:
+        """POST /pivot/detect with empty data returns empty result."""
+        response = await client.post(
+            "/pivot/detect",
+            json={"data": [], "lookback": 2},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["pivots"] == []
+
+    async def test_swing_detect_empty_data(self, client: AsyncClient) -> None:
+        """POST /pivot/swings with empty data returns empty result."""
+        response = await client.post(
+            "/pivot/swings",
+            json={"data": [], "lookback": 2},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["pivots"] == []
+        assert data["markers"] == []
+
+    async def test_trend_lines_insufficient_data(self, client: AsyncClient) -> None:
+        """POST /pivot/trend-lines with insufficient data returns no channel."""
+        response = await client.post(
+            "/pivot/trend-lines",
+            json={
+                "data": [
+                    {
+                        "time": "2024-01-01",
+                        "open": 100,
+                        "high": 105,
+                        "low": 95,
+                        "close": 102,
+                    }
+                ],
+                "lookback": 5,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["current_position"] == "no_channel"
+
+
+class TestHarmonicErrorHandling:
+    """Tests for harmonic endpoint error handling."""
+
+    async def test_harmonic_validate_missing_points(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /harmonic/validate with missing points returns 422."""
+        response = await client.post(
+            "/harmonic/validate",
+            json={"x": 100.0, "a": 50.0},  # Missing b, c, d
+        )
+        assert response.status_code == 422
+
+    async def test_reversal_zone_invalid_pattern_type(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /harmonic/reversal-zone with invalid pattern type returns 422."""
+        response = await client.post(
+            "/harmonic/reversal-zone",
+            json={
+                "x": 100.0,
+                "a": 50.0,
+                "b": 80.9,
+                "c": 61.8,
+                "pattern_type": "invalid",
+            },
+        )
+        assert response.status_code == 422
+
+
+class TestJournalErrorHandling:
+    """Tests for journal endpoint error handling."""
+
+    async def test_create_entry_invalid_direction(self, client: AsyncClient) -> None:
+        """POST /journal/entry with invalid direction returns 422."""
+        response = await client.post(
+            "/journal/entry",
+            json={
+                "symbol": "DJI",
+                "direction": "invalid",
+                "entry_price": 48000.0,
+                "exit_price": 48500.0,
+                "stop_loss": 47500.0,
+                "position_size": 10,
+                "entry_time": "2024-12-31T10:00:00Z",
+                "exit_time": "2024-12-31T14:00:00Z",
+            },
+        )
+        assert response.status_code == 422
+
+    async def test_create_entry_missing_symbol(self, client: AsyncClient) -> None:
+        """POST /journal/entry without symbol returns 422."""
+        response = await client.post(
+            "/journal/entry",
+            json={
+                "direction": "long",
+                "entry_price": 48000.0,
+                "exit_price": 48500.0,
+                "stop_loss": 47500.0,
+                "position_size": 10,
+                "entry_time": "2024-12-31T10:00:00Z",
+                "exit_time": "2024-12-31T14:00:00Z",
+            },
+        )
+        assert response.status_code == 422
+
+    async def test_get_nonexistent_entry(self, client: AsyncClient) -> None:
+        """GET /journal/entry/{id} for nonexistent entry returns 404."""
+        response = await client.get("/journal/entry/nonexistent_id")
+        assert response.status_code == 404
+
+    async def test_update_nonexistent_entry(self, client: AsyncClient) -> None:
+        """PUT /journal/entry/{id} for nonexistent entry returns 404."""
+        response = await client.put(
+            "/journal/entry/nonexistent_id",
+            json={"notes": "test"},
+        )
+        assert response.status_code == 404
+
+    async def test_delete_nonexistent_entry(self, client: AsyncClient) -> None:
+        """DELETE /journal/entry/{id} for nonexistent entry returns 404."""
+        response = await client.delete("/journal/entry/nonexistent_id")
+        assert response.status_code == 404
+
+
+class TestMarketDataErrorHandling:
+    """Tests for market data endpoint error handling."""
+
+    async def test_market_data_missing_symbol(self, client: AsyncClient) -> None:
+        """GET /market-data without symbol returns 422."""
+        response = await client.get("/market-data")
+        assert response.status_code == 422
+
+    async def test_market_data_unknown_symbol(self, client: AsyncClient) -> None:
+        """GET /market-data for unknown symbol returns success=False."""
+        response = await client.get(
+            "/market-data",
+            params={"symbol": "UNKNOWN_SYMBOL_XYZ"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+
+
+class TestAnalyzeErrorHandling:
+    """Tests for analyze endpoint error handling."""
+
+    async def test_analyze_missing_symbol(self, client: AsyncClient) -> None:
+        """POST /analyze without symbol returns 422."""
+        response = await client.post(
+            "/analyze",
+            json={"timeframe": "1D"},
+        )
+        assert response.status_code == 422
+
+    async def test_analyze_invalid_direction(self, client: AsyncClient) -> None:
+        """POST /analyze with invalid direction returns 422."""
+        response = await client.post(
+            "/analyze",
+            json={
+                "symbol": "DJI",
+                "timeframe": "1D",
+                "config": {"fibonacci_direction": "invalid"},
+            },
+        )
+        assert response.status_code == 422

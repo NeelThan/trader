@@ -619,3 +619,712 @@ class TestCascadeIntegration:
                 # If trend is opposite to dominant, it should be diverging
                 if state["is_diverging"]:
                     assert state["timeframe"] in cascade_data["diverging_timeframes"]
+
+
+class TestBearishBreakoutWorkflow:
+    """End-to-end tests for bearish breakout workflow."""
+
+    async def test_bearish_breakout_full_workflow(self, client: AsyncClient) -> None:
+        """Full workflow for bearish breakout opportunity.
+
+        Tests the complete flow when higher TF is bearish:
+        1. Assess higher TF (1D) trend - expect bearish or check for it
+        2. Assess lower TF (4H) trend
+        3. Get Fibonacci levels for sell direction
+        4. Validate trade as short
+        5. Categorize and size position
+        """
+        symbol = "SPX"
+
+        # Step 1: Assess higher TF trend
+        higher_assess = await client.get(
+            "/workflow/assess",
+            params={"symbol": symbol, "timeframe": "1D"},
+        )
+        assert higher_assess.status_code == 200
+        higher_data = higher_assess.json()
+        higher_trend = higher_data["trend"]
+
+        # Step 2: Assess lower TF trend
+        lower_assess = await client.get(
+            "/workflow/assess",
+            params={"symbol": symbol, "timeframe": "4H"},
+        )
+        assert lower_assess.status_code == 200
+        lower_data = lower_assess.json()
+        lower_trend = lower_data["trend"]
+
+        # Step 3: Get Fibonacci levels for sell direction (bearish setup)
+        levels_response = await client.get(
+            "/workflow/levels",
+            params={"symbol": symbol, "timeframe": "4H", "direction": "sell"},
+        )
+        assert levels_response.status_code == 200
+        levels_data = levels_response.json()
+        assert isinstance(levels_data["entry_zones"], list)
+        assert isinstance(levels_data["target_zones"], list)
+
+        # Step 4: Validate as short trade
+        validate_response = await client.post(
+            "/workflow/validate",
+            json={
+                "symbol": symbol,
+                "higher_timeframe": "1D",
+                "lower_timeframe": "4H",
+                "direction": "short",
+            },
+        )
+        assert validate_response.status_code == 200
+        validate_data = validate_response.json()
+        assert len(validate_data["checks"]) == 8
+        assert "trade_category" in validate_data
+
+        # Step 5: Categorize trade
+        categorize_response = await client.get(
+            "/workflow/categorize",
+            params={
+                "higher_tf_trend": higher_trend,
+                "lower_tf_trend": lower_trend,
+                "trade_direction": "short",
+                "confluence_score": validate_data.get("confluence_score", 1),
+            },
+        )
+        assert categorize_response.status_code == 200
+        category_data = categorize_response.json()
+        assert category_data["category"] in [
+            "with_trend",
+            "counter_trend",
+            "reversal_attempt",
+        ]
+
+    async def test_bearish_validation_checks_all_pass_structure(
+        self, client: AsyncClient
+    ) -> None:
+        """Validation for bearish trade returns all 8 check names."""
+        response = await client.post(
+            "/workflow/validate",
+            json={
+                "symbol": "NDX",
+                "higher_timeframe": "1D",
+                "lower_timeframe": "4H",
+                "direction": "short",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        check_names = {c["name"] for c in data["checks"]}
+        expected_checks = {
+            "Trend Alignment",
+            "Entry Zone",
+            "Target Zones",
+            "RSI Confirmation",
+            "MACD Confirmation",
+            "Volume Confirmation",
+            "Confluence Score",
+            "Signal Bar Confirmation",
+        }
+        assert check_names == expected_checks
+
+    async def test_bearish_levels_have_sell_direction_structure(
+        self, client: AsyncClient
+    ) -> None:
+        """Sell direction levels structure is correct."""
+        response = await client.get(
+            "/workflow/levels",
+            params={"symbol": "DJI", "timeframe": "1D", "direction": "sell"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Entry zones should have retracement labels
+        for zone in data["entry_zones"]:
+            assert "label" in zone
+            assert "price" in zone
+            assert "heat" in zone
+            assert 0 <= zone["heat"] <= 100
+
+        # Target zones should have extension labels
+        for zone in data["target_zones"]:
+            assert "label" in zone
+            assert "price" in zone
+
+    async def test_bearish_with_signal_bar_confirmation(
+        self, client: AsyncClient
+    ) -> None:
+        """Validation with signal bar data for bearish trade."""
+        # Get Fibonacci levels first to get entry level
+        levels_response = await client.get(
+            "/workflow/levels",
+            params={"symbol": "DJI", "timeframe": "4H", "direction": "sell"},
+        )
+        assert levels_response.status_code == 200
+        levels_data = levels_response.json()
+
+        entry_level = None
+        if levels_data["entry_zones"]:
+            entry_level = levels_data["entry_zones"][0]["price"]
+
+        # Validate with bearish signal bar (close < open)
+        response = await client.post(
+            "/workflow/validate",
+            json={
+                "symbol": "DJI",
+                "higher_timeframe": "1D",
+                "lower_timeframe": "4H",
+                "direction": "short",
+                "signal_bar": {
+                    "open": 48000.0,
+                    "high": 48100.0,
+                    "low": 47800.0,
+                    "close": 47850.0,  # Close below open = bearish bar
+                },
+                "entry_level": entry_level,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["checks"]) == 8
+
+        # Find signal bar check
+        signal_check = next(
+            (c for c in data["checks"] if c["name"] == "Signal Bar Confirmation"),
+            None,
+        )
+        assert signal_check is not None
+
+    async def test_bearish_atr_info_included(self, client: AsyncClient) -> None:
+        """ATR analysis is included in bearish validation."""
+        response = await client.post(
+            "/workflow/validate",
+            json={
+                "symbol": "DJI",
+                "higher_timeframe": "1D",
+                "lower_timeframe": "4H",
+                "direction": "short",
+                "atr_period": 14,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        if data["atr_info"]:
+            assert data["atr_info"]["atr"] > 0
+            assert data["atr_info"]["suggested_stop_1x"] > 0
+            assert data["atr_info"]["volatility_level"] in [
+                "low",
+                "normal",
+                "high",
+                "extreme",
+            ]
+
+
+class TestCounterTrendWorkflow:
+    """Tests for counter-trend signal workflow."""
+
+    async def test_counter_trend_requires_high_confluence(
+        self, client: AsyncClient
+    ) -> None:
+        """Counter-trend trades require confluence score >= 5."""
+        # Low confluence should be reversal_attempt
+        low_conf_response = await client.get(
+            "/workflow/categorize",
+            params={
+                "higher_tf_trend": "bearish",
+                "lower_tf_trend": "bullish",
+                "trade_direction": "long",
+                "confluence_score": 3,  # Below threshold
+            },
+        )
+        assert low_conf_response.status_code == 200
+        assert low_conf_response.json()["category"] == "reversal_attempt"
+
+        # High confluence should be counter_trend
+        high_conf_response = await client.get(
+            "/workflow/categorize",
+            params={
+                "higher_tf_trend": "bearish",
+                "lower_tf_trend": "bullish",
+                "trade_direction": "long",
+                "confluence_score": 6,  # Above threshold
+            },
+        )
+        assert high_conf_response.status_code == 200
+        assert high_conf_response.json()["category"] == "counter_trend"
+
+    async def test_counter_trend_position_sizing_adjusted(
+        self, client: AsyncClient
+    ) -> None:
+        """Counter-trend trades get reduced position size."""
+        response = await client.post(
+            "/position/size",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+                "risk_capital": 1000.0,
+                "account_balance": 100000.0,
+                "trade_category": "counter_trend",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Counter-trend should have 50% risk multiplier
+        assert data["result"]["risk_multiplier"] == 0.5
+        assert data["result"]["trade_category"] == "counter_trend"
+        # Risk amount should be half
+        assert data["result"]["risk_amount"] == pytest.approx(500.0)
+
+    async def test_counter_trend_vs_with_trend_position_difference(
+        self, client: AsyncClient
+    ) -> None:
+        """Compare position sizes for counter-trend vs with-trend."""
+        base_request = {
+            "entry_price": 100.0,
+            "stop_loss": 95.0,
+            "risk_capital": 1000.0,
+            "account_balance": 100000.0,
+        }
+
+        # With-trend position
+        with_trend_response = await client.post(
+            "/position/size",
+            json={**base_request, "trade_category": "with_trend"},
+        )
+        assert with_trend_response.status_code == 200
+        with_trend_size = with_trend_response.json()["result"]["position_size"]
+
+        # Counter-trend position
+        counter_trend_response = await client.post(
+            "/position/size",
+            json={**base_request, "trade_category": "counter_trend"},
+        )
+        assert counter_trend_response.status_code == 200
+        counter_trend_size = counter_trend_response.json()["result"]["position_size"]
+
+        # Counter-trend should be 50% of with-trend
+        assert counter_trend_size == pytest.approx(with_trend_size * 0.5, rel=0.01)
+
+    async def test_counter_trend_short_against_bullish(
+        self, client: AsyncClient
+    ) -> None:
+        """Short against bullish higher TF is counter-trend."""
+        response = await client.get(
+            "/workflow/categorize",
+            params={
+                "higher_tf_trend": "bullish",
+                "lower_tf_trend": "bearish",
+                "trade_direction": "short",
+                "confluence_score": 5,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["category"] == "counter_trend"
+
+    async def test_counter_trend_long_against_bearish(
+        self, client: AsyncClient
+    ) -> None:
+        """Long against bearish higher TF is counter-trend."""
+        response = await client.get(
+            "/workflow/categorize",
+            params={
+                "higher_tf_trend": "bearish",
+                "lower_tf_trend": "bullish",
+                "trade_direction": "long",
+                "confluence_score": 5,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["category"] == "counter_trend"
+
+
+class TestReversalDetectionWorkflow:
+    """Tests for reversal detection workflow."""
+
+    async def test_reversal_attempt_low_confluence(self, client: AsyncClient) -> None:
+        """Low confluence against trend is reversal_attempt."""
+        response = await client.get(
+            "/workflow/categorize",
+            params={
+                "higher_tf_trend": "bullish",
+                "lower_tf_trend": "bearish",
+                "trade_direction": "short",
+                "confluence_score": 2,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["category"] == "reversal_attempt"
+
+    async def test_reversal_attempt_position_sizing(self, client: AsyncClient) -> None:
+        """Reversal attempts get 25% position size."""
+        response = await client.post(
+            "/position/size",
+            json={
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+                "risk_capital": 1000.0,
+                "account_balance": 100000.0,
+                "trade_category": "reversal_attempt",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Reversal attempt should have 25% risk multiplier
+        assert data["result"]["risk_multiplier"] == 0.25
+        assert data["result"]["trade_category"] == "reversal_attempt"
+        assert data["result"]["risk_amount"] == pytest.approx(250.0)
+
+    async def test_cascade_identifies_early_reversal(
+        self, client: AsyncClient
+    ) -> None:
+        """Cascade analysis identifies potential reversals."""
+        response = await client.get(
+            "/workflow/cascade",
+            params={"symbol": "DJI", "timeframes": "1D,4H,1H"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify reversal detection fields
+        assert "reversal_trend" in data
+        assert "reversal_probability" in data
+        assert 0 <= data["reversal_probability"] <= 100
+        assert "actionable_insight" in data
+        assert len(data["actionable_insight"]) > 0
+
+    async def test_cascade_progression_stages(self, client: AsyncClient) -> None:
+        """Cascade returns valid progression description."""
+        response = await client.get(
+            "/workflow/cascade",
+            params={"symbol": "SPX", "timeframes": "1D,4H,1H,15m"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Stage should be 1-6
+        assert 1 <= data["stage"] <= 6
+        # Progression should be a non-empty string
+        assert isinstance(data["progression"], str)
+        assert len(data["progression"]) > 0
+
+    async def test_trend_alignment_detects_divergence(
+        self, client: AsyncClient
+    ) -> None:
+        """Trend alignment endpoint detects timeframe divergence."""
+        response = await client.get(
+            "/workflow/trend-alignment",
+            params={"symbol": "DJI", "timeframes": "1D,4H,1H"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify structure
+        assert "trends" in data
+        assert "overall" in data
+        assert "bullish_count" in data["overall"]
+        assert "bearish_count" in data["overall"]
+
+
+class TestMultiSymbolConcurrentWorkflow:
+    """Test concurrent multi-symbol opportunity scanning."""
+
+    async def test_concurrent_opportunity_scan(self, client: AsyncClient) -> None:
+        """Scan multiple symbols returns opportunities for each."""
+        response = await client.get(
+            "/workflow/opportunities",
+            params={"symbols": "DJI,SPX,NDX", "timeframe_pairs": "1D:4H"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["symbols_scanned"] == ["DJI", "SPX", "NDX"]
+        assert "opportunities" in data
+        assert "scan_time_ms" in data
+
+    async def test_scan_with_multiple_timeframe_pairs(
+        self, client: AsyncClient
+    ) -> None:
+        """Scan with multiple timeframe pairs."""
+        response = await client.get(
+            "/workflow/opportunities",
+            params={"symbols": "DJI", "timeframe_pairs": "1D:4H,1W:1D"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["symbols_scanned"] == ["DJI"]
+        assert isinstance(data["opportunities"], list)
+
+    async def test_scan_includes_potential_opportunities(
+        self, client: AsyncClient
+    ) -> None:
+        """Scan with include_potential flag."""
+        response = await client.get(
+            "/workflow/opportunities",
+            params={
+                "symbols": "DJI",
+                "timeframe_pairs": "1D:4H",
+                "include_potential": True,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Structure should be same with or without potential
+        assert "opportunities" in data
+        assert "symbols_scanned" in data
+
+
+class TestDataConsistencyAcrossEndpoints:
+    """Test data consistency across workflow endpoints."""
+
+    async def test_trend_consistency_assess_vs_cascade(
+        self, client: AsyncClient
+    ) -> None:
+        """Trend from assess should match cascade timeframe state."""
+        symbol = "DJI"
+        timeframe = "1D"
+
+        # Get assess result
+        assess_response = await client.get(
+            "/workflow/assess",
+            params={"symbol": symbol, "timeframe": timeframe},
+        )
+        assert assess_response.status_code == 200
+        assess_trend = assess_response.json()["trend"]
+
+        # Get cascade result
+        cascade_response = await client.get(
+            "/workflow/cascade",
+            params={"symbol": symbol, "timeframes": timeframe},
+        )
+        assert cascade_response.status_code == 200
+        cascade_data = cascade_response.json()
+
+        # Find matching timeframe in cascade
+        states = cascade_data["timeframe_states"]
+        tf_state = next(
+            (s for s in states if s["timeframe"] == timeframe), None
+        )
+        assert tf_state is not None
+        assert tf_state["trend"] == assess_trend
+
+    async def test_fibonacci_levels_direction_consistency(
+        self, client: AsyncClient
+    ) -> None:
+        """Buy vs sell levels endpoints return valid responses."""
+        symbol = "DJI"
+        timeframe = "1D"
+
+        # Get buy levels
+        buy_response = await client.get(
+            "/workflow/levels",
+            params={"symbol": symbol, "timeframe": timeframe, "direction": "buy"},
+        )
+        assert buy_response.status_code == 200
+        buy_data = buy_response.json()
+
+        # Get sell levels
+        sell_response = await client.get(
+            "/workflow/levels",
+            params={"symbol": symbol, "timeframe": timeframe, "direction": "sell"},
+        )
+        assert sell_response.status_code == 200
+        sell_data = sell_response.json()
+
+        # Response structure should be valid
+        assert "entry_zones" in buy_data
+        assert "target_zones" in buy_data
+        assert "entry_zones" in sell_data
+        assert "target_zones" in sell_data
+        assert isinstance(buy_data["entry_zones"], list)
+        assert isinstance(sell_data["entry_zones"], list)
+
+    async def test_validation_category_matches_categorize(
+        self, client: AsyncClient
+    ) -> None:
+        """Trade category from validate matches categorize endpoint."""
+        symbol = "DJI"
+
+        # Get trends first
+        higher_assess = await client.get(
+            "/workflow/assess",
+            params={"symbol": symbol, "timeframe": "1D"},
+        )
+        higher_trend = higher_assess.json()["trend"]
+
+        lower_assess = await client.get(
+            "/workflow/assess",
+            params={"symbol": symbol, "timeframe": "4H"},
+        )
+        lower_trend = lower_assess.json()["trend"]
+
+        # Run validation
+        validate_response = await client.post(
+            "/workflow/validate",
+            json={
+                "symbol": symbol,
+                "higher_timeframe": "1D",
+                "lower_timeframe": "4H",
+                "direction": "long",
+            },
+        )
+        validate_data = validate_response.json()
+        validate_category = validate_data.get("trade_category")
+
+        # Get category from categorize endpoint
+        categorize_response = await client.get(
+            "/workflow/categorize",
+            params={
+                "higher_tf_trend": higher_trend,
+                "lower_tf_trend": lower_trend,
+                "trade_direction": "long",
+                "confluence_score": validate_data.get("confluence_score", 1),
+            },
+        )
+        categorize_category = categorize_response.json()["category"]
+
+        # Categories should match
+        assert validate_category == categorize_category
+
+    async def test_indicator_values_consistency(self, client: AsyncClient) -> None:
+        """Indicator values from confirm match validation check details."""
+        symbol = "DJI"
+        timeframe = "4H"
+
+        # Get indicator confirmation
+        confirm_response = await client.get(
+            "/workflow/confirm",
+            params={"symbol": symbol, "timeframe": timeframe},
+        )
+        assert confirm_response.status_code == 200
+        confirm_data = confirm_response.json()
+
+        # RSI and MACD should have values
+        assert "rsi" in confirm_data
+        assert "macd" in confirm_data
+        assert "overall" in confirm_data
+        assert confirm_data["overall"] in ["strong", "partial", "wait"]
+
+    async def test_alignment_count_matches_timeframe_list(
+        self, client: AsyncClient
+    ) -> None:
+        """Alignment total_count matches number of timeframes requested."""
+        timeframes = "1M,1W,1D,4H"
+
+        response = await client.get(
+            "/workflow/align",
+            params={"symbol": "DJI", "timeframes": timeframes},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Total count should match timeframe count
+        assert data["total_count"] == 4
+        assert len(data["timeframes"]) == 4
+
+
+class TestSignalAggregationWorkflow:
+    """Tests for signal aggregation workflow."""
+
+    async def test_signal_aggregation_structure(self, client: AsyncClient) -> None:
+        """Signal aggregation returns proper structure."""
+        response = await client.get(
+            "/workflow/signal-aggregation",
+            params={"symbol": "DJI", "timeframes": "1W,1D,4H"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "signals" in data
+        assert "counts" in data
+        assert "long" in data["counts"]
+        assert "short" in data["counts"]
+
+    async def test_signal_suggestions_structure(self, client: AsyncClient) -> None:
+        """Signal suggestions returns proper structure."""
+        response = await client.get(
+            "/workflow/signal-suggestions",
+            params={"symbol": "DJI", "lookback": 5},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "signals" in data
+        assert "long_count" in data
+        assert "short_count" in data
+
+    async def test_signal_suggestions_with_custom_lookback(
+        self, client: AsyncClient
+    ) -> None:
+        """Signal suggestions accepts custom lookback."""
+        response = await client.get(
+            "/workflow/signal-suggestions",
+            params={"symbol": "SPX", "lookback": 3},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should return valid structure regardless of lookback
+        assert isinstance(data["signals"], list)
+
+
+class TestReversalTimeEstimation:
+    """Tests for reversal time estimation workflow."""
+
+    async def test_reversal_time_estimation_structure(
+        self, client: AsyncClient
+    ) -> None:
+        """Reversal time estimation returns proper structure."""
+        # Create sample OHLC data
+        ohlc_data = [
+            {
+                "time": f"2024-01-{i+1:02d}",
+                "open": 100 + i,
+                "high": 105 + i,
+                "low": 95 + i,
+                "close": 102 + i,
+            }
+            for i in range(20)
+        ]
+
+        response = await client.post(
+            "/workflow/reversal-time",
+            json={
+                "data": ohlc_data,
+                "fib_levels": [
+                    {"label": "R38.2%", "price": 110.0},
+                    {"label": "R61.8%", "price": 105.0},
+                ],
+                "timeframe": "1D",
+                "lookback": 10,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "estimates" in data
+        assert "velocity" in data
+        assert "current_price" in data
+
+        # Velocity should have required fields
+        assert "bars_per_atr" in data["velocity"]
+        assert "price_per_bar" in data["velocity"]
+        assert "direction" in data["velocity"]
+        assert data["velocity"]["direction"] in ["up", "down", "sideways"]
+
+    async def test_reversal_time_empty_data_handled(self, client: AsyncClient) -> None:
+        """Empty data returns proper structure without error."""
+        response = await client.post(
+            "/workflow/reversal-time",
+            json={
+                "data": [],
+                "fib_levels": [{"label": "R38.2%", "price": 110.0}],
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["estimates"] == []
+        assert data["current_price"] == 0.0

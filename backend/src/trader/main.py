@@ -2215,3 +2215,272 @@ async def workflow_reversal_time(
         ),
         current_price=result.current_price,
     )
+
+
+# --- Backtesting Endpoints ---
+
+
+class BacktestRunRequest(BaseModel):
+    """Request model for running a backtest."""
+
+    symbol: str
+    higher_timeframe: str = "1D"
+    lower_timeframe: str = "4H"
+    start_date: str
+    end_date: str
+    initial_capital: float = 100000.0
+    risk_per_trade: float = 0.01
+    lookback_periods: int = 50
+    confluence_threshold: int = 3
+    validation_pass_threshold: float = 0.6
+    atr_stop_multiplier: float = 1.5
+    breakeven_at_r: float = 1.0
+    trailing_stop_at_r: float = 2.0
+
+
+class BacktestTradeData(BaseModel):
+    """Trade data in backtest response."""
+
+    entry_time: str
+    entry_price: float
+    direction: str
+    position_size: float
+    stop_loss: float
+    targets: list[float]
+    trade_category: str
+    confluence_score: int
+    status: str
+    exit_time: str | None
+    exit_price: float | None
+    exit_reason: str | None
+    pnl: float
+    r_multiple: float
+
+
+class BacktestEquityPoint(BaseModel):
+    """Equity curve point in backtest response."""
+
+    timestamp: str
+    bar_index: int
+    equity: float
+    trade_count: int
+
+
+class BacktestMetricsData(BaseModel):
+    """Metrics data in backtest response."""
+
+    total_trades: int
+    winning_trades: int
+    losing_trades: int
+    breakeven_trades: int
+    win_rate: float
+    profit_factor: float
+    total_pnl: float
+    average_pnl: float
+    average_r: float
+    largest_winner: float
+    largest_loser: float
+    max_drawdown: float
+    sharpe_ratio: float
+    sortino_ratio: float
+    by_category: dict
+
+
+class BacktestResultResponse(BaseModel):
+    """Response model for backtest results."""
+
+    config: dict
+    metrics: BacktestMetricsData
+    trades: list[BacktestTradeData]
+    equity_curve: list[BacktestEquityPoint]
+    execution_time_seconds: float
+
+
+class BacktestOptimizeRequest(BaseModel):
+    """Request model for walk-forward optimization."""
+
+    symbol: str
+    higher_timeframe: str = "1D"
+    lower_timeframe: str = "4H"
+    start_date: str
+    end_date: str
+    in_sample_months: int = 6
+    out_of_sample_months: int = 1
+    optimization_target: str = "sharpe_ratio"
+    parameters: list[dict]  # List of {name, min_value, max_value, step}
+
+
+class OptimizationResultResponse(BaseModel):
+    """Response model for optimization results."""
+
+    windows: list[dict]
+    best_parameters: dict
+    combined_metrics: BacktestMetricsData
+    robustness_score: float
+
+
+@app.post("/backtest/run", response_model=BacktestResultResponse)
+async def run_backtest(request: BacktestRunRequest) -> BacktestResultResponse:
+    """Run a historical backtest.
+
+    Replays historical data bar-by-bar, detecting signals and
+    simulating trades according to the workflow-v2 strategy.
+
+    Args:
+        request: Backtest configuration.
+
+    Returns:
+        BacktestResultResponse with trades, metrics, and equity curve.
+    """
+    from datetime import datetime
+
+    from trader.backtesting import BacktestConfig, BacktestEngine, DataLoader
+
+    config = BacktestConfig(
+        symbol=request.symbol,
+        higher_timeframe=request.higher_timeframe,
+        lower_timeframe=request.lower_timeframe,
+        start_date=datetime.fromisoformat(request.start_date),
+        end_date=datetime.fromisoformat(request.end_date),
+        initial_capital=request.initial_capital,
+        risk_per_trade=request.risk_per_trade,
+        lookback_periods=request.lookback_periods,
+        confluence_threshold=request.confluence_threshold,
+        validation_pass_threshold=request.validation_pass_threshold,
+        atr_stop_multiplier=request.atr_stop_multiplier,
+        breakeven_at_r=request.breakeven_at_r,
+        trailing_stop_at_r=request.trailing_stop_at_r,
+    )
+
+    data_loader = DataLoader(market_service=_market_data_service)
+    engine = BacktestEngine(data_loader)
+    result = await engine.run(config)
+
+    return BacktestResultResponse(
+        config=result.config.to_dict(),
+        metrics=BacktestMetricsData(
+            total_trades=result.metrics.total_trades,
+            winning_trades=result.metrics.winning_trades,
+            losing_trades=result.metrics.losing_trades,
+            breakeven_trades=result.metrics.breakeven_trades,
+            win_rate=result.metrics.win_rate,
+            profit_factor=result.metrics.profit_factor,
+            total_pnl=result.metrics.total_pnl,
+            average_pnl=result.metrics.average_pnl,
+            average_r=result.metrics.average_r,
+            largest_winner=result.metrics.largest_winner,
+            largest_loser=result.metrics.largest_loser,
+            max_drawdown=result.metrics.max_drawdown,
+            sharpe_ratio=result.metrics.sharpe_ratio,
+            sortino_ratio=result.metrics.sortino_ratio,
+            by_category=result.metrics.by_category,
+        ),
+        trades=[
+            BacktestTradeData(
+                entry_time=t.entry_time.isoformat(),
+                entry_price=t.entry_price,
+                direction=t.direction.value,
+                position_size=t.position_size,
+                stop_loss=t.stop_loss,
+                targets=t.targets,
+                trade_category=t.trade_category,
+                confluence_score=t.confluence_score,
+                status=t.status.value,
+                exit_time=t.exit_time.isoformat() if t.exit_time else None,
+                exit_price=t.exit_price,
+                exit_reason=t.exit_reason.value if t.exit_reason else None,
+                pnl=t.pnl,
+                r_multiple=t.r_multiple,
+            )
+            for t in result.trades
+        ],
+        equity_curve=[
+            BacktestEquityPoint(
+                timestamp=e.timestamp.isoformat(),
+                bar_index=e.bar_index,
+                equity=e.equity,
+                trade_count=e.trade_count,
+            )
+            for e in result.equity_curve
+        ],
+        execution_time_seconds=result.execution_time_seconds,
+    )
+
+
+@app.post("/backtest/optimize", response_model=OptimizationResultResponse)
+async def optimize_backtest(
+    request: BacktestOptimizeRequest,
+) -> OptimizationResultResponse:
+    """Run walk-forward optimization.
+
+    Uses rolling in-sample/out-of-sample windows to find
+    robust parameters for the trading strategy.
+
+    Args:
+        request: Optimization configuration.
+
+    Returns:
+        OptimizationResultResponse with best parameters and metrics.
+    """
+    from datetime import datetime
+
+    from trader.backtesting import (
+        BacktestConfig,
+        DataLoader,
+        OptimizationConfig,
+        OptimizationParameter,
+        WalkForwardOptimizer,
+    )
+
+    base_config = BacktestConfig(
+        symbol=request.symbol,
+        higher_timeframe=request.higher_timeframe,
+        lower_timeframe=request.lower_timeframe,
+        start_date=datetime.fromisoformat(request.start_date),
+        end_date=datetime.fromisoformat(request.end_date),
+    )
+
+    params = [
+        OptimizationParameter(
+            name=p["name"],
+            min_value=p["min_value"],
+            max_value=p["max_value"],
+            step=p["step"],
+        )
+        for p in request.parameters
+    ]
+
+    opt_config = OptimizationConfig(
+        base_config=base_config,
+        parameters=params,
+        in_sample_months=request.in_sample_months,
+        out_of_sample_months=request.out_of_sample_months,
+        optimization_target=request.optimization_target,
+    )
+
+    data_loader = DataLoader(market_service=_market_data_service)
+    optimizer = WalkForwardOptimizer(data_loader)
+    result = await optimizer.optimize(opt_config)
+
+    return OptimizationResultResponse(
+        windows=result.windows,
+        best_parameters=result.best_parameters,
+        combined_metrics=BacktestMetricsData(
+            total_trades=result.combined_metrics.total_trades,
+            winning_trades=result.combined_metrics.winning_trades,
+            losing_trades=result.combined_metrics.losing_trades,
+            breakeven_trades=result.combined_metrics.breakeven_trades,
+            win_rate=result.combined_metrics.win_rate,
+            profit_factor=result.combined_metrics.profit_factor,
+            total_pnl=result.combined_metrics.total_pnl,
+            average_pnl=result.combined_metrics.average_pnl,
+            average_r=result.combined_metrics.average_r,
+            largest_winner=result.combined_metrics.largest_winner,
+            largest_loser=result.combined_metrics.largest_loser,
+            max_drawdown=result.combined_metrics.max_drawdown,
+            sharpe_ratio=result.combined_metrics.sharpe_ratio,
+            sortino_ratio=result.combined_metrics.sortino_ratio,
+            by_category=result.combined_metrics.by_category,
+        ),
+        robustness_score=result.robustness_score,
+    )
