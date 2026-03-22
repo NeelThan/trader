@@ -29,7 +29,7 @@ target_metadata = Base.metadata
 def get_url() -> str:
     """Get database URL from environment configuration."""
     db_config = get_database_config()
-    return db_config.sync_url
+    return db_config.async_url
 
 
 def run_migrations_offline() -> None:

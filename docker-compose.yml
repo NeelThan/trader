@@ -10,10 +10,10 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U trader -d trader"]
+      test: ["CMD-SHELL", "pg_isready -U trader -d trader && psql -U trader -d trader -c 'SELECT 1'"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   backend:
     build: ./backend

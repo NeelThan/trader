@@ -17,9 +17,10 @@ htmlcov/
 .git/
 .gitignore
 
-# Documentation
-*.md
+# Documentation (except README.md needed by pyproject.toml)
 docs/
+CHANGELOG.md
+CONTRIBUTING.md
 
 # Build artifacts
 *.egg-info/

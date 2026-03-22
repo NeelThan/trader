@@ -225,19 +225,19 @@ class SignalsProcessor:
         Returns:
             Tuple of (direction, category) or (None, "") if no trade.
         """
-        # Pullback setups (counter-trend on lower TF)
+        # Pullback setups (lower TF pulled back against higher TF trend)
         if higher_trend == "bullish" and lower_trend == "bearish":
-            return "long", "with_trend"  # Buy the dip
+            return "long", "with_trend"  # Buy the dip in uptrend
 
         if higher_trend == "bearish" and lower_trend == "bullish":
-            return "short", "with_trend"  # Sell the rally
+            return "short", "with_trend"  # Sell the rally in downtrend
 
-        # With-trend setups (same direction, need confirmation)
+        # Continuation setups (both timeframes aligned)
         if higher_trend == "bullish" and lower_trend == "bullish":
-            return "long", "counter_trend"  # Already moving, less ideal
+            return "long", "with_trend"  # Continuation in uptrend
 
         if higher_trend == "bearish" and lower_trend == "bearish":
-            return "short", "counter_trend"  # Already moving, less ideal
+            return "short", "with_trend"  # Continuation in downtrend
 
         return None, ""
 
