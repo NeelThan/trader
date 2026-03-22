@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook } from "@testing-library/react";
-import { useTradeDiscovery, categorizeTradeFromTrends, detectTrendPhaseFromTrend } from "./use-trade-discovery";
+import { renderHook, waitFor } from "@testing-library/react";
+import { useTradeDiscovery } from "./use-trade-discovery";
 import * as trendAlignmentModule from "./use-trend-alignment";
 import * as signalSuggestionsModule from "./use-signal-suggestions";
 import type { TimeframeTrend } from "./use-trend-alignment";
@@ -62,6 +62,12 @@ describe("useTradeDiscovery", () => {
     vi.clearAllMocks();
     mockRefresh.mockReset();
 
+    // Mock fetch for categorize API calls (relative URLs fail in jsdom)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ category: "with_trend" }),
+    });
+
     // Default mock implementations
     vi.mocked(trendAlignmentModule.useTrendAlignment).mockReturnValue({
       trends: [],
@@ -102,7 +108,7 @@ describe("useTradeDiscovery", () => {
       expect(result.current.hasError).toBe(false);
     });
 
-    it("should convert LONG signals to opportunities", () => {
+    it("should convert LONG signals to opportunities", async () => {
       const trends = [createTrend("1D", "bullish"), createTrend("4H", "neutral")];
       const signals = [createSignal("sig-1", "LONG", "1D", "4H")];
 
@@ -132,7 +138,9 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
-      expect(result.current.opportunities).toHaveLength(1);
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(1);
+      });
       expect(result.current.opportunities[0]).toMatchObject({
         id: "sig-1",
         symbol: "DJI",
@@ -144,7 +152,7 @@ describe("useTradeDiscovery", () => {
       });
     });
 
-    it("should convert SHORT signals to opportunities", () => {
+    it("should convert SHORT signals to opportunities", async () => {
       const trends = [createTrend("1D", "bearish"), createTrend("4H", "bearish")];
       const signals = [createSignal("sig-2", "SHORT", "1D", "4H")];
 
@@ -174,7 +182,9 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "SPX" })
       );
 
-      expect(result.current.opportunities).toHaveLength(1);
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(1);
+      });
       expect(result.current.opportunities[0].direction).toBe("short");
       expect(result.current.opportunities[0].symbol).toBe("SPX");
     });
@@ -218,7 +228,7 @@ describe("useTradeDiscovery", () => {
   // ===========================================================================
 
   describe("sorting and filtering", () => {
-    it("should sort active opportunities first", () => {
+    it("should sort active opportunities first", async () => {
       const trends = [createTrend("1D"), createTrend("4H"), createTrend("1H")];
       const signals = [
         createSignal("inactive", "LONG", "1D", "4H", { isActive: false, confidence: 90 }),
@@ -251,12 +261,15 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(2);
+      });
       // Active should come first despite lower confidence
       expect(result.current.opportunities[0].id).toBe("active");
       expect(result.current.opportunities[1].id).toBe("inactive");
     });
 
-    it("should sort by confidence within active/inactive groups", () => {
+    it("should sort by confidence within active/inactive groups", async () => {
       const trends = [
         createTrend("1D"),
         createTrend("4H"),
@@ -295,12 +308,15 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(3);
+      });
       expect(result.current.opportunities[0].id).toBe("high");
       expect(result.current.opportunities[1].id).toBe("medium");
       expect(result.current.opportunities[2].id).toBe("low");
     });
 
-    it("should filter active opportunities correctly", () => {
+    it("should filter active opportunities correctly", async () => {
       const trends = [createTrend("1D"), createTrend("4H")];
       const signals = [
         createSignal("active1", "LONG", "1D", "4H", { isActive: true }),
@@ -334,7 +350,9 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
-      expect(result.current.opportunities).toHaveLength(3);
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(3);
+      });
       expect(result.current.activeOpportunities).toHaveLength(2);
       expect(
         result.current.activeOpportunities.every((o) => o.isActive)
@@ -347,7 +365,7 @@ describe("useTradeDiscovery", () => {
   // ===========================================================================
 
   describe("trend integration", () => {
-    it("should attach trend data to opportunities", () => {
+    it("should attach trend data to opportunities", async () => {
       const trends = [
         createTrend("1D", "bullish"),
         createTrend("4H", "neutral"),
@@ -380,6 +398,9 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(1);
+      });
       const opp = result.current.opportunities[0];
       expect(opp.higherTrend).toBeDefined();
       expect(opp.higherTrend?.trend).toBe("bullish");
@@ -387,7 +408,7 @@ describe("useTradeDiscovery", () => {
       expect(opp.lowerTrend?.trend).toBe("ranging"); // "neutral" maps to "ranging"
     });
 
-    it("should handle missing trend data gracefully", () => {
+    it("should handle missing trend data gracefully", async () => {
       const trends = [createTrend("1D", "bullish")]; // Missing 4H trend
       const signals = [createSignal("sig-1", "LONG", "1D", "4H")];
 
@@ -417,6 +438,9 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(1);
+      });
       const opp = result.current.opportunities[0];
       expect(opp.higherTrend).toBeDefined();
       expect(opp.lowerTrend).toBeUndefined();
@@ -652,7 +676,7 @@ describe("useTradeDiscovery", () => {
   // ===========================================================================
 
   describe("symbol changes", () => {
-    it("should include symbol in opportunities", () => {
+    it("should include symbol in opportunities", async () => {
       const trends = [createTrend("1D"), createTrend("4H")];
       const signals = [createSignal("sig-1", "LONG", "1D", "4H")];
 
@@ -683,12 +707,18 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "BTCUSD" })
       );
 
+      await waitFor(() => {
+        expect(result1.current.opportunities).toHaveLength(1);
+      });
       expect(result1.current.opportunities[0].symbol).toBe("BTCUSD");
 
       const { result: result2 } = renderHook(() =>
         useTradeDiscovery({ symbol: "EURUSD" })
       );
 
+      await waitFor(() => {
+        expect(result2.current.opportunities).toHaveLength(1);
+      });
       expect(result2.current.opportunities[0].symbol).toBe("EURUSD");
     });
   });
@@ -698,7 +728,7 @@ describe("useTradeDiscovery", () => {
   // ===========================================================================
 
   describe("trading style mapping", () => {
-    it("should map trading styles correctly", () => {
+    it("should map trading styles correctly", async () => {
       const trends = [createTrend("1M"), createTrend("1W"), createTrend("1D"), createTrend("4H")];
       const signals = [
         createSignal("position", "LONG", "1M", "1W", { tradingStyle: "position" }),
@@ -732,6 +762,9 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(3);
+      });
       const styles = result.current.opportunities.map((o) => o.tradingStyle);
       expect(styles).toContain("position");
       expect(styles).toContain("swing");
@@ -744,7 +777,7 @@ describe("useTradeDiscovery", () => {
   // ===========================================================================
 
   describe("entry zone mapping", () => {
-    it("should preserve entry zone from signals", () => {
+    it("should preserve entry zone from signals", async () => {
       const trends = [createTrend("1D"), createTrend("4H")];
       const signals = [
         createSignal("support", "LONG", "1D", "4H", { entryZone: "support" }),
@@ -777,6 +810,9 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(2);
+      });
       const supportOpp = result.current.opportunities.find(
         (o) => o.id === "support"
       );
@@ -794,7 +830,7 @@ describe("useTradeDiscovery", () => {
   // ===========================================================================
 
   describe("trade category assignment", () => {
-    it("should assign with_trend category when trading with higher TF trend", () => {
+    it("should assign with_trend category when trading with higher TF trend", async () => {
       const trends = [
         createTrend("1D", "bullish"),
         createTrend("4H", "bullish"),
@@ -827,10 +863,18 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(1);
+      });
       expect(result.current.opportunities[0].category).toBe("with_trend");
     });
 
-    it("should assign counter_trend category when trading against higher TF with high confidence", () => {
+    it("should assign counter_trend category when trading against higher TF with high confidence", async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ category: "counter_trend" }),
+      });
+
       const trends = [
         createTrend("1D", "bearish"),
         createTrend("4H", "bullish"),
@@ -864,10 +908,18 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(1);
+      });
       expect(result.current.opportunities[0].category).toBe("counter_trend");
     });
 
-    it("should assign reversal_attempt category when trading against higher TF with low confidence", () => {
+    it("should assign reversal_attempt category when trading against higher TF with low confidence", async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ category: "reversal_attempt" }),
+      });
+
       const trends = [
         createTrend("1D", "bearish"),
         createTrend("4H", "neutral"),
@@ -901,10 +953,13 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(1);
+      });
       expect(result.current.opportunities[0].category).toBe("reversal_attempt");
     });
 
-    it("should assign with_trend for short trades in bearish higher TF", () => {
+    it("should assign with_trend for short trades in bearish higher TF", async () => {
       const trends = [
         createTrend("1D", "bearish"),
         createTrend("4H", "bearish"),
@@ -937,6 +992,9 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(1);
+      });
       expect(result.current.opportunities[0].category).toBe("with_trend");
     });
   });
@@ -946,7 +1004,7 @@ describe("useTradeDiscovery", () => {
   // ===========================================================================
 
   describe("trend phase detection", () => {
-    it("should detect impulse phase when trending strongly with aligned indicators", () => {
+    it("should detect impulse phase when trending strongly with aligned indicators", async () => {
       // Phase is detected from lower TF (4H - entry timeframe)
       const trends = [
         createTrend("1D", "bullish"),
@@ -987,10 +1045,13 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(1);
+      });
       expect(result.current.opportunities[0].trendPhase).toBe("impulse");
     });
 
-    it("should detect correction phase when momentum diverges from trend", () => {
+    it("should detect correction phase when momentum diverges from trend", async () => {
       // Phase is detected from lower TF (4H - entry timeframe)
       const trends = [
         createTrend("1D", "bullish"),
@@ -1031,10 +1092,13 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(1);
+      });
       expect(result.current.opportunities[0].trendPhase).toBe("correction");
     });
 
-    it("should default to continuation phase for neutral conditions", () => {
+    it("should default to continuation phase for neutral conditions", async () => {
       const trends = [
         createTrend("1D", "neutral"),
         createTrend("4H", "neutral"),
@@ -1067,100 +1131,15 @@ describe("useTradeDiscovery", () => {
         useTradeDiscovery({ symbol: "DJI" })
       );
 
+      await waitFor(() => {
+        expect(result.current.opportunities).toHaveLength(1);
+      });
       // Neutral defaults to continuation
       expect(result.current.opportunities[0].trendPhase).toBe("continuation");
     });
   });
 });
 
-// ===========================================================================
-// Helper Function Tests
-// ===========================================================================
-
-describe("categorizeTradeFromTrends", () => {
-  it("should return with_trend for aligned long trade", () => {
-    const result = categorizeTradeFromTrends("bullish", "bullish", "long", 75);
-    expect(result).toBe("with_trend");
-  });
-
-  it("should return with_trend for aligned short trade", () => {
-    const result = categorizeTradeFromTrends("bearish", "bearish", "short", 75);
-    expect(result).toBe("with_trend");
-  });
-
-  it("should return counter_trend for high confidence against trend", () => {
-    const result = categorizeTradeFromTrends("bearish", "bullish", "long", 75);
-    expect(result).toBe("counter_trend");
-  });
-
-  it("should return reversal_attempt for low confidence against trend", () => {
-    const result = categorizeTradeFromTrends("bearish", "ranging", "long", 50);
-    expect(result).toBe("reversal_attempt");
-  });
-
-  it("should handle ranging higher TF as with_trend", () => {
-    const result = categorizeTradeFromTrends("ranging", "bullish", "long", 75);
-    expect(result).toBe("with_trend");
-  });
-});
-
-describe("detectTrendPhaseFromTrend", () => {
-  const baseTrend: TimeframeTrend = {
-    timeframe: "1D",
-    trend: "bullish",
-    confidence: 50,
-    swing: { signal: "neutral" },
-    rsi: { signal: "neutral" },
-    macd: { signal: "neutral" },
-    isLoading: false,
-    error: null,
-  };
-
-  it("should return impulse for high confidence with aligned indicators", () => {
-    const trend: TimeframeTrend = {
-      ...baseTrend,
-      confidence: 80,
-      swing: { signal: "bullish" },
-      rsi: { signal: "bullish", value: 65 },
-      macd: { signal: "bullish", value: 10 },
-    };
-    const result = detectTrendPhaseFromTrend(trend);
-    expect(result).toBe("impulse");
-  });
-
-  it("should return correction when momentum diverges from swing trend", () => {
-    const trend: TimeframeTrend = {
-      ...baseTrend,
-      trend: "bullish",
-      confidence: 60,
-      swing: { signal: "bullish" },
-      rsi: { signal: "bearish", value: 40 },
-      macd: { signal: "bearish", value: -5 },
-    };
-    const result = detectTrendPhaseFromTrend(trend);
-    expect(result).toBe("correction");
-  });
-
-  it("should return exhaustion for low confidence in trending market", () => {
-    const trend: TimeframeTrend = {
-      ...baseTrend,
-      trend: "bullish",
-      confidence: 30,
-      swing: { signal: "neutral" },
-      rsi: { signal: "bearish", value: 35 },
-      macd: { signal: "bearish", value: -2 },
-    };
-    const result = detectTrendPhaseFromTrend(trend);
-    expect(result).toBe("exhaustion");
-  });
-
-  it("should return continuation as default", () => {
-    const trend: TimeframeTrend = {
-      ...baseTrend,
-      trend: "ranging",
-      confidence: 50,
-    };
-    const result = detectTrendPhaseFromTrend(trend);
-    expect(result).toBe("continuation");
-  });
-});
+// Note: categorizeTradeFromTrends and detectTrendPhaseFromTrend were moved
+// server-side (fetched via /api/trader/workflow/categorize). Tests for the
+// server-side logic live in backend/tests/.

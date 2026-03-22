@@ -44,6 +44,17 @@ describe("useSignalAggregation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetch.mockReset();
+
+    // Default mock implementation (prevents unhandled rejections)
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          success: true,
+          signals: [],
+          counts: { long: 0, short: 0, total: 0, by_timeframe: {}, by_type: {} },
+        }),
+    });
   });
 
   // ===========================================================================
@@ -116,20 +127,17 @@ describe("useSignalAggregation", () => {
     });
 
     it("should aggregate signals from multiple timeframes", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url.includes("market-data")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ success: true, data: mockMarketData }),
-          });
-        }
-        if (url.includes("workflow/assess")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve(mockTrendAssessment),
-          });
-        }
-        return Promise.resolve({ ok: false });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            signals: [
+              { timeframe: "1D", type: "long", confidence: 80 },
+              { timeframe: "4H", type: "short", confidence: 60 },
+            ],
+            counts: { long: 1, short: 1, total: 2, by_timeframe: {}, by_type: {} },
+          }),
       });
 
       const { result } = renderHook(() =>
@@ -144,11 +152,11 @@ describe("useSignalAggregation", () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      // Should have called market data for each timeframe
-      const marketDataCalls = mockFetch.mock.calls.filter((call) =>
-        call[0].includes("market-data")
+      // Should have called signal-aggregation endpoint
+      const aggregationCalls = mockFetch.mock.calls.filter((call) =>
+        call[0].includes("signal-aggregation")
       );
-      expect(marketDataCalls.length).toBeGreaterThanOrEqual(1);
+      expect(aggregationCalls.length).toBeGreaterThanOrEqual(1);
     });
   });
 

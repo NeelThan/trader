@@ -46,6 +46,17 @@ vi.mock("@/hooks/use-opportunities", () => ({
   useOpportunities: (props: { enabled: boolean }) => mockUseOpportunities(props),
 }));
 
+// Mock useWorkflowV2Storage hook
+vi.mock("@/hooks/use-workflow-v2-storage", () => ({
+  useWorkflowV2Storage: vi.fn(() => ({
+    storage: { watchlist: [], pivots: {}, settings: {} },
+    addToWatchlist: vi.fn(),
+    removeFromWatchlist: vi.fn(),
+    getPivots: vi.fn(),
+    setPivots: vi.fn(),
+  })),
+}));
+
 // Helper to create mock discovery opportunity
 const createMockDiscoveryOpportunity = (
   symbol: string,
@@ -128,6 +139,13 @@ describe("DiscoveryModePanel", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Mock fetch for any API calls in child components (relative URLs fail in jsdom)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({}),
+    });
+
     // Default mock return for useOpportunities
     mockUseOpportunities.mockReturnValue({
       opportunities: [],
@@ -218,15 +236,59 @@ describe("DiscoveryModePanel", () => {
 
   describe("single mode", () => {
     it("should pass opportunities to DiscoveryPanel", () => {
-      const opportunities = [createMockDiscoveryOpportunity("DJI", "long")];
+      // The component uses useOpportunities internally for single mode,
+      // so we need the mock to return an opportunity for the single scanner call
+      mockUseOpportunities.mockImplementation((props: { enabled: boolean; symbols?: string[] }) => {
+        // Single scanner call has symbols: [symbol] and enabled: true in single mode
+        if (props.enabled && props.symbols?.length === 1) {
+          return {
+            opportunities: [{ symbol: "DJI", higher_timeframe: "1D", lower_timeframe: "4H", direction: "long", confidence: 75, category: "with_trend", phase: "correction", description: "long opportunity" }],
+            symbolsScanned: ["DJI"],
+            scanTimeMs: 100,
+            isLoading: false,
+            error: null,
+            refresh: vi.fn(),
+          };
+        }
+        return {
+          opportunities: [],
+          symbolsScanned: [],
+          scanTimeMs: 0,
+          isLoading: false,
+          error: null,
+          refresh: vi.fn(),
+        };
+      });
 
-      render(<DiscoveryModePanel {...defaultProps} opportunities={opportunities} />);
+      render(<DiscoveryModePanel {...defaultProps} />);
 
       expect(screen.getByTestId("discovery-count")).toHaveTextContent("1");
     });
 
     it("should pass loading state to DiscoveryPanel", () => {
-      render(<DiscoveryModePanel {...defaultProps} isLoading={true} />);
+      // The component uses useOpportunities internally for single mode loading state
+      mockUseOpportunities.mockImplementation((props: { enabled: boolean; symbols?: string[] }) => {
+        if (props.enabled && props.symbols?.length === 1) {
+          return {
+            opportunities: [],
+            symbolsScanned: [],
+            scanTimeMs: 0,
+            isLoading: true,
+            error: null,
+            refresh: vi.fn(),
+          };
+        }
+        return {
+          opportunities: [],
+          symbolsScanned: [],
+          scanTimeMs: 0,
+          isLoading: false,
+          error: null,
+          refresh: vi.fn(),
+        };
+      });
+
+      render(<DiscoveryModePanel {...defaultProps} />);
 
       expect(screen.getByTestId("discovery-loading")).toHaveTextContent("loading");
     });
@@ -462,12 +524,15 @@ describe("DiscoveryModePanel", () => {
   // ===========================================================================
 
   describe("watchlist symbols", () => {
-    it("should scan predefined watchlist symbols", () => {
+    it("should scan default watchlist symbols when storage is empty", () => {
       render(<DiscoveryModePanel {...defaultProps} />);
 
+      // The component calls useOpportunities twice: once for single mode and once for scan mode.
+      // The multi-scanner call uses the default watchlist ["DJI", "SPX", "NDX"]
+      // since storage.watchlist is empty.
       expect(mockUseOpportunities).toHaveBeenCalledWith(
         expect.objectContaining({
-          symbols: ["DJI", "SPX", "NDX", "BTCUSD", "EURUSD", "GOLD"],
+          symbols: ["DJI", "SPX", "NDX"],
         })
       );
     });

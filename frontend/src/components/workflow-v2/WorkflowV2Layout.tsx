@@ -21,7 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CandlestickChart, CandlestickChartHandle, PriceLine, LineOverlay, type ChartType } from "@/components/trading";
+import { CandlestickChart, CandlestickChartHandle, PriceLine, LineOverlay, type ChartType, type ChartMarker } from "@/components/trading";
+import { History as HistoryIcon } from "lucide-react";
 import { RSIPane, MACDChart, PivotPointsEditor, LevelsTable, ReversalTimePanel } from "@/components/chart-pro";
 import { useMarketDataSubscription } from "@/hooks/use-market-data-subscription";
 import { useSettings, COLOR_SCHEMES } from "@/hooks/use-settings";
@@ -79,6 +80,10 @@ type WorkflowV2LayoutProps = {
   opportunity: TradeOpportunity | null;
   discovery: UseTradeDiscoveryResult;
   children: React.ReactNode;
+  backtestMode?: boolean;
+  onBacktestToggle?: () => void;
+  backtestMarkers?: ChartMarker[];
+  backtestPriceLines?: PriceLine[];
 };
 
 const PHASE_LABELS: Record<WorkflowPhase, string> = {
@@ -98,6 +103,10 @@ export function WorkflowV2Layout({
   opportunity,
   discovery,
   children,
+  backtestMode = false,
+  onBacktestToggle,
+  backtestMarkers = [],
+  backtestPriceLines = [],
 }: WorkflowV2LayoutProps) {
   const chartRef = useRef<CandlestickChartHandle>(null);
   const { settings } = useSettings();
@@ -648,10 +657,10 @@ export function WorkflowV2Layout({
     }));
   }, [showPsychologicalLevels, marketData]);
 
-  // Combine all price lines
+  // Combine all price lines (including backtest overlays)
   const allPriceLines = useMemo<PriceLine[]>(() => {
-    return [...strategyPriceLines, ...zonePriceLines, ...psychologicalPriceLines];
-  }, [strategyPriceLines, zonePriceLines, psychologicalPriceLines]);
+    return [...strategyPriceLines, ...zonePriceLines, ...psychologicalPriceLines, ...backtestPriceLines];
+  }, [strategyPriceLines, zonePriceLines, psychologicalPriceLines, backtestPriceLines]);
 
   // Crosshair move handler
   const handleCrosshairMove = useCallback((price: number | null) => {
@@ -785,6 +794,19 @@ export function WorkflowV2Layout({
               hasSimulatedData={hasSimulatedData}
               simulatedDataTimestamp={simulatedDataTimestamp}
             />
+
+            {/* Replay toggle */}
+            {onBacktestToggle && (
+              <Button
+                variant={backtestMode ? "default" : "outline"}
+                size="sm"
+                className="h-7 px-2 text-xs gap-1.5"
+                onClick={onBacktestToggle}
+              >
+                <HistoryIcon className="h-3 w-3" />
+                <span className="hidden sm:inline">Replay</span>
+              </Button>
+            )}
 
             {/* Stats - hide on mobile */}
             <span className="text-xs sm:text-sm text-muted-foreground hidden md:inline">
@@ -1386,7 +1408,7 @@ export function WorkflowV2Layout({
                     ref={chartRef}
                     data={marketData}
                     chartType={chartType}
-                    markers={chartMarkers}
+                    markers={[...chartMarkers, ...backtestMarkers]}
                     priceLines={allPriceLines}
                     lineOverlays={allLineOverlays}
                     upColor={chartColors.up}

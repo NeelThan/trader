@@ -106,6 +106,12 @@ describe("SizingPanel", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Mock fetch for any API calls in child components (relative URLs fail in jsdom)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({}),
+    });
   });
 
   // ===========================================================================
@@ -193,13 +199,14 @@ describe("SizingPanel", () => {
     it("should show risk percentage input", () => {
       render(<SizingPanel {...defaultProps} />);
 
-      expect(screen.getByLabelText(/risk/i)).toBeInTheDocument();
+      const input = document.getElementById("risk-percentage");
+      expect(input).toBeInTheDocument();
     });
 
     it("should display risk percentage value", () => {
       render(<SizingPanel {...defaultProps} />);
 
-      const input = screen.getByLabelText(/risk.*%/i);
+      const input = document.getElementById("risk-percentage") as HTMLInputElement;
       expect(input).toHaveValue(2);
     });
 
@@ -217,7 +224,7 @@ describe("SizingPanel", () => {
     it("should call onUpdateSizing when risk percentage changes", () => {
       render(<SizingPanel {...defaultProps} />);
 
-      const input = screen.getByLabelText(/risk.*%/i);
+      const input = document.getElementById("risk-percentage") as HTMLInputElement;
       fireEvent.change(input, { target: { value: "1" } });
 
       expect(defaultProps.onUpdateSizing).toHaveBeenCalledWith({
@@ -493,7 +500,7 @@ describe("SizingPanel", () => {
     it("should not allow risk percentage above 100", () => {
       render(<SizingPanel {...defaultProps} />);
 
-      const input = screen.getByLabelText(/risk.*%/i);
+      const input = document.getElementById("risk-percentage") as HTMLInputElement;
       fireEvent.change(input, { target: { value: "150" } });
 
       // Should not call with value > 100
@@ -519,7 +526,7 @@ describe("SizingPanel", () => {
       render(<SizingPanel {...defaultProps} />);
 
       expect(screen.getByLabelText(/account balance/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/risk.*%/i)).toBeInTheDocument();
+      expect(document.getElementById("risk-percentage")).toBeInTheDocument();
       expect(screen.getByLabelText(/entry/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/stop loss/i)).toBeInTheDocument();
     });

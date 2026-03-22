@@ -127,8 +127,52 @@ const createMockLevels = () => [
 describe("useTradeValidation", () => {
   const mockUseMultiTFLevels = useMultiTFLevels as ReturnType<typeof vi.fn>;
 
+  /**
+   * Helper to create a fetch mock returning specific backend validation data.
+   * The hook calls POST /api/trader/workflow/validate and expects BackendValidationResult.
+   */
+  function mockFetchValidation(overrides: {
+    checks?: { name: string; passed: boolean; explanation: string }[];
+    passed_count?: number;
+    total_count?: number;
+    is_valid?: boolean;
+    pass_percentage?: number;
+  } = {}) {
+    const defaultChecks = [
+      { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+      { name: "Entry Zone", passed: true, explanation: "Found levels" },
+      { name: "Target Zones", passed: true, explanation: "Found targets" },
+      { name: "RSI Confirmation", passed: true, explanation: "RSI aligned" },
+      { name: "MACD Confirmation", passed: true, explanation: "MACD aligned" },
+    ];
+    const checks = overrides.checks ?? defaultChecks;
+    const passed_count = overrides.passed_count ?? checks.filter((c) => c.passed).length;
+    const total_count = overrides.total_count ?? checks.length;
+    const is_valid = overrides.is_valid ?? (passed_count / total_count >= 0.6);
+    const pass_percentage = overrides.pass_percentage ?? Math.round((passed_count / total_count) * 100);
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          checks,
+          passed_count,
+          total_count,
+          is_valid,
+          pass_percentage,
+          atr_info: null,
+          confluence_score: null,
+          ranging_warning: null,
+        }),
+    });
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Default fetch mock returns 5 passing checks
+    mockFetchValidation();
+
     mockUseMultiTFLevels.mockReturnValue({
       allLevels: [],
       isLoading: false,
@@ -203,7 +247,7 @@ describe("useTradeValidation", () => {
   // ===========================================================================
 
   describe("validation checks", () => {
-    it("should perform 5 validation checks", () => {
+    it("should perform 5 validation checks", async () => {
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: createMockLevels(),
         isLoading: false,
@@ -222,10 +266,12 @@ describe("useTradeValidation", () => {
         })
       );
 
-      expect(result.current.result.checks).toHaveLength(5);
+      await waitFor(() => {
+        expect(result.current.result.checks).toHaveLength(5);
+      });
     });
 
-    it("should include Trend Alignment check", () => {
+    it("should include Trend Alignment check", async () => {
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: createMockLevels(),
         isLoading: false,
@@ -244,14 +290,16 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const trendCheck = result.current.result.checks.find(
-        (c) => c.name === "Trend Alignment"
-      );
-      expect(trendCheck).toBeDefined();
-      expect(trendCheck?.passed).toBe(true);
+      await waitFor(() => {
+        const trendCheck = result.current.result.checks.find(
+          (c) => c.name === "Trend Alignment"
+        );
+        expect(trendCheck).toBeDefined();
+        expect(trendCheck?.passed).toBe(true);
+      });
     });
 
-    it("should include Entry Zone check", () => {
+    it("should include Entry Zone check", async () => {
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: createMockLevels(),
         isLoading: false,
@@ -270,13 +318,15 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const entryCheck = result.current.result.checks.find(
-        (c) => c.name === "Entry Zone"
-      );
-      expect(entryCheck).toBeDefined();
+      await waitFor(() => {
+        const entryCheck = result.current.result.checks.find(
+          (c) => c.name === "Entry Zone"
+        );
+        expect(entryCheck).toBeDefined();
+      });
     });
 
-    it("should include Target Zones check", () => {
+    it("should include Target Zones check", async () => {
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: createMockLevels(),
         isLoading: false,
@@ -295,13 +345,15 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const targetCheck = result.current.result.checks.find(
-        (c) => c.name === "Target Zones"
-      );
-      expect(targetCheck).toBeDefined();
+      await waitFor(() => {
+        const targetCheck = result.current.result.checks.find(
+          (c) => c.name === "Target Zones"
+        );
+        expect(targetCheck).toBeDefined();
+      });
     });
 
-    it("should include RSI Confirmation check", () => {
+    it("should include RSI Confirmation check", async () => {
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: createMockLevels(),
         isLoading: false,
@@ -320,13 +372,15 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const rsiCheck = result.current.result.checks.find(
-        (c) => c.name === "RSI Confirmation"
-      );
-      expect(rsiCheck).toBeDefined();
+      await waitFor(() => {
+        const rsiCheck = result.current.result.checks.find(
+          (c) => c.name === "RSI Confirmation"
+        );
+        expect(rsiCheck).toBeDefined();
+      });
     });
 
-    it("should include MACD Confirmation check", () => {
+    it("should include MACD Confirmation check", async () => {
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: createMockLevels(),
         isLoading: false,
@@ -345,10 +399,12 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const macdCheck = result.current.result.checks.find(
-        (c) => c.name === "MACD Confirmation"
-      );
-      expect(macdCheck).toBeDefined();
+      await waitFor(() => {
+        const macdCheck = result.current.result.checks.find(
+          (c) => c.name === "MACD Confirmation"
+        );
+        expect(macdCheck).toBeDefined();
+      });
     });
   });
 
@@ -357,16 +413,15 @@ describe("useTradeValidation", () => {
   // ===========================================================================
 
   describe("trend alignment validation", () => {
-    it("should pass trend alignment when opportunity is active and confident", () => {
-      mockUseMultiTFLevels.mockReturnValue({
-        allLevels: [],
-        isLoading: false,
-        byTimeframe: [],
-        uniqueLevels: [],
-        loadingStates: {},
-        errors: {},
-        refresh: vi.fn(),
-        toggleLevelVisibility: vi.fn(),
+    it("should pass trend alignment when opportunity is active and confident", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI aligned" },
+          { name: "MACD Confirmation", passed: true, explanation: "MACD aligned" },
+        ],
       });
 
       const { result } = renderHook(() =>
@@ -379,22 +434,23 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const trendCheck = result.current.result.checks.find(
-        (c) => c.name === "Trend Alignment"
-      );
-      expect(trendCheck?.passed).toBe(true);
+      await waitFor(() => {
+        const trendCheck = result.current.result.checks.find(
+          (c) => c.name === "Trend Alignment"
+        );
+        expect(trendCheck?.passed).toBe(true);
+      });
     });
 
-    it("should fail trend alignment when confidence is below 60", () => {
-      mockUseMultiTFLevels.mockReturnValue({
-        allLevels: [],
-        isLoading: false,
-        byTimeframe: [],
-        uniqueLevels: [],
-        loadingStates: {},
-        errors: {},
-        refresh: vi.fn(),
-        toggleLevelVisibility: vi.fn(),
+    it("should fail trend alignment when confidence is below 60", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: false, explanation: "Low confidence" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI aligned" },
+          { name: "MACD Confirmation", passed: true, explanation: "MACD aligned" },
+        ],
       });
 
       const { result } = renderHook(() =>
@@ -407,22 +463,23 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const trendCheck = result.current.result.checks.find(
-        (c) => c.name === "Trend Alignment"
-      );
-      expect(trendCheck?.passed).toBe(false);
+      await waitFor(() => {
+        const trendCheck = result.current.result.checks.find(
+          (c) => c.name === "Trend Alignment"
+        );
+        expect(trendCheck?.passed).toBe(false);
+      });
     });
 
-    it("should fail trend alignment when not active", () => {
-      mockUseMultiTFLevels.mockReturnValue({
-        allLevels: [],
-        isLoading: false,
-        byTimeframe: [],
-        uniqueLevels: [],
-        loadingStates: {},
-        errors: {},
-        refresh: vi.fn(),
-        toggleLevelVisibility: vi.fn(),
+    it("should fail trend alignment when not active", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: false, explanation: "Not active" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI aligned" },
+          { name: "MACD Confirmation", passed: true, explanation: "MACD aligned" },
+        ],
       });
 
       const { result } = renderHook(() =>
@@ -435,10 +492,12 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const trendCheck = result.current.result.checks.find(
-        (c) => c.name === "Trend Alignment"
-      );
-      expect(trendCheck?.passed).toBe(false);
+      await waitFor(() => {
+        const trendCheck = result.current.result.checks.find(
+          (c) => c.name === "Trend Alignment"
+        );
+        expect(trendCheck?.passed).toBe(false);
+      });
     });
   });
 
@@ -447,7 +506,17 @@ describe("useTradeValidation", () => {
   // ===========================================================================
 
   describe("entry zone validation", () => {
-    it("should pass when retracement levels exist for the direction", () => {
+    it("should pass when retracement levels exist for the direction", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: true, explanation: "Found levels" },
+          { name: "Target Zones", passed: true, explanation: "Found targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI aligned" },
+          { name: "MACD Confirmation", passed: true, explanation: "MACD aligned" },
+        ],
+      });
+
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: createMockLevels(),
         isLoading: false,
@@ -466,13 +535,25 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const entryCheck = result.current.result.checks.find(
-        (c) => c.name === "Entry Zone"
-      );
-      expect(entryCheck?.passed).toBe(true);
+      await waitFor(() => {
+        const entryCheck = result.current.result.checks.find(
+          (c) => c.name === "Entry Zone"
+        );
+        expect(entryCheck?.passed).toBe(true);
+      });
     });
 
-    it("should fail when no retracement levels exist", () => {
+    it("should fail when no retracement levels exist", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI aligned" },
+          { name: "MACD Confirmation", passed: true, explanation: "MACD aligned" },
+        ],
+      });
+
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: [],
         isLoading: false,
@@ -491,10 +572,12 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const entryCheck = result.current.result.checks.find(
-        (c) => c.name === "Entry Zone"
-      );
-      expect(entryCheck?.passed).toBe(false);
+      await waitFor(() => {
+        const entryCheck = result.current.result.checks.find(
+          (c) => c.name === "Entry Zone"
+        );
+        expect(entryCheck?.passed).toBe(false);
+      });
     });
   });
 
@@ -503,7 +586,17 @@ describe("useTradeValidation", () => {
   // ===========================================================================
 
   describe("target zones validation", () => {
-    it("should pass when extension levels exist", () => {
+    it("should pass when extension levels exist", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: true, explanation: "Found levels" },
+          { name: "Target Zones", passed: true, explanation: "Found targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI aligned" },
+          { name: "MACD Confirmation", passed: true, explanation: "MACD aligned" },
+        ],
+      });
+
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: createMockLevels(),
         isLoading: false,
@@ -522,13 +615,25 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const targetCheck = result.current.result.checks.find(
-        (c) => c.name === "Target Zones"
-      );
-      expect(targetCheck?.passed).toBe(true);
+      await waitFor(() => {
+        const targetCheck = result.current.result.checks.find(
+          (c) => c.name === "Target Zones"
+        );
+        expect(targetCheck?.passed).toBe(true);
+      });
     });
 
-    it("should fail when no extension levels exist", () => {
+    it("should fail when no extension levels exist", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: true, explanation: "Found levels" },
+          { name: "Target Zones", passed: false, explanation: "No extension levels" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI aligned" },
+          { name: "MACD Confirmation", passed: true, explanation: "MACD aligned" },
+        ],
+      });
+
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: [createMockLevels()[0]], // Only retracement, no extension
         isLoading: false,
@@ -547,10 +652,12 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const targetCheck = result.current.result.checks.find(
-        (c) => c.name === "Target Zones"
-      );
-      expect(targetCheck?.passed).toBe(false);
+      await waitFor(() => {
+        const targetCheck = result.current.result.checks.find(
+          (c) => c.name === "Target Zones"
+        );
+        expect(targetCheck?.passed).toBe(false);
+      });
     });
   });
 
@@ -559,16 +666,15 @@ describe("useTradeValidation", () => {
   // ===========================================================================
 
   describe("RSI confirmation validation", () => {
-    it("should pass RSI check for long when RSI is bullish", () => {
-      mockUseMultiTFLevels.mockReturnValue({
-        allLevels: [],
-        isLoading: false,
-        byTimeframe: [],
-        uniqueLevels: [],
-        loadingStates: {},
-        errors: {},
-        refresh: vi.fn(),
-        toggleLevelVisibility: vi.fn(),
+    it("should pass RSI check for long when RSI is bullish", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI bullish for long" },
+          { name: "MACD Confirmation", passed: false, explanation: "MACD bearish" },
+        ],
       });
 
       const { result } = renderHook(() =>
@@ -590,22 +696,23 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const rsiCheck = result.current.result.checks.find(
-        (c) => c.name === "RSI Confirmation"
-      );
-      expect(rsiCheck?.passed).toBe(true);
+      await waitFor(() => {
+        const rsiCheck = result.current.result.checks.find(
+          (c) => c.name === "RSI Confirmation"
+        );
+        expect(rsiCheck?.passed).toBe(true);
+      });
     });
 
-    it("should pass RSI check for short when RSI is bearish", () => {
-      mockUseMultiTFLevels.mockReturnValue({
-        allLevels: [],
-        isLoading: false,
-        byTimeframe: [],
-        uniqueLevels: [],
-        loadingStates: {},
-        errors: {},
-        refresh: vi.fn(),
-        toggleLevelVisibility: vi.fn(),
+    it("should pass RSI check for short when RSI is bearish", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI bearish for short" },
+          { name: "MACD Confirmation", passed: false, explanation: "MACD bullish" },
+        ],
       });
 
       const { result } = renderHook(() =>
@@ -627,22 +734,23 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const rsiCheck = result.current.result.checks.find(
-        (c) => c.name === "RSI Confirmation"
-      );
-      expect(rsiCheck?.passed).toBe(true);
+      await waitFor(() => {
+        const rsiCheck = result.current.result.checks.find(
+          (c) => c.name === "RSI Confirmation"
+        );
+        expect(rsiCheck?.passed).toBe(true);
+      });
     });
 
-    it("should pass RSI check when signal is neutral (non-pullback setup)", () => {
-      mockUseMultiTFLevels.mockReturnValue({
-        allLevels: [],
-        isLoading: false,
-        byTimeframe: [],
-        uniqueLevels: [],
-        loadingStates: {},
-        errors: {},
-        refresh: vi.fn(),
-        toggleLevelVisibility: vi.fn(),
+    it("should pass RSI check when signal is neutral (non-pullback setup)", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI neutral (non-pullback)" },
+          { name: "MACD Confirmation", passed: true, explanation: "MACD aligned" },
+        ],
       });
 
       // Non-pullback: both timeframes bullish for long trade
@@ -676,10 +784,12 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const rsiCheck = result.current.result.checks.find(
-        (c) => c.name === "RSI Confirmation"
-      );
-      expect(rsiCheck?.passed).toBe(true);
+      await waitFor(() => {
+        const rsiCheck = result.current.result.checks.find(
+          (c) => c.name === "RSI Confirmation"
+        );
+        expect(rsiCheck?.passed).toBe(true);
+      });
     });
   });
 
@@ -688,16 +798,15 @@ describe("useTradeValidation", () => {
   // ===========================================================================
 
   describe("MACD confirmation validation", () => {
-    it("should pass MACD check for long when MACD is bullish", () => {
-      mockUseMultiTFLevels.mockReturnValue({
-        allLevels: [],
-        isLoading: false,
-        byTimeframe: [],
-        uniqueLevels: [],
-        loadingStates: {},
-        errors: {},
-        refresh: vi.fn(),
-        toggleLevelVisibility: vi.fn(),
+    it("should pass MACD check for long when MACD is bullish", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI neutral" },
+          { name: "MACD Confirmation", passed: true, explanation: "MACD bullish" },
+        ],
       });
 
       const { result } = renderHook(() =>
@@ -719,22 +828,23 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const macdCheck = result.current.result.checks.find(
-        (c) => c.name === "MACD Confirmation"
-      );
-      expect(macdCheck?.passed).toBe(true);
+      await waitFor(() => {
+        const macdCheck = result.current.result.checks.find(
+          (c) => c.name === "MACD Confirmation"
+        );
+        expect(macdCheck?.passed).toBe(true);
+      });
     });
 
-    it("should fail MACD check for long when higher TF MACD is bearish (pullback)", () => {
-      mockUseMultiTFLevels.mockReturnValue({
-        allLevels: [],
-        isLoading: false,
-        byTimeframe: [],
-        uniqueLevels: [],
-        loadingStates: {},
-        errors: {},
-        refresh: vi.fn(),
-        toggleLevelVisibility: vi.fn(),
+    it("should fail MACD check for long when higher TF MACD is bearish (pullback)", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI neutral" },
+          { name: "MACD Confirmation", passed: false, explanation: "Higher TF MACD bearish" },
+        ],
       });
 
       // Pullback setup: higher TF bullish trend, lower TF bearish
@@ -769,10 +879,12 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const macdCheck = result.current.result.checks.find(
-        (c) => c.name === "MACD Confirmation"
-      );
-      expect(macdCheck?.passed).toBe(false);
+      await waitFor(() => {
+        const macdCheck = result.current.result.checks.find(
+          (c) => c.name === "MACD Confirmation"
+        );
+        expect(macdCheck?.passed).toBe(false);
+      });
     });
   });
 
@@ -781,7 +893,7 @@ describe("useTradeValidation", () => {
   // ===========================================================================
 
   describe("overall validation result", () => {
-    it("should calculate pass percentage correctly", () => {
+    it("should calculate pass percentage correctly", async () => {
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: createMockLevels(),
         isLoading: false,
@@ -800,11 +912,26 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const { passedCount, totalCount, passPercentage } = result.current.result;
-      expect(passPercentage).toBe(Math.round((passedCount / totalCount) * 100));
+      await waitFor(() => {
+        const { passedCount, totalCount, passPercentage } = result.current.result;
+        expect(passPercentage).toBe(Math.round((passedCount / totalCount) * 100));
+      });
     });
 
-    it("should be valid when at least 60% of checks pass", () => {
+    it("should be valid when at least 60% of checks pass", async () => {
+      // Backend returns all checks passing
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: true, explanation: "Found levels" },
+          { name: "Target Zones", passed: true, explanation: "Found targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI bullish" },
+          { name: "MACD Confirmation", passed: true, explanation: "MACD bullish" },
+        ],
+        is_valid: true,
+        pass_percentage: 100,
+      });
+
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: createMockLevels(),
         isLoading: false,
@@ -836,12 +963,26 @@ describe("useTradeValidation", () => {
         })
       );
 
-      // With mock levels: Trend (pass), Entry (pass), Targets (pass), RSI (pass), MACD (pass) = 100%
-      expect(result.current.result.passPercentage).toBeGreaterThanOrEqual(60);
-      expect(result.current.result.isValid).toBe(true);
+      await waitFor(() => {
+        // With mock levels: Trend (pass), Entry (pass), Targets (pass), RSI (pass), MACD (pass) = 100%
+        expect(result.current.result.passPercentage).toBeGreaterThanOrEqual(60);
+        expect(result.current.result.isValid).toBe(true);
+      });
     });
 
-    it("should be invalid when less than 60% of checks pass", () => {
+    it("should be invalid when less than 60% of checks pass", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: false, explanation: "Not active" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: false, explanation: "RSI wrong direction" },
+          { name: "MACD Confirmation", passed: false, explanation: "MACD wrong direction" },
+        ],
+        is_valid: false,
+        pass_percentage: 0,
+      });
+
       mockUseMultiTFLevels.mockReturnValue({
         allLevels: [],
         isLoading: false,
@@ -874,9 +1015,11 @@ describe("useTradeValidation", () => {
         })
       );
 
-      // All checks fail = 0%
-      expect(result.current.result.passPercentage).toBeLessThan(60);
-      expect(result.current.result.isValid).toBe(false);
+      await waitFor(() => {
+        // All checks fail = 0%
+        expect(result.current.result.passPercentage).toBeLessThan(60);
+        expect(result.current.result.isValid).toBe(false);
+      });
     });
   });
 
@@ -958,16 +1101,15 @@ describe("useTradeValidation", () => {
   // ===========================================================================
 
   describe("check status", () => {
-    it("should set status to passed when check passes", () => {
-      mockUseMultiTFLevels.mockReturnValue({
-        allLevels: [],
-        isLoading: false,
-        byTimeframe: [],
-        uniqueLevels: [],
-        loadingStates: {},
-        errors: {},
-        refresh: vi.fn(),
-        toggleLevelVisibility: vi.fn(),
+    it("should set status to passed when check passes", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: true, explanation: "Aligned" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: true, explanation: "RSI aligned" },
+          { name: "MACD Confirmation", passed: true, explanation: "MACD aligned" },
+        ],
       });
 
       const { result } = renderHook(() =>
@@ -980,22 +1122,23 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const trendCheck = result.current.result.checks.find(
-        (c) => c.name === "Trend Alignment"
-      );
-      expect(trendCheck?.status).toBe("passed");
+      await waitFor(() => {
+        const trendCheck = result.current.result.checks.find(
+          (c) => c.name === "Trend Alignment"
+        );
+        expect(trendCheck?.status).toBe("passed");
+      });
     });
 
-    it("should set status to failed when check fails", () => {
-      mockUseMultiTFLevels.mockReturnValue({
-        allLevels: [],
-        isLoading: false,
-        byTimeframe: [],
-        uniqueLevels: [],
-        loadingStates: {},
-        errors: {},
-        refresh: vi.fn(),
-        toggleLevelVisibility: vi.fn(),
+    it("should set status to failed when check fails", async () => {
+      mockFetchValidation({
+        checks: [
+          { name: "Trend Alignment", passed: false, explanation: "Not active" },
+          { name: "Entry Zone", passed: false, explanation: "No levels" },
+          { name: "Target Zones", passed: false, explanation: "No targets" },
+          { name: "RSI Confirmation", passed: false, explanation: "RSI wrong" },
+          { name: "MACD Confirmation", passed: false, explanation: "MACD wrong" },
+        ],
       });
 
       const { result } = renderHook(() =>
@@ -1008,10 +1151,12 @@ describe("useTradeValidation", () => {
         })
       );
 
-      const trendCheck = result.current.result.checks.find(
-        (c) => c.name === "Trend Alignment"
-      );
-      expect(trendCheck?.status).toBe("failed");
+      await waitFor(() => {
+        const trendCheck = result.current.result.checks.find(
+          (c) => c.name === "Trend Alignment"
+        );
+        expect(trendCheck?.status).toBe("failed");
+      });
     });
   });
 });

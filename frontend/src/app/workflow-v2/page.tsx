@@ -11,19 +11,23 @@
  * State is persisted to localStorage so users don't lose progress on refresh.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { WorkflowV2Layout } from "@/components/workflow-v2/WorkflowV2Layout";
 import { DiscoveryModePanel } from "@/components/workflow-v2/DiscoveryModePanel";
 import { ValidationPanel } from "@/components/workflow-v2/ValidationPanel";
 import { SizingPanel } from "@/components/workflow-v2/SizingPanel";
 import { ExecutionPanel } from "@/components/workflow-v2/ExecutionPanel";
 import { ManagePanel } from "@/components/workflow-v2/ManagePanel";
+import { BacktestPanel } from "@/components/workflow-v2/BacktestPanel";
 import { JournalSummaryWidget } from "@/components/workflow-v2/JournalSummaryWidget";
 import { JournalDrawer } from "@/components/workflow-v2/JournalDrawer";
 import { useTradeDiscovery } from "@/hooks/use-trade-discovery";
 import { useTradeValidation } from "@/hooks/use-trade-validation";
 import { useTradeExecution } from "@/hooks/use-trade-execution";
 import { useWorkflowV2State } from "@/hooks/use-workflow-v2-state";
+import { useBacktest } from "@/hooks/use-backtest";
+import { tradesToMarkers, tradeToOverlayLines } from "@/lib/backtest-chart-overlays";
+import type { BacktestConfig } from "@/types/backtest";
 
 export type WorkflowPhase = "discover" | "validate" | "size" | "execute" | "manage";
 
@@ -36,6 +40,34 @@ export default function WorkflowV2Page() {
 
   // Journal drawer state
   const [isJournalDrawerOpen, setIsJournalDrawerOpen] = useState(false);
+
+  // Backtest replay mode
+  const [backtestMode, setBacktestMode] = useState(false);
+  const [selectedBacktestTradeIndex, setSelectedBacktestTradeIndex] = useState<number | null>(null);
+  const backtest = useBacktest();
+
+  const backtestMarkers = useMemo(
+    () => tradesToMarkers(backtest.result?.trades ?? []),
+    [backtest.result?.trades],
+  );
+
+  const selectedBacktestTrade = backtest.result?.trades[selectedBacktestTradeIndex ?? -1] ?? null;
+  const backtestPriceLines = useMemo(
+    () => tradeToOverlayLines(selectedBacktestTrade),
+    [selectedBacktestTrade],
+  );
+
+  const handleRunBacktest = useCallback(
+    (config: BacktestConfig) => {
+      setSelectedBacktestTradeIndex(null);
+      backtest.runBacktest(config);
+    },
+    [backtest],
+  );
+
+  const handleBacktestToggle = useCallback(() => {
+    setBacktestMode((prev) => !prev);
+  }, []);
 
   // Trade discovery - finds opportunities across all timeframes
   const discovery = useTradeDiscovery({ symbol: workflow.symbol });
@@ -99,6 +131,21 @@ export default function WorkflowV2Page() {
         <div className="flex items-center justify-center h-full p-4">
           <p className="text-muted-foreground">Restoring session...</p>
         </div>
+      );
+    }
+
+    // Backtest mode overrides the workflow panels
+    if (backtestMode) {
+      return (
+        <BacktestPanel
+          symbol={workflow.symbol}
+          result={backtest.result}
+          isLoading={backtest.isLoading}
+          error={backtest.error}
+          onRunBacktest={handleRunBacktest}
+          onSelectTrade={setSelectedBacktestTradeIndex}
+          selectedTradeIndex={selectedBacktestTradeIndex}
+        />
       );
     }
 
@@ -177,6 +224,10 @@ export default function WorkflowV2Page() {
         phase={workflow.phase}
         opportunity={workflow.opportunity}
         discovery={discovery}
+        backtestMode={backtestMode}
+        onBacktestToggle={handleBacktestToggle}
+        backtestMarkers={backtestMode ? backtestMarkers : undefined}
+        backtestPriceLines={backtestMode ? backtestPriceLines : undefined}
       >
         <div className="space-y-4">
           {renderSidePanel()}
